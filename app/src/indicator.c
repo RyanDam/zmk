@@ -217,7 +217,7 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
 
     while (true) {
 
-        if (k_msgq_get(&led_msgq, &blink, K_NO_WAIT) == 0) {
+        if (k_msgq_get(&led_msgq, &blink, state == BLINK_STATE_IDLE ? K_FOREVER : K_NO_WAIT) == 0) {
             // If new blink item is received, reset the state and start time
             LOG_DBG("Got a blink item from msgq, color %d, duration %d",
                     blink.color, blink.duration_ms);
