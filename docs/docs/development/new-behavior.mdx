@@ -165,7 +165,7 @@ struct behavior_<behavior_name>_config {
     bool example_config_param3;
 };
 
-// Initialization Function
+// Initialization Function (Optional)
 static int <behavior_name>_init(const struct device *dev) {
     return 0;
 };
@@ -177,7 +177,7 @@ static const struct behavior_driver_api <behavior_name>_driver_api = {
 
 BEHAVIOR_DT_INST_DEFINE(0,                                                    // Instance Number (Equal to 0 for behaviors that don't require multiple instances,
                                                                               //                  Equal to n for behaviors that do make use of multiple instances)
-                        <behavior_name>_init, NULL,                           // Initialization Function, Power Management Device Pointer
+                        <behavior_name>_init, NULL,                           // Initialization Function, Power Management Device Pointer (Both Optional)
                         &<behavior_name>_data, &<behavior_name>_config,       // Behavior Data Pointer, Behavior Configuration Pointer (Both Optional)
                         POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,     // Initialization Level, Device Priority
                         &<behavior_name>_driver_api);                         // API Structure
@@ -215,7 +215,7 @@ Including `zmk/event_manager.h` is required for the following dependencies to fu
 - `zmk/events/keycode_state_changed.h`: Keycode events' state (on/off), usage page, keycode value, modifiers, and timestamps
 - `zmk/events/modifiers_state_changed.h`: Modifier events' state (on/off) and modifier value
 
-Events can be used similarly to hardware interrupts, through the use of [listeners](#listeners-and-subscriptions).
+Events can be used similarly to hardware interrupts. See [Events](events.md) for more information on using events.
 
 ###### Listeners and subscriptions
 
@@ -223,30 +223,12 @@ The condensed form of lines 192-225 of the tap-dance driver, shown below, does a
 
 ```c title="app/src/behaviors/behavior_tap_dance.c (Lines 192-197, 225)"
 static int tap_dance_position_state_changed_listener(const zmk_event_t *eh);
-
 ZMK_LISTENER(behavior_tap_dance, tap_dance_position_state_changed_listener);
 ZMK_SUBSCRIPTION(behavior_tap_dance, zmk_position_state_changed);
-
 static int tap_dance_position_state_changed_listener(const zmk_event_t *eh){
     // Do stuff...
 }
 ```
-
-Listeners, defined by the `ZMK_LISTENER(mod, cb)` function, take in a listener name (`mod`) and a callback function (`cb`) as their parameters. On the other hand subscriptions are defined by the `ZMK_SUBSCRIPTION(mod, ev_type)`, and determine what kind of event (`ev_type`) should invoke the callback function from the listener. In the tap-dance example, this listener executes code depending on a `zmk_position_state_changed` event, or simply, a change in key position. Other types of ZMK events can be found as the name of the `struct` inside each of the files located at `app/include/zmk/events/<Event Type>.h`. All control paths in a listener should `return` one of the [`ZMK_EV_EVENT_*` values](#return-values), which are shown below.
-
-###### `return` values:
-
-- `ZMK_EV_EVENT_BUBBLE`: Keep propagating the event `struct` to the next listener.
-- `ZMK_EV_EVENT_HANDLED`: Stop propagating the event `struct` to the next listener. The event manager still owns the `struct`'s memory, so it will be `free`d automatically. Do **not** free the memory in this function.
-- `ZMK_EV_EVENT_CAPTURED`: Stop propagating the event `struct` to the next listener. The event `struct`'s memory is now owned by your code, so the event manager will not free the event `struct` memory. Make sure your code will release or free the event at some point in the future. (Use the [`ZMK_EVENT_*` macros](#macros) described below.)
-
-###### Macros:
-
-- `ZMK_EVENT_RAISE(ev)`: Start handling this event (`ev`) with the first registered event listener.
-- `ZMK_EVENT_RAISE_AFTER(ev, mod)`: Start handling this event (`ev`) after the event is captured by the named [event listener](#listeners-and-subscriptions) (`mod`). The named event listener will be skipped as well.
-- `ZMK_EVENT_RAISE_AT(ev, mod)`: Start handling this event (`ev`) at the named [event listener](#listeners-and-subscriptions) (`mod`). The named event listener is the first handler to be invoked.
-- `ZMK_EVENT_RELEASE(ev)`: Continue handling this event (`ev`) at the next registered event listener.
-- `ZMK_EVENT_FREE(ev)`: Free the memory associated with the event (`ev`).
 
 #### `BEHAVIOR_DT_INST_DEFINE`
 
@@ -262,7 +244,7 @@ An example of this can be seen below, taking the `#define KP_INST(n)` from the h
 
 ```c
 #define KP_INST(n)                                                                                 \
-    static struct behavior_hold_tap_config behavior_hold_tap_config_##n = {                        \
+    static const struct behavior_hold_tap_config behavior_hold_tap_config_##n = {                  \
         .tapping_term_ms = DT_INST_PROP(n, tapping_term_ms),                                       \
         .hold_behavior_dev = DT_PROP(DT_INST_PHANDLE_BY_IDX(n, bindings, 0), label),               \
         .tap_behavior_dev = DT_PROP(DT_INST_PHANDLE_BY_IDX(n, bindings, 1), label),                \
@@ -283,7 +265,7 @@ Note that in the hold-tap example, the instance number, `0`, has been replaced b
 
 Behaviors also require the following parameters of `BEHAVIOR_DT_INST_DEFINE` to be changed:
 
-##### Initialization function
+##### Initialization function (optional)
 
 Comes in the form `static int <behavior_name>_init(const struct device *dev)`. Initialization functions preconfigure any data, like resetting timers and position for hold-taps and tap-dances. All initialization functions `return 0;` once complete.
 
@@ -423,7 +405,8 @@ The fourth cell of `BEHAVIOR_DT_INST_DEFINE` can be set to `NULL` instead if ins
 
 ##### Configuration pointers (optional)
 
-The configuration `struct` stores the properties declared from the behavior's `.yaml` for **each new instance** of the behavior. As seen in the `#define KP_INST(n)` of the hold-tap example, the configuration `struct`, `behavior_<behavior_name>_config_##n`, for each instance number, `n`, can be initialized using the [Zephyr Devicetree Instance-based APIs](https://docs.zephyrproject.org/3.5.0/build/dts/api/api.html#instance-based-apis), which extract the values from the `properties` of each instance of the [devicetree binding](#creating-the-devicetree-binding-yaml) from a user's keymap or [predefined use-case `.dtsi` files](#defining-common-use-cases-for-the-behavior-dtsi-optional) stored in `app/dts/behaviors/`. We illustrate this further by comparing the [`#define KP_INST(n)` from the hold-tap driver](#behavior_dt_inst_define) and the [`properties` of the hold-tap devicetree binding.](#creating-the-devicetree-binding-yaml)
+The configuration `struct` stores the properties declared from the behavior's `.yaml` for **each new instance** of the behavior. As seen in the `#define KP_INST(n)` of the hold-tap example, the configuration `struct`, `behavior_<behavior_name>_config_##n`, for each instance number, `n`, can be initialized using the [Zephyr Devicetree Instance-based APIs](https://docs.zephyrproject.org/3.5.0/build/dts/api/api.html#instance-based-apis), which extract the values from the `properties` of each instance of the [devicetree binding](#creating-the-devicetree-binding-yaml) from a user's keymap or [predefined use-case `.dtsi` files](#defining-common-use-cases-for-the-behavior-dtsi-optional) stored in `app/dts/behaviors/`. We illustrate this further by comparing the [`#define KP_INST(n)` from the hold-tap driver](#behavior_dt_inst_define) and the [`properties` of the hold-tap devicetree binding](#creating-the-devicetree-binding-yaml). The config structure instances should always be declared `const`
+so they are placed into flash, not RAM, by the linker.
 
 The fifth cell of `BEHAVIOR_DT_INST_DEFINE` can be set to `NULL` instead if instance-specific configurations are not required.
 
@@ -555,7 +538,6 @@ Consider the following prompts when writing documentation for new behaviors:
 - What does it do? Describe some general use-cases for the behavior.
 - Which properties included in the [devicetree binding](#creating-the-devicetree-binding-yaml) should be configured manually by the user? What do they do, and if applicable, what are their default values?
 - What does an example implementation in a keymap look like? Include a code-snippet of the example implementation in the keymap file's `behaviors` node.
-  - Are there any [common use-cases of the behavior](#defining-common-use-cases-for-the-behavior-dtsi-optional)? Consider making a separate documentation page for these predefined variations, like how the [mod-tap](../keymaps/behaviors/mod-tap.md) has a separate page from the [hold-tap](../keymaps/behaviors/hold-tap.mdx).
 - How does the behavior perform in edge cases? For example, tap-dances invoke the last binding in its list of `bindings` once the maximum number of keypresses has been reached.
 
 Consider also including visual aids alongside written documentation if it adds clarity.

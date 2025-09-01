@@ -36,6 +36,7 @@ ZMK Studio currently has the following capabilities:
 |   ✅   | Renaming layers & enabling [extra layers](#including-extra-layers)                                                                        |
 |   ❌   | Adding more layers than specified by devicetree                                                                                           |
 |   💡   | Host locale selection                                                                                                                     |
+|   💡   | Importing and exporting keymaps                                                                                                           |
 
 Items listed as "planned", "under development", "low priority", or "not planned" can be configured using [devicetree](../config/index.md#devicetree-files) instead.
 
@@ -60,6 +61,13 @@ To use the native app for Linux, macOS, or Windows, visit the [download page](ht
 :::warning
 
 To use ZMK Studio over USB, you need permission to access the USB serial port. This most commonly occurs on Linux, with various distributions having different methods of resolving the error. For example, you may need to be added to a `uucp` or a `dialout` group. Refer to your operating system's documentation for more information.
+
+:::
+
+:::note
+
+If you are connected to the computer over both USB and BLE endpoints, you should set the keyboard output to the same endpoint that you connect to ZMK Studio using.
+For example, if you are connecting to ZMK Studio over USB, ensure that USB output is selected by invoking the `&out OUT_USB` [behavior](../keymaps/behaviors/outputs.md).
 
 :::
 
