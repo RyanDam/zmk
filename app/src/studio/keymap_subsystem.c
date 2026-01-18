@@ -27,13 +27,9 @@ ZMK_RPC_SUBSYSTEM(keymap)
 static bool encode_layer_bindings(pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
     const zmk_keymap_layer_id_t layer_id = *(uint8_t *)*arg;
 
-    for (int b = 0; b < ZMK_KEYMAP_LEN + ZMK_KEYMAP_SENSORS_LEN; b++) {
-        const struct zmk_behavior_binding *binding;
-        if (b < ZMK_KEYMAP_LEN) {
-            binding = zmk_keymap_get_layer_binding_at_idx(layer_id, b);
-        } else {
-            binding = zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, b - ZMK_KEYMAP_LEN);
-        }
+    for (int b = 0; b < ZMK_KEYMAP_LEN; b++) {
+        const struct zmk_behavior_binding *binding =
+            zmk_keymap_get_layer_binding_at_idx(layer_id, b);
 
         zmk_keymap_BehaviorBinding bb = zmk_keymap_BehaviorBinding_init_zero;
 
@@ -156,13 +152,7 @@ zmk_studio_Response set_layer_binding(const zmk_studio_Request *req) {
             zmk_keymap_SetLayerBindingResponse_SET_LAYER_BINDING_RESP_INVALID_PARAMETERS);
     }
 
-    if (set_req->key_position < ZMK_KEYMAP_LEN) {
-        ret = zmk_keymap_set_layer_binding_at_idx(set_req->layer_id, set_req->key_position, binding);
-    } else {
-        ret = zmk_keymap_set_layer_sensor_binding_at_idx(set_req->layer_id,
-                                                         set_req->key_position - ZMK_KEYMAP_LEN,
-                                                         binding);
-    }
+    ret = zmk_keymap_set_layer_binding_at_idx(set_req->layer_id, set_req->key_position, binding);
 
     if (ret < 0) {
         LOG_WRN("Setting the binding failed with %d", ret);
