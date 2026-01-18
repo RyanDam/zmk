@@ -60,8 +60,10 @@ int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint8_t bin
                                         const struct zmk_behavior_binding binding);
 
 const struct zmk_behavior_binding *
-zmk_keymap_get_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer, uint8_t sensor_idx);
+zmk_keymap_get_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer, uint8_t sensor_idx,
+                                           uint8_t binding_idx);
 int zmk_keymap_set_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer, uint8_t sensor_idx,
+                                               uint8_t binding_idx,
                                                struct zmk_behavior_binding binding);
 
 #if IS_ENABLED(CONFIG_ZMK_KEYMAP_LAYER_REORDERING)

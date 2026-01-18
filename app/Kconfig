@@ -689,6 +689,12 @@ config ZMK_KEYMAP_SENSORS_DEFAULT_TRIGGERS_PER_ROTATION
       detents per rotation of the encoder.
     default 20
 
+config ZMK_KEYMAP_SENSORS_MAX_BINDINGS
+    int "Max sensor bindings"
+    default 2
+    help
+      Maximum number of bindings per sensor.
+
 endif # ZMK_KEYMAP_SENSORS
 
 module = ZMK

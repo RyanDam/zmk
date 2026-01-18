@@ -22,35 +22,26 @@ ZMK_RPC_SUBSYSTEM(sensors)
 #define SENSOR_NOTIFICATION(type, ...) ZMK_RPC_NOTIFICATION(sensors, type, __VA_ARGS__)
 #define KEYMAP_NOTIFICATION(type, ...) ZMK_RPC_NOTIFICATION(keymap, type, __VA_ARGS__)
 
-static bool encode_binding(pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
-    const struct zmk_behavior_binding *binding = (const struct zmk_behavior_binding *)*arg;
 
-    if (!pb_encode_tag_for_field(stream, field)) {
-        return false;
-    }
-
-    zmk_sensors_BehaviorBinding bb = zmk_sensors_BehaviorBinding_init_zero;
-
-    if (binding && binding->behavior_dev) {
-        bb.behavior_id = zmk_behavior_get_local_id(binding->behavior_dev);
-        bb.param1 = binding->param1;
-        bb.param2 = binding->param2;
-    }
-
-    return pb_encode_submessage(stream, &zmk_sensors_BehaviorBinding_msg, &bb);
-}
-
-static bool encode_layer_bindings(pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
-    const struct zmk_behavior_binding *binding = (const struct zmk_behavior_binding *)*arg;
-
-    // Single binding supported in ZMK core, so just encode one
-    return encode_binding(stream, field, (void *const *)&binding);
-}
 
 struct sensor_layer_state {
     uint8_t sensor_idx;
     uint8_t layer_idx;
 };
+
+static bool should_unpack_behavior(const char *behavior_name, zmk_behavior_local_id_t *child_bid) {
+    // Handle both the standard name and common aliases/user names
+    if (strcmp(behavior_name, "sensor_rotate_kp") == 0 || 
+        strcmp(behavior_name, "inc_dec_kp") == 0) {
+        
+        *child_bid = zmk_behavior_get_local_id("kp");
+        if (*child_bid == UINT16_MAX) {
+            *child_bid = zmk_behavior_get_local_id("key_press");
+        }
+        return true;
+    }
+    return false;
+}
 
 static bool encode_layer_name(pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
     const zmk_keymap_layer_index_t layer_idx = *(uint8_t *)*arg;
@@ -86,11 +77,33 @@ static bool encode_layer(pb_ostream_t *stream, const pb_field_t *field, void *co
     layer_msg.name.funcs.encode = encode_layer_name;
     layer_msg.name.arg = &state->layer_idx;
 
-    const struct zmk_behavior_binding *binding =
-        zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx);
+    layer_msg.bindings_count = CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS;
+    const struct zmk_behavior_binding *slot0 = zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, 0);
+    const struct zmk_behavior_binding *slot1 = zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, 1);
 
-    layer_msg.bindings.funcs.encode = encode_layer_bindings;
-    layer_msg.bindings.arg = (void *)binding;
+    zmk_behavior_local_id_t child_bid = 0;
+    if (slot0 && slot0->behavior_dev && (!slot1 || !slot1->behavior_dev) &&
+        should_unpack_behavior(slot0->behavior_dev, &child_bid)) {
+        
+        // Unpack combined behavior into two virtual slots for Studio
+        layer_msg.bindings[0].behavior_id = child_bid;
+        layer_msg.bindings[0].param1 = slot0->param1;
+        layer_msg.bindings[0].param2 = 0;
+
+        layer_msg.bindings[1].behavior_id = child_bid;
+        layer_msg.bindings[1].param1 = slot0->param2;
+        layer_msg.bindings[1].param2 = 0;
+    } else {
+        for (int i = 0; i < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; i++) {
+            const struct zmk_behavior_binding *binding = (i == 0) ? slot0 : slot1;
+
+            if (binding && binding->behavior_dev) {
+                layer_msg.bindings[i].behavior_id = zmk_behavior_get_local_id(binding->behavior_dev);
+                layer_msg.bindings[i].param1 = binding->param1;
+                layer_msg.bindings[i].param2 = binding->param2;
+            }
+        }
+    }
 
     return pb_encode_submessage(stream, &zmk_sensors_Layer_msg, &layer_msg);
 }
@@ -170,97 +183,48 @@ zmk_studio_Response set_sensor_details(const zmk_studio_Request *req) {
             zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_SENSOR);
     }
 
-    // ZMK core only supports one binding per sensor.
-    // We will look for the first valid binding in the repeated list.
-    // NOTE: This assumes the count > 0 check or iteration logic.
-    // Since we can't easily iterate the incoming pb_callback_t here without a custom decode
-    // callback, we rely on the fact that for specific messages, nanopb might generate a struct with
-    // an array if max_count is defined, OR it uses a callback. The user provided proto: `repeated
-    // BehaviorBinding bindings = 3;`. If nanopb uses callbacks for `bindings`, we need to decode
-    // it. However, usually `zmk_studio_Request` is already decoded by `rpc.c` before calling this
-    // handler. So the `set_req` already contains the data? Wait, if it's a callback field in the
-    // decoded struct, we can't re-decode it unless we stored the stream. `rpc.c` decodes the WHOLE
-    // request. If `bindings` is a callback, the data is gone unless we hooked the callback during
-    // decode. BUT `rpc.c` calls `pb_decode`.
+    for (int i = 0; i < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; i++) {
+        struct zmk_behavior_binding binding = {0};
 
-    // CRITICAL ISSUE:
-    // If `bindings` is a callback field (standard for `repeated` without `max_count`), the data is
-    // lost after `pb_decode` returns in `rpc.c`, UNLESS the callback was set to store it. BUT
-    // `rpc.c` uses `zmk_studio_Request_init_zero`. We cannot access the data here if we didn't
-    // capture it during decode.
-    //
-    // However, `rpc.c` calls `handle_request`. The request is already decoded.
-    // If `bindings` is a pointer/array (fixed size), we are good.
-    // If `bindings` is a callback, `rpc.c` logic would have skipped it (default zero init).
-    //
-    // Check `keymap_subsystem.c` `set_layer_binding`.
-    // It accepts `SetLayerBindingRequest`. The proto there likely had a singular `binding`.
-    // `keymap.proto` has `BehaviorBinding binding = 3;` (singular).
-    //
-    // Current proto has `repeated BehaviorBinding bindings = 3;`.
-    // If this is `repeated`, nanopb generates a callback unless `(nanopb).max_count` is specified.
-    // Providing `(nanopb).max_count = 1` in the .options file would turn it into an array/struct.
-    // If the user didn't do that, accessing `bindings` here is impossible if it's a callback,
-    // because decode is finished. Use `binding` logic for now?
-    //
-    // Wait, if I assume the user *is* asking me to implement this file, I must assume they have
-    // handled the nanopb options enabling us to access the data, OR I need to implement a decode
-    // callback? I can't implement a decode callback *here* because `rpc.c` drives the decode.
-    //
-    // Hypothesis: The user has configured nanopb to make `bindings` an iterator or array.
-    // If array (e.g. static allocation), expected field is `bindings` (array) and `bindings_count`.
-    // I will write code assuming `bindings` is an array or usable struct, typically `bindings` and
-    // `bindings_count` if `max_count` used. If not, I can't solve it without changing `rpc.c` or
-    // the proto options.
-    //
-    // Let's assume `bindings_count` and `bindings` array exists (common ZMK Studio pattern for
-    // small fixed lists). If it's a pointer/callback, I'm stuck. But wait,
-    // `SetSensorDetailsRequest` ... `repeated BehaviorBinding bindings`. For now, I will assume
-    // `bindings_count` and generic `bindings` array access.
+        if (i < set_req->bindings_count) {
+            const zmk_sensors_BehaviorBinding *req_binding = &set_req->bindings[i];
 
-    if (set_req->bindings_count == 0) {
-        // Clearing (?) Not typical for sensors for now
-        return SENSOR_RESPONSE(set_sensor_details,
-                               zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_OK);
-    }
+            zmk_behavior_local_id_t bid = req_binding->behavior_id;
+            const char *behavior_name = zmk_behavior_find_behavior_name_from_local_id(bid);
 
-    // Take the first one
-    const zmk_sensors_BehaviorBinding *req_binding = &set_req->bindings[0];
+            if (!behavior_name) {
+                return SENSOR_RESPONSE(
+                    set_sensor_details,
+                    zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_BEHAVIOR);
+            }
 
-    zmk_behavior_local_id_t bid = req_binding->behavior_id;
-    const char *behavior_name = zmk_behavior_find_behavior_name_from_local_id(bid);
+            binding = (struct zmk_behavior_binding){
+                .behavior_dev = behavior_name,
+                .param1 = req_binding->param1,
+                .param2 = req_binding->param2,
+            };
 
-    if (!behavior_name) {
-        return SENSOR_RESPONSE(
-            set_sensor_details,
-            zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_BEHAVIOR);
-    }
+            int ret = zmk_behavior_validate_binding(&binding);
+            if (ret < 0) {
+                return SENSOR_RESPONSE(
+                    set_sensor_details,
+                    zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_PARAMETERS);
+            }
+        }
 
-    struct zmk_behavior_binding binding = (struct zmk_behavior_binding){
-        .behavior_dev = behavior_name,
-        .param1 = req_binding->param1,
-        .param2 = req_binding->param2,
-    };
+        int ret = zmk_keymap_set_layer_sensor_binding_at_idx(set_req->layer_id, set_req->sensor_id, i,
+                                                             binding);
 
-    int ret = zmk_behavior_validate_binding(&binding);
-    if (ret < 0) {
-        return SENSOR_RESPONSE(
-            set_sensor_details,
-            zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_PARAMETERS);
-    }
-
-    ret =
-        zmk_keymap_set_layer_sensor_binding_at_idx(set_req->layer_id, set_req->sensor_id, binding);
-
-    if (ret < 0) {
-        LOG_WRN("Setting the binding failed with %d", ret);
-        switch (ret) {
-        case -EINVAL:
-            return SENSOR_RESPONSE(
-                set_sensor_details,
-                zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_LAYER);
-        default:
-            return ZMK_RPC_SIMPLE_ERR(GENERIC);
+        if (ret < 0) {
+            LOG_WRN("Setting the binding failed with %d", ret);
+            switch (ret) {
+            case -EINVAL:
+                return SENSOR_RESPONSE(
+                    set_sensor_details,
+                    zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_LAYER);
+            default:
+                return ZMK_RPC_SIMPLE_ERR(GENERIC);
+            }
         }
     }
 
