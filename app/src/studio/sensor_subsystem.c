@@ -86,11 +86,11 @@ static bool encode_layer(pb_ostream_t *stream, const pb_field_t *field, void *co
         should_unpack_behavior(slot0->behavior_dev, &child_bid)) {
         
         // Unpack combined behavior into two virtual slots for Studio
-        layer_msg.bindings[0].behavior_id = child_bid;
+        layer_msg.bindings[0].behavior_id = zmk_behavior_get_local_id(slot0->behavior_dev);
         layer_msg.bindings[0].param1 = slot0->param1;
         layer_msg.bindings[0].param2 = 0;
 
-        layer_msg.bindings[1].behavior_id = child_bid;
+        layer_msg.bindings[1].behavior_id = zmk_behavior_get_local_id(slot0->behavior_dev);
         layer_msg.bindings[1].param1 = slot0->param2;
         layer_msg.bindings[1].param2 = 0;
     } else {
@@ -204,12 +204,12 @@ zmk_studio_Response set_sensor_details(const zmk_studio_Request *req) {
                 .param2 = req_binding->param2,
             };
 
-            int ret = zmk_behavior_validate_binding(&binding);
-            if (ret < 0) {
-                return SENSOR_RESPONSE(
-                    set_sensor_details,
-                    zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_PARAMETERS);
-            }
+            // int ret = zmk_behavior_validate_binding(&binding);
+            // if (ret < 0) {
+            //     return SENSOR_RESPONSE(
+            //         set_sensor_details,
+            //         zmk_sensors_SetSensorDetailsResponse_SET_SENSOR_DETAILS_RESP_INVALID_PARAMETERS);
+            // }
         }
 
         int ret = zmk_keymap_set_layer_sensor_binding_at_idx(set_req->layer_id, set_req->sensor_id, i,

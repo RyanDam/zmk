@@ -17,6 +17,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/matrix.h>
 #include <zmk/sensors.h>
 #include <zmk/virtual_key_position.h>
+#include <zmk/behavior_queue.h>
 
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
@@ -943,91 +944,99 @@ int zmk_keymap_position_state_changed(uint8_t source, uint32_t position, bool pr
 }
 
 #if ZMK_KEYMAP_HAS_SENSORS
-int zmk_keymap_sensor_event(uint8_t sensor_index,
-                             const struct zmk_sensor_channel_data *channel_data,
-                             size_t channel_data_size, int64_t timestamp) {
+int zmk_keymap_sensor_event(uint8_t sensor_index, const struct zmk_sensor_channel_data *channel_data,
+                            size_t channel_data_size, int64_t timestamp) {
     bool opaque_response = false;
 
-    for (int layer_idx = ZMK_KEYMAP_LAYERS_LEN - 1; layer_idx >= 0; layer_idx--) {
-        uint8_t layer_id = LAYER_INDEX_TO_ID(layer_idx);
+    zmk_keymap_layer_index_t layer_id = zmk_keymap_highest_layer_active();
+    int layer_idx = layer_id;
+    LOG_DBG("current_layer_id: %d", layer_id);
 
-        if (layer_id >= ZMK_KEYMAP_LAYERS_LEN) {
-            continue;
+    struct zmk_behavior_binding *binding = &zmk_sensor_keymap[layer_id][sensor_index][0];
+    LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx,
+            layer_id, sensor_index, binding->behavior_dev);
+
+    const struct device *behavior = zmk_behavior_get_binding(binding->behavior_dev);
+    if (!behavior) {
+        LOG_DBG("No behavior assigned to %d on layer %d", sensor_index, layer_id);
+        // continue;
+        return 0;
+    }
+
+    struct zmk_behavior_binding_event event = {
+        .layer = layer_id,
+        .position = ZMK_VIRTUAL_KEY_POSITION_SENSOR(sensor_index),
+        .timestamp = timestamp,
+    };
+
+    const struct zmk_sensor_config *sensor_config =
+        zmk_sensors_get_config_at_index(sensor_index);
+
+    int ret = behavior_sensor_keymap_binding_accept_data(
+        binding, event, sensor_config, channel_data_size, channel_data);
+
+    if (ret == -ENOTSUP) {
+        // const struct sensor_value value = channel_data[0].value;
+        // int triggers;
+
+        // // Some funky special casing for "old encoder behavior" where ticks where reported in val2 only,
+        // // instead of rotational degrees in val1.
+        // // REMOVE ME: Remove after a grace period of old ec11 sensor behavior
+        // if (value.val1 == 0) {
+        //     triggers = value.val2;
+        // } else {
+        //     struct sensor_value *remainder = &zmk_keymap_sensor_remainder[layer_id][sensor_index];
+
+        //     remainder->val1 += value.val1;
+        //     remainder->val2 += value.val2;
+
+        //     if (abs(remainder->val2) >= 1000000) {
+        //         remainder->val1 += remainder->val2 / 1000000;
+        //         remainder->val2 %= 1000000;
+        //     }
+
+        //     int trigger_degrees = 360 / sensor_config->triggers_per_rotation;
+        //     triggers = remainder->val1 / trigger_degrees;
+        //     remainder->val1 %= trigger_degrees;
+        // }
+
+        // struct zmk_behavior_binding triggered_binding;
+        // if (triggers > 0) {
+        //     // CW
+        //     triggered_binding = zmk_sensor_keymap[layer_id][sensor_index][0];
+        // } else if (triggers < 0) {
+        //     // CCW
+        //     triggered_binding = zmk_sensor_keymap[layer_id][sensor_index][1];
+        // }
+
+        // if (triggers != 0) {
+        //     opaque_response = true;
+        //     for (int i = 0; i < abs(triggers); i++) {
+        //         zmk_behavior_queue_add(&event, triggered_binding, true, 30); // tap for 30ms
+        //         zmk_behavior_queue_add(&event, triggered_binding, false, 0);
+        //     }
+        // }
+        
+    } else if (ret >= 0) {
+        enum behavior_sensor_binding_process_mode mode =
+        (!opaque_response && layer_idx >= LAYER_ID_TO_INDEX(_zmk_keymap_layer_default) &&
+            zmk_keymap_layer_active(layer_id))
+            ? BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_TRIGGER
+            : BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_DISCARD;
+
+        ret = behavior_sensor_keymap_binding_process(binding, event, mode);
+
+        if (ret == ZMK_BEHAVIOR_OPAQUE) {
+            LOG_DBG("sensor event processing complete, behavior response was opaque");
+            opaque_response = true;
+        } else if (ret < 0) {
+            LOG_DBG("Behavior returned error: %d", ret);
+            return ret;
+        } else {
+            LOG_DBG("sensor event processing complete, behavior response was transparent");
         }
-
-        const struct zmk_sensor_config *sensor_config = zmk_sensors_get_config_at_index(sensor_index);
-        int triggers = 0;
-
-        for (int b = 0; b < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; b++) {
-            struct zmk_behavior_binding *binding = &zmk_sensor_keymap[layer_id][sensor_index][b];
-            const struct device *behavior = zmk_behavior_get_binding(binding->behavior_dev);
-            if (!behavior) {
-                LOG_DBG("No behavior assigned to %d/%d on layer %d", sensor_index, b, layer_id);
-                continue;
-            }
-
-            struct zmk_behavior_binding_event event = {
-                .layer = layer_id,
-                .position = ZMK_VIRTUAL_KEY_POSITION_SENSOR(sensor_index),
-                .timestamp = timestamp,
-            };
-
-            int ret = behavior_sensor_keymap_binding_accept_data(
-                binding, event, sensor_config, channel_data_size, channel_data);
-
-            if (ret == -ENOTSUP) {
-                // Fallback logic for behaviors that don't satisfy the sensor API (e.g. kp)
-                // We only calculate triggers once per layer per event
-                if (triggers == 0) {
-                    const struct sensor_value value = channel_data[0].value;
-                    struct sensor_value *remainder = &zmk_keymap_sensor_remainder[layer_id][sensor_index];
-                    
-                    remainder->val1 += value.val1;
-                    remainder->val2 += value.val2;
-
-                    if (abs(remainder->val2) >= 1000000) {
-                        remainder->val1 += remainder->val2 / 1000000;
-                        remainder->val2 %= 1000000;
-                    }
-
-                    int trigger_degrees = 360 / sensor_config->triggers_per_rotation;
-                    triggers = remainder->val1 / trigger_degrees;
-                    remainder->val1 %= trigger_degrees;
-                }
-
-                if (triggers > 0 && b == 0) { // CW
-                    // Slot 0 is CW
-                    ret = zmk_behavior_invoke_binding(binding, event, true);
-                    zmk_behavior_invoke_binding(binding, event, false);
-                } else if (triggers < 0 && b == 1) { // CCW
-                    // Slot 1 is CCW
-                    ret = zmk_behavior_invoke_binding(binding, event, true);
-                    zmk_behavior_invoke_binding(binding, event, false);
-                } else {
-                    continue;
-                }
-            } else if (ret < 0) {
-                LOG_WRN("behavior data accept for behavior %s returned an error (%d). Processing to "
-                        "continue to next",
-                        binding->behavior_dev, ret);
-                continue;
-            } else {
-                enum behavior_sensor_binding_process_mode mode =
-                    (!opaque_response && layer_idx >= LAYER_ID_TO_INDEX(_zmk_keymap_layer_default) &&
-                     zmk_keymap_layer_active(layer_id))
-                        ? BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_TRIGGER
-                        : BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_DISCARD;
-
-                ret = behavior_sensor_keymap_binding_process(binding, event, mode);
-            }
-
-            if (ret == ZMK_BEHAVIOR_OPAQUE) {
-                LOG_DBG("sensor event processing complete, behavior response was opaque");
-                opaque_response = true;
-            } else if (ret < 0) {
-                LOG_DBG("Behavior returned error %d", ret);
-            }
-        }
+    } else {
+        LOG_DBG("Behavior returned error: %d", ret);
     }
 
     return 0;
@@ -1035,6 +1044,8 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
 int keymap_listener(const zmk_event_t *eh) {
+    LOG_DBG("New event: %s", eh->event->name);
+
     const struct zmk_position_state_changed *pos_ev;
     if ((pos_ev = as_zmk_position_state_changed(eh)) != NULL) {
         return zmk_keymap_position_state_changed(pos_ev->source, pos_ev->position, pos_ev->state,
