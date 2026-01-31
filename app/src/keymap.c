@@ -117,7 +117,7 @@ SENSOR_KEYMAP_VAR(zmk_sensor_keymap,
 SENSOR_KEYMAP_VAR(zmk_stock_sensor_keymap, const, 0)
 #endif
 
-static struct sensor_value zmk_keymap_sensor_remainder[ZMK_KEYMAP_LAYERS_LEN][ZMK_KEYMAP_SENSORS_LEN];
+// static struct sensor_value zmk_keymap_sensor_remainder[ZMK_KEYMAP_LAYERS_LEN][ZMK_KEYMAP_SENSORS_LEN];
 
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
