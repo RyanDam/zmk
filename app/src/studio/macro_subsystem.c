@@ -59,7 +59,8 @@ static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, vo
 
     for (int i = 0; i < max_steps; i++) {
         struct zmk_dynamic_macro_step *step = zmk_dynamic_macro_get_step(macro_idx, i);
-        if (!step || !step->binding.behavior_dev) {
+        // if (!step || !step->binding.behavior_dev) {
+        if (!step || !step->behavior_local_id) {
             break; 
         }
 
@@ -76,14 +77,20 @@ static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, vo
         msg.tap_ms = step->tap_ms;
         
         msg.has_binding = true;
-        msg.binding.behavior_id = zmk_behavior_get_local_id(step->binding.behavior_dev);
+        // msg.binding.behavior_id = zmk_behavior_get_local_id(step->binding.behavior_dev);
+        msg.binding.behavior_id = step->behavior_local_id;
         msg.binding.param1 = step->binding.param1;
         msg.binding.param2 = step->binding.param2;
 
+        LOG_DBG("macro %d step %d: binding %d param1 %d param2 %d mode %d wait_ms %d tap_ms %d", 
+                macro_idx, i, msg.binding.behavior_id, msg.binding.param1, msg.binding.param2, msg.mode, msg.wait_ms, msg.tap_ms);
+
         if (!pb_encode_tag_for_field(stream, field)) {
+            LOG_DBG("macro %d step %d: fail pb_encode_tag_for_field", macro_idx, i);
             return false;
         }
         if (!pb_encode_submessage(stream, &zmk_macros_MacroStep_msg, &msg)) {
+            LOG_DBG("macro %d step %d: fail pb_encode_submessage", macro_idx, i);
             return false;
         }
     }
@@ -91,9 +98,11 @@ static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, vo
 }
 
 zmk_studio_Response get_macro_details(const zmk_studio_Request *req) {
+    LOG_DBG("");
     uint32_t macro_idx = req->subsystem.macros.request_type.get_macro_details;
     if (macro_idx >= zmk_dynamic_macro_get_count()) {
-         return ZMK_RPC_SIMPLE_ERR(GENERIC);
+        LOG_DBG("macro idx %d invalid", macro_idx);
+        return ZMK_RPC_SIMPLE_ERR(GENERIC);
     }
 
     zmk_macros_MacroDetails details = zmk_macros_MacroDetails_init_zero;
@@ -128,6 +137,7 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
         step.binding.behavior_dev = behavior_name;
         step.binding.param1 = bb->param1;
         step.binding.param2 = bb->param2;
+        step.behavior_local_id = bb->behavior_id;
         step.wait_ms = msg->wait_ms;
         step.tap_ms = msg->tap_ms;
         
@@ -141,7 +151,8 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
         }
         
         zmk_dynamic_macro_set_step(set_req->index, i, step);
-        LOG_DBG("idx %d, step store: %d", set_req->index, i);
+        LOG_DBG("idx %d, step store: %d, behavior: %s, wait: %d, tap: %d, mode: %d, param1: %d, param2: %d", 
+                set_req->index, i, behavior_name, step.wait_ms, step.tap_ms, step.mode, step.binding.param1, step.binding.param2);
     }
     
     // Clear remaining steps

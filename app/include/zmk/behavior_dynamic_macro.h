@@ -17,6 +17,7 @@ enum zmk_dynamic_macro_mode {
 
 struct zmk_dynamic_macro_step {
     struct zmk_behavior_binding binding;
+    zmk_behavior_local_id_t behavior_local_id;
     uint32_t wait_ms;
     uint32_t tap_ms;
     uint8_t mode;

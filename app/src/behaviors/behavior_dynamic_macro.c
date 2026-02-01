@@ -9,12 +9,12 @@
 #include <zephyr/device.h>
 #include <drivers/behavior.h>
 #include <zephyr/logging/log.h>
+LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+
 #include <zephyr/settings/settings.h>
 #include <zmk/behavior.h>
 #include <zmk/behavior_queue.h>
 #include <zmk/behavior_dynamic_macro.h>
-
-LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define DM_COUNT CONFIG_ZMK_DYNAMIC_MACROS_COUNT
 #define DM_MAX_STEPS CONFIG_ZMK_DYNAMIC_MACROS_MAX_STEPS
@@ -40,6 +40,7 @@ int zmk_dynamic_macro_get_max_steps(void) { return DM_MAX_STEPS; }
 
 struct zmk_dynamic_macro_step *zmk_dynamic_macro_get_step(uint32_t macro_idx, uint32_t step_idx) {
     if (macro_idx >= DM_COUNT || step_idx >= DM_MAX_STEPS) {
+        LOG_DBG("Invalid macro idx %d/%d and step idx %d/%d", macro_idx, DM_COUNT, step_idx, DM_MAX_STEPS);
         return NULL;
     }
     return &dynamic_macros[macro_idx][step_idx];
@@ -64,7 +65,15 @@ static void queue_macro(struct zmk_behavior_binding_event *event,
         struct zmk_dynamic_macro_step *step = &dynamic_macros[macro_idx][i];
         
         if (!step->binding.behavior_dev) {
-            break; // Stop at empty binding
+            if (!step->behavior_local_id) // Check for empty binding
+                break;
+            // Handle local ID case
+            const char *behavior_dev = zmk_behavior_find_behavior_name_from_local_id(step->behavior_local_id);
+            if (!behavior_dev) {
+                LOG_ERR("Invalid behavior local id: %d", step->behavior_local_id);
+                break;
+            }
+            step->binding.behavior_dev = behavior_dev;
         }
 
         switch (step->mode) {
@@ -155,44 +164,72 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
             return -EINVAL;
         }
 
+        LOG_DBG("Loading step %ld for macro %ld", step_idx, macro_idx);
+
         struct zmk_dynamic_macro_step_setting step_setting;
         if (read_cb(cb_arg, &step_setting, sizeof(step_setting)) != sizeof(step_setting)) {
              return -EINVAL;
         }
 
+        LOG_DBG("Loaded step %ld for macro %ld: behavior: %d, param1: %d, param2: %d, wait_ms: %d, tap_ms: %d, mode: %d",
+                 step_idx,
+                 macro_idx,
+                 step_setting.behavior_local_id,
+                 step_setting.param1,
+                 step_setting.param2, 
+                 step_setting.wait_ms, 
+                 step_setting.tap_ms, 
+                 step_setting.mode
+        );
+
         const char *behavior_dev = zmk_behavior_find_behavior_name_from_local_id(step_setting.behavior_local_id);
+        dynamic_macros[macro_idx][step_idx] = (struct zmk_dynamic_macro_step){
+            .binding = {
+                .behavior_dev = behavior_dev,
+                .param1 = step_setting.param1,
+                .param2 = step_setting.param2,
+            },
+            .behavior_local_id = step_setting.behavior_local_id,
+            .wait_ms = step_setting.wait_ms,
+            .tap_ms = step_setting.tap_ms,
+            .mode = step_setting.mode,
+        };
+        // Mark this macro as dirty since it was loaded from settings
+        dirty_macro_indices[macro_idx] = 1;
+
         if (behavior_dev) {
-            dynamic_macros[macro_idx][step_idx] = (struct zmk_dynamic_macro_step){
-                .binding = {
-                    .behavior_dev = behavior_dev,
-                    .param1 = step_setting.param1,
-                    .param2 = step_setting.param2,
-                },
-                .wait_ms = step_setting.wait_ms,
-                .tap_ms = step_setting.tap_ms,
-                .mode = step_setting.mode,
-            };
-            // Mark this macro as dirty since it was loaded from settings
-            dirty_macro_indices[macro_idx] = 1;
+            LOG_DBG("Done loading step %ld for macro %ld", step_idx, macro_idx);
+        } else {
+            LOG_WRN("Invalid behavior local ID: %d", step_setting.behavior_local_id);
         }
         return 0;
     }
     return -ENOENT;
 }
 
-struct settings_handler dynamic_macros_conf = {
-    .name = "dynamic_macros",
-    .h_set = dynamic_macros_handle_set,
-};
-
-static int dynamic_macros_settings_init(void) {
-    LOG_DBG("Registering dynamic macros settings");
-    settings_register(&dynamic_macros_conf);
-    settings_load_subtree("dynamic_macros");
+static int dynamic_macros_handle_commit(void) {
+    // Commit all dirty macro changes to storage
+    // return zmk_dynamic_macro_save_changes();
     return 0;
 }
 
-SYS_INIT(dynamic_macros_settings_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+SETTINGS_STATIC_HANDLER_DEFINE(dynamic_macros, "dynamic_macros", NULL, dynamic_macros_handle_set,
+                               dynamic_macros_handle_commit, NULL);
+
+// static int dynamic_macros_settings_init(void) {
+//     LOG_DBG("Registering dynamic macros settings");
+//     // settings_register(&dynamic_macros_conf);
+    
+//     // // First restore from stock/default state
+//     // reload_from_stock_dynamic_macros();
+    
+//     // Then load user settings on top
+//     settings_load_subtree("dynamic_macros");
+    
+//     return 0;
+// }
+
+// SYS_INIT(dynamic_macros_settings_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 int zmk_dynamic_macro_save_changes(void) {
     // Only save macros that have been modified
