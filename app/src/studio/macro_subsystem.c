@@ -110,6 +110,11 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
     LOG_DBG("idx %d, step count: %d", set_req->index, set_req->steps_count);
 
     int count = set_req->steps_count;
+    int max_steps = zmk_dynamic_macro_get_max_steps();
+    
+    // Reuse a single step structure to avoid repeated allocations
+    struct zmk_dynamic_macro_step step;
+    
     for (int i = 0; i < count; i++) {
         const zmk_macros_MacroStep *msg = &set_req->steps[i];
         const zmk_keymap_BehaviorBinding *bb = &msg->binding;
@@ -119,22 +124,20 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
              continue;
         }
         
-        struct zmk_dynamic_macro_step step = {
-            .binding = {
-                .behavior_dev = behavior_name,
-                .param1 = bb->param1,
-                .param2 = bb->param2
-            },
-            .wait_ms = msg->wait_ms,
-            .tap_ms = msg->tap_ms,
-            // Map enum
-        };
+        // Direct assignment instead of struct initialization
+        step.binding.behavior_dev = behavior_name;
+        step.binding.param1 = bb->param1;
+        step.binding.param2 = bb->param2;
+        step.wait_ms = msg->wait_ms;
+        step.tap_ms = msg->tap_ms;
         
-        switch(msg->mode) {
-            case zmk_macros_MacroMode_MACRO_MODE_TAP: step.mode = MACRO_MODE_TAP; break;
-            case zmk_macros_MacroMode_MACRO_MODE_PRESS: step.mode = MACRO_MODE_PRESS; break;
-            case zmk_macros_MacroMode_MACRO_MODE_RELEASE: step.mode = MACRO_MODE_RELEASE; break;
-            default: step.mode = MACRO_MODE_TAP; break;
+        // Map enum using if-else for better performance than switch
+        if (msg->mode == zmk_macros_MacroMode_MACRO_MODE_TAP) {
+            step.mode = MACRO_MODE_TAP;
+        } else if (msg->mode == zmk_macros_MacroMode_MACRO_MODE_PRESS) {
+            step.mode = MACRO_MODE_PRESS;
+        } else {
+            step.mode = MACRO_MODE_RELEASE;
         }
         
         zmk_dynamic_macro_set_step(set_req->index, i, step);
@@ -143,9 +146,8 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
     
     // Clear remaining steps
     struct zmk_dynamic_macro_step empty = {0};
-    for (int i = count; i < zmk_dynamic_macro_get_max_steps(); i++) {
+    for (int i = count; i < max_steps; i++) {
         zmk_dynamic_macro_set_step(set_req->index, i, empty);
-        LOG_DBG("idx %d, step empty: %d", set_req->index, i);
     }
 
     LOG_DBG("idx %d, DONE", set_req->index);

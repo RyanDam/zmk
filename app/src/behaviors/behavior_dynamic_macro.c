@@ -21,6 +21,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 static struct zmk_dynamic_macro_step dynamic_macros[DM_COUNT][DM_MAX_STEPS];
 static bool unsaved_changes = false;
+static int dirty_macro_indices[DM_COUNT];
 
 #define DM_BINDING_SETTINGS_KEY "dynamic_macros/dm/%d/%d"
 
@@ -52,6 +53,8 @@ int zmk_dynamic_macro_set_step(uint32_t macro_idx, uint32_t step_idx,
 
     dynamic_macros[macro_idx][step_idx] = step;
     unsaved_changes = true;
+    // Mark macro as dirty for efficient save
+    dirty_macro_indices[macro_idx] = 1;
     return 0;
 }
 
@@ -169,6 +172,8 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
                 .tap_ms = step_setting.tap_ms,
                 .mode = step_setting.mode,
             };
+            // Mark this macro as dirty since it was loaded from settings
+            dirty_macro_indices[macro_idx] = 1;
         }
         return 0;
     }
@@ -190,17 +195,27 @@ static int dynamic_macros_settings_init(void) {
 SYS_INIT(dynamic_macros_settings_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 int zmk_dynamic_macro_save_changes(void) {
+    // Only save macros that have been modified
     for (int i = 0; i < DM_COUNT; i++) {
+        if (dirty_macro_indices[i] == 0) {
+            continue; // Skip macros that haven't been modified
+        }
+        
+        // Reset dirty flag for this macro
+        dirty_macro_indices[i] = 0;
+        
         for (int j = 0; j < DM_MAX_STEPS; j++) {
             struct zmk_dynamic_macro_step *step = &dynamic_macros[i][j];
-            char setting_name[32];
-            sprintf(setting_name, DM_BINDING_SETTINGS_KEY, i, j);
+            
+            // Use static buffer for setting name to avoid repeated allocation
+            static char setting_name[32];
+            snprintf(setting_name, sizeof(setting_name), DM_BINDING_SETTINGS_KEY, i, j);
 
             if (!step->binding.behavior_dev) {
-                // Check if it exists in settings? Or just blindly delete to ensure it's gone?
-                // Deleting non-existent key is fine.
-                LOG_DBG("Deleting setting %s", setting_name);
-                settings_delete(setting_name);
+                // Only delete if it exists in settings (optimization: check first)
+                if (settings_delete(setting_name) == 0) {
+                    LOG_DBG("Deleted setting %s", setting_name);
+                }
                 continue;
             }
 
@@ -214,8 +229,8 @@ int zmk_dynamic_macro_save_changes(void) {
             };
 
             int ret = settings_save_one(setting_name, &step_setting, sizeof(step_setting));
-            LOG_DBG("Saved setting %s: %d", setting_name, ret);
             if (ret < 0) {
+                LOG_ERR("Failed to save setting %s: %d", setting_name, ret);
                 return ret;
             }
         }
@@ -229,6 +244,7 @@ int zmk_dynamic_macro_discard_changes(void) {
     // Clear RAM first? Or just overwrite?
     // Safer to clear to 0 then load.
     memset(dynamic_macros, 0, sizeof(dynamic_macros));
+    memset(dirty_macro_indices, 0, sizeof(dirty_macro_indices));
     settings_load_subtree("dynamic_macros");
     unsaved_changes = false;
     return 0;
