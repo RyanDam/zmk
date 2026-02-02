@@ -36,6 +36,7 @@ static bool encode_macro_info(pb_ostream_t *stream, const pb_field_t *field, voi
         zmk_macros_MacroInfo info = zmk_macros_MacroInfo_init_zero;
         info.index = i;
         info.max_steps = max_steps;
+        // info.length = zmk_dynamic_macro_get_step_length(i);
 
         if (!pb_encode_tag_for_field(stream, field)) {
             return false;
@@ -55,11 +56,10 @@ zmk_studio_Response get_macro_list(const zmk_studio_Request *req) {
 
 static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
     uint32_t macro_idx = (uint32_t)((uintptr_t)*arg);
-    int max_steps = zmk_dynamic_macro_get_max_steps();
+    uint8_t macro_length = zmk_dynamic_macro_get_step_length(macro_idx);
 
-    for (int i = 0; i < max_steps; i++) {
+    for (int i = 0; i < macro_length; i++) {
         struct zmk_dynamic_macro_step *step = zmk_dynamic_macro_get_step(macro_idx, i);
-        // if (!step || !step->binding.behavior_dev) {
         if (!step || !step->behavior_local_id) {
             break; 
         }
@@ -74,7 +74,6 @@ static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, vo
         }
         
         msg.wait_ms = step->wait_ms;
-        msg.tap_ms = step->tap_ms;
         
         msg.has_binding = true;
         // msg.binding.behavior_id = zmk_behavior_get_local_id(step->binding.behavior_dev);
@@ -82,8 +81,8 @@ static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, vo
         msg.binding.param1 = step->binding.param1;
         msg.binding.param2 = step->binding.param2;
 
-        LOG_DBG("macro %d step %d: binding %d param1 %d param2 %d mode %d wait_ms %d tap_ms %d", 
-                macro_idx, i, msg.binding.behavior_id, msg.binding.param1, msg.binding.param2, msg.mode, msg.wait_ms, msg.tap_ms);
+        LOG_DBG("macro %d step %d: binding %d param1 %d param2 %d mode %d wait_ms %d", 
+                macro_idx, i, msg.binding.behavior_id, msg.binding.param1, msg.binding.param2, msg.mode, msg.wait_ms);
 
         if (!pb_encode_tag_for_field(stream, field)) {
             LOG_DBG("macro %d step %d: fail pb_encode_tag_for_field", macro_idx, i);
@@ -121,6 +120,9 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
     int count = set_req->steps_count;
     int max_steps = zmk_dynamic_macro_get_max_steps();
     
+    // Set the macro length
+    zmk_dynamic_macro_set_step_length(set_req->index, count);
+    
     // Reuse a single step structure to avoid repeated allocations
     struct zmk_dynamic_macro_step step;
     
@@ -139,7 +141,6 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
         step.binding.param2 = bb->param2;
         step.behavior_local_id = bb->behavior_id;
         step.wait_ms = msg->wait_ms;
-        step.tap_ms = msg->tap_ms;
         
         // Map enum using if-else for better performance than switch
         if (msg->mode == zmk_macros_MacroMode_MACRO_MODE_TAP) {
@@ -151,8 +152,8 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
         }
         
         zmk_dynamic_macro_set_step(set_req->index, i, step);
-        LOG_DBG("idx %d, step store: %d, behavior: %s, wait: %d, tap: %d, mode: %d, param1: %d, param2: %d", 
-                set_req->index, i, behavior_name, step.wait_ms, step.tap_ms, step.mode, step.binding.param1, step.binding.param2);
+        LOG_DBG("idx %d, step store: %d, behavior: %s, wait: %d, mode: %d, param1: %d, param2: %d", 
+                set_req->index, i, behavior_name, step.wait_ms, step.mode, step.binding.param1, step.binding.param2);
     }
     
     // Clear remaining steps

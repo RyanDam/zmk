@@ -19,12 +19,13 @@ struct zmk_dynamic_macro_step {
     struct zmk_behavior_binding binding;
     zmk_behavior_local_id_t behavior_local_id;
     uint32_t wait_ms;
-    uint32_t tap_ms;
     uint8_t mode;
 };
 
 int zmk_dynamic_macro_get_count(void);
 int zmk_dynamic_macro_get_max_steps(void);
+int zmk_dynamic_macro_get_step_length(uint32_t macro_idx);
+int zmk_dynamic_macro_set_step_length(uint32_t macro_idx, uint8_t length);
 struct zmk_dynamic_macro_step *zmk_dynamic_macro_get_step(uint32_t macro_idx, uint32_t step_idx);
 int zmk_dynamic_macro_set_step(uint32_t macro_idx, uint32_t step_idx, struct zmk_dynamic_macro_step step);
 
