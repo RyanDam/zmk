@@ -37,9 +37,11 @@ static zmk_keymap_layer_id_t _zmk_keymap_layer_default = 0;
 #endif
 
 #define TRANSFORMED_LAYER(node)                                                                    \
-    {COND_CODE_1(DT_NODE_HAS_PROP(node, bindings),                                                 \
-                 (LISTIFY(DT_PROP_LEN(node, bindings), ZMK_KEYMAP_EXTRACT_BINDING, (, ), node)),   \
-                 ())}
+    {                                                                                              \
+        COND_CODE_1(                                                                               \
+            DT_NODE_HAS_PROP(node, bindings),                                                      \
+            (LISTIFY(DT_PROP_LEN(node, bindings), ZMK_KEYMAP_EXTRACT_BINDING, (, ), node)), ())    \
+    }
 
 #if ZMK_KEYMAP_HAS_SENSORS
 #define _TRANSFORM_SENSOR_ENTRY(idx, layer)                                                        \
@@ -52,15 +54,13 @@ static zmk_keymap_layer_id_t _zmk_keymap_layer_default = 0;
     }
 
 #define _SENSOR_BINDINGS_FOR_SENSOR(sensor_idx, layer)                                             \
-    {                                                                                              \
-        [0] = _TRANSFORM_SENSOR_ENTRY(sensor_idx, layer),                                          \
-    }
+    { [0] = _TRANSFORM_SENSOR_ENTRY(sensor_idx, layer), }
 
 #define SENSOR_LAYER(node)                                                                         \
-    COND_CODE_1(DT_NODE_HAS_PROP(node, sensor_bindings),                                           \
-                ({LISTIFY(DT_PROP_LEN(node, sensor_bindings), _SENSOR_BINDINGS_FOR_SENSOR, (, ),   \
-                          node)}),                                                                 \
-                ({}))
+    COND_CODE_1(                                                                                   \
+        DT_NODE_HAS_PROP(node, sensor_bindings),                                                   \
+        ({LISTIFY(DT_PROP_LEN(node, sensor_bindings), _SENSOR_BINDINGS_FOR_SENSOR, (, ), node)}),  \
+        ({}))
 
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
@@ -105,9 +105,10 @@ static const char *zmk_keymap_layer_names[ZMK_KEYMAP_LAYERS_LEN] = {
 #if ZMK_KEYMAP_HAS_SENSORS
 
 #define SENSOR_KEYMAP_VAR(_name, _opts, no_init)                                                   \
-    static _opts struct zmk_behavior_binding _name[ZMK_KEYMAP_LAYERS_LEN][ZMK_KEYMAP_SENSORS_LEN]  \
-                                                  [CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS] = {     \
-        COND_CODE_0(no_init, (DT_INST_FOREACH_CHILD_SEP(0, SENSOR_LAYER, (, ))), (0))};
+    static _opts struct zmk_behavior_binding                                                       \
+        _name[ZMK_KEYMAP_LAYERS_LEN][ZMK_KEYMAP_SENSORS_LEN]                                       \
+             [CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS] = {                                          \
+                 COND_CODE_0(no_init, (DT_INST_FOREACH_CHILD_SEP(0, SENSOR_LAYER, (, ))), (0))};
 
 SENSOR_KEYMAP_VAR(zmk_sensor_keymap,
                   COND_CODE_1(IS_ENABLED(CONFIG_ZMK_KEYMAP_SETTINGS_STORAGE), (), (const)),
@@ -117,7 +118,8 @@ SENSOR_KEYMAP_VAR(zmk_sensor_keymap,
 SENSOR_KEYMAP_VAR(zmk_stock_sensor_keymap, const, 0)
 #endif
 
-// static struct sensor_value zmk_keymap_sensor_remainder[ZMK_KEYMAP_LAYERS_LEN][ZMK_KEYMAP_SENSORS_LEN];
+// static struct sensor_value
+// zmk_keymap_sensor_remainder[ZMK_KEYMAP_LAYERS_LEN][ZMK_KEYMAP_SENSORS_LEN];
 
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
@@ -293,7 +295,8 @@ const struct zmk_behavior_binding *
 zmk_keymap_get_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint8_t sensor_idx,
                                            uint8_t binding_idx) {
     ASSERT_LAYER_VAL(layer_id, NULL)
-    if (sensor_idx >= ZMK_KEYMAP_SENSORS_LEN || binding_idx >= CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS) {
+    if (sensor_idx >= ZMK_KEYMAP_SENSORS_LEN ||
+        binding_idx >= CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS) {
         return NULL;
     }
     return &zmk_sensor_keymap[layer_id][sensor_idx][binding_idx];
@@ -307,9 +310,10 @@ zmk_keymap_get_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint8
 static uint8_t zmk_keymap_layer_pending_changes[ZMK_KEYMAP_LAYERS_LEN][PENDING_ARRAY_SIZE];
 
 #if ZMK_KEYMAP_HAS_SENSORS
-#define SENSOR_PENDING_ARRAY_SIZE DIV_ROUND_UP(ZMK_KEYMAP_SENSORS_LEN * CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS, 8)
-static uint8_t
-    zmk_keymap_layer_sensor_pending_changes[ZMK_KEYMAP_LAYERS_LEN][SENSOR_PENDING_ARRAY_SIZE];
+#define SENSOR_PENDING_ARRAY_SIZE                                                                  \
+    DIV_ROUND_UP(ZMK_KEYMAP_SENSORS_LEN *CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS, 8)
+static uint8_t zmk_keymap_layer_sensor_pending_changes[ZMK_KEYMAP_LAYERS_LEN]
+                                                      [SENSOR_PENDING_ARRAY_SIZE];
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
 int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint8_t binding_idx,
@@ -361,7 +365,8 @@ int zmk_keymap_set_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer_id, u
                                                struct zmk_behavior_binding binding) {
     ASSERT_LAYER_VAL(layer_id, -EINVAL)
 
-    if (sensor_idx >= ZMK_KEYMAP_SENSORS_LEN || binding_idx >= CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS) {
+    if (sensor_idx >= ZMK_KEYMAP_SENSORS_LEN ||
+        binding_idx >= CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS) {
         return -EINVAL;
     }
 
@@ -614,7 +619,6 @@ static int save_bindings(void) {
             }
         }
 
-
 #if ZMK_KEYMAP_HAS_SENSORS
         uint8_t *sensor_pending = zmk_keymap_layer_sensor_pending_changes[l];
         for (int s = 0; s < ZMK_KEYMAP_SENSORS_LEN; s++) {
@@ -856,13 +860,13 @@ int zmk_keymap_reset_settings(void) {
 #if ZMK_KEYMAP_HAS_SENSORS
         uint8_t *sensor_changes = zmk_keymap_sensor_changes[l];
         for (int s = 0; s < ZMK_KEYMAP_SENSORS_LEN; s++) {
-                for (int b = 0; b < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; b++) {
-                    if (memcmp(&zmk_sensor_keymap[l][s][b], &zmk_stock_sensor_keymap[l][s][b],
-                               sizeof(struct zmk_behavior_binding_setting)) == 0) {
-                        continue;
-                    }
+            for (int b = 0; b < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; b++) {
+                if (memcmp(&zmk_sensor_keymap[l][s][b], &zmk_stock_sensor_keymap[l][s][b],
+                           sizeof(struct zmk_behavior_binding_setting)) == 0) {
+                    continue;
+                }
 
-                    uint8_t combined_idx = (s * CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS) + b;
+                uint8_t combined_idx = (s * CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS) + b;
                 if (sensor_changes[combined_idx / 8] & BIT(combined_idx % 8)) {
                     LOG_WRN("CLEAR %d/%d on %d layer", s, b, l);
                     char setting_name[20];
@@ -944,7 +948,8 @@ int zmk_keymap_position_state_changed(uint8_t source, uint32_t position, bool pr
 }
 
 #if ZMK_KEYMAP_HAS_SENSORS
-int zmk_keymap_sensor_event(uint8_t sensor_index, const struct zmk_sensor_channel_data *channel_data,
+int zmk_keymap_sensor_event(uint8_t sensor_index,
+                            const struct zmk_sensor_channel_data *channel_data,
                             size_t channel_data_size, int64_t timestamp) {
     bool opaque_response = false;
 
@@ -969,23 +974,24 @@ int zmk_keymap_sensor_event(uint8_t sensor_index, const struct zmk_sensor_channe
         .timestamp = timestamp,
     };
 
-    const struct zmk_sensor_config *sensor_config =
-        zmk_sensors_get_config_at_index(sensor_index);
+    const struct zmk_sensor_config *sensor_config = zmk_sensors_get_config_at_index(sensor_index);
 
-    int ret = behavior_sensor_keymap_binding_accept_data(
-        binding, event, sensor_config, channel_data_size, channel_data);
+    int ret = behavior_sensor_keymap_binding_accept_data(binding, event, sensor_config,
+                                                         channel_data_size, channel_data);
 
     if (ret == -ENOTSUP) {
         // const struct sensor_value value = channel_data[0].value;
         // int triggers;
 
-        // // Some funky special casing for "old encoder behavior" where ticks where reported in val2 only,
+        // // Some funky special casing for "old encoder behavior" where ticks where reported in
+        // val2 only,
         // // instead of rotational degrees in val1.
         // // REMOVE ME: Remove after a grace period of old ec11 sensor behavior
         // if (value.val1 == 0) {
         //     triggers = value.val2;
         // } else {
-        //     struct sensor_value *remainder = &zmk_keymap_sensor_remainder[layer_id][sensor_index];
+        //     struct sensor_value *remainder =
+        //     &zmk_keymap_sensor_remainder[layer_id][sensor_index];
 
         //     remainder->val1 += value.val1;
         //     remainder->val2 += value.val2;
@@ -1016,13 +1022,13 @@ int zmk_keymap_sensor_event(uint8_t sensor_index, const struct zmk_sensor_channe
         //         zmk_behavior_queue_add(&event, triggered_binding, false, 0);
         //     }
         // }
-        
+
     } else if (ret >= 0) {
         enum behavior_sensor_binding_process_mode mode =
-        (!opaque_response && layer_idx >= LAYER_ID_TO_INDEX(_zmk_keymap_layer_default) &&
-            zmk_keymap_layer_active(layer_id))
-            ? BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_TRIGGER
-            : BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_DISCARD;
+            (!opaque_response && layer_idx >= LAYER_ID_TO_INDEX(_zmk_keymap_layer_default) &&
+             zmk_keymap_layer_active(layer_id))
+                ? BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_TRIGGER
+                : BEHAVIOR_SENSOR_BINDING_PROCESS_MODE_DISCARD;
 
         ret = behavior_sensor_keymap_binding_process(binding, event, mode);
 
@@ -1192,8 +1198,7 @@ static int keymap_handle_set(const char *name, size_t len, settings_read_cb read
         }
 
         if (binding_idx >= 2) {
-            LOG_WRN("Binding index %d is larger than max of %d", binding_idx,
-                    2);
+            LOG_WRN("Binding index %d is larger than max of %d", binding_idx, 2);
             return -EINVAL;
         }
 

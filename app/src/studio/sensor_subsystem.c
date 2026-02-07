@@ -22,26 +22,25 @@ ZMK_RPC_SUBSYSTEM(sensors)
 #define SENSOR_NOTIFICATION(type, ...) ZMK_RPC_NOTIFICATION(sensors, type, __VA_ARGS__)
 #define KEYMAP_NOTIFICATION(type, ...) ZMK_RPC_NOTIFICATION(keymap, type, __VA_ARGS__)
 
-
-
 struct sensor_layer_state {
     uint8_t sensor_idx;
     uint8_t layer_idx;
 };
 
-static bool should_unpack_behavior(const char *behavior_name, zmk_behavior_local_id_t *child_bid) {
-    // Handle both the standard name and common aliases/user names
-    if (strcmp(behavior_name, "sensor_rotate_kp") == 0 || 
-        strcmp(behavior_name, "inc_dec_kp") == 0) {
-        
-        *child_bid = zmk_behavior_get_local_id("kp");
-        if (*child_bid == UINT16_MAX) {
-            *child_bid = zmk_behavior_get_local_id("key_press");
-        }
-        return true;
-    }
-    return false;
-}
+// static bool should_unpack_behavior(const char *behavior_name, zmk_behavior_local_id_t *child_bid)
+// {
+//     // Handle both the standard name and common aliases/user names
+//     if (strcmp(behavior_name, "sensor_rotate_kp") == 0 ||
+//         strcmp(behavior_name, "inc_dec_kp") == 0) {
+
+//         *child_bid = zmk_behavior_get_local_id("kp");
+//         if (*child_bid == UINT16_MAX) {
+//             *child_bid = zmk_behavior_get_local_id("key_press");
+//         }
+//         return true;
+//     }
+//     return false;
+// }
 
 static bool encode_layer_name(pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
     const zmk_keymap_layer_index_t layer_idx = *(uint8_t *)*arg;
@@ -78,32 +77,46 @@ static bool encode_layer(pb_ostream_t *stream, const pb_field_t *field, void *co
     layer_msg.name.arg = &state->layer_idx;
 
     layer_msg.bindings_count = CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS;
-    const struct zmk_behavior_binding *slot0 = zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, 0);
-    const struct zmk_behavior_binding *slot1 = zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, 1);
+    for (int i = 0; i < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; i++) {
+        const struct zmk_behavior_binding *binding =
+            zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, i);
 
-    zmk_behavior_local_id_t child_bid = 0;
-    if (slot0 && slot0->behavior_dev && (!slot1 || !slot1->behavior_dev) &&
-        should_unpack_behavior(slot0->behavior_dev, &child_bid)) {
-        
-        // Unpack combined behavior into two virtual slots for Studio
-        layer_msg.bindings[0].behavior_id = zmk_behavior_get_local_id(slot0->behavior_dev);
-        layer_msg.bindings[0].param1 = slot0->param1;
-        layer_msg.bindings[0].param2 = 0;
-
-        layer_msg.bindings[1].behavior_id = zmk_behavior_get_local_id(slot0->behavior_dev);
-        layer_msg.bindings[1].param1 = slot0->param2;
-        layer_msg.bindings[1].param2 = 0;
-    } else {
-        for (int i = 0; i < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; i++) {
-            const struct zmk_behavior_binding *binding = (i == 0) ? slot0 : slot1;
-
-            if (binding && binding->behavior_dev) {
-                layer_msg.bindings[i].behavior_id = zmk_behavior_get_local_id(binding->behavior_dev);
-                layer_msg.bindings[i].param1 = binding->param1;
-                layer_msg.bindings[i].param2 = binding->param2;
-            }
+        if (binding && binding->behavior_dev) {
+            layer_msg.bindings[i].behavior_id = zmk_behavior_get_local_id(binding->behavior_dev);
+            layer_msg.bindings[i].param1 = binding->param1;
+            layer_msg.bindings[i].param2 = binding->param2;
         }
     }
+
+    // const struct zmk_behavior_binding *slot0 =
+    //     zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, 0);
+    // const struct zmk_behavior_binding *slot1 =
+    //     zmk_keymap_get_layer_sensor_binding_at_idx(layer_id, state->sensor_idx, 1);
+
+    // zmk_behavior_local_id_t child_bid = 0;
+    // if (slot0 && slot0->behavior_dev && (!slot1 || !slot1->behavior_dev) &&
+    //     should_unpack_behavior(slot0->behavior_dev, &child_bid)) {
+
+    //     // Unpack combined behavior into two virtual slots for Studio
+    //     layer_msg.bindings[0].behavior_id = zmk_behavior_get_local_id(slot0->behavior_dev);
+    //     layer_msg.bindings[0].param1 = slot0->param1;
+    //     layer_msg.bindings[0].param2 = 0;
+
+    //     layer_msg.bindings[1].behavior_id = zmk_behavior_get_local_id(slot0->behavior_dev);
+    //     layer_msg.bindings[1].param1 = slot0->param2;
+    //     layer_msg.bindings[1].param2 = 0;
+    // } else {
+    //     for (int i = 0; i < CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS; i++) {
+    //         const struct zmk_behavior_binding *binding = (i == 0) ? slot0 : slot1;
+
+    //         if (binding && binding->behavior_dev) {
+    //             layer_msg.bindings[i].behavior_id =
+    //                 zmk_behavior_get_local_id(binding->behavior_dev);
+    //             layer_msg.bindings[i].param1 = binding->param1;
+    //             layer_msg.bindings[i].param2 = binding->param2;
+    //         }
+    //     }
+    // }
 
     return pb_encode_submessage(stream, &zmk_sensors_Layer_msg, &layer_msg);
 }
@@ -212,8 +225,8 @@ zmk_studio_Response set_sensor_details(const zmk_studio_Request *req) {
             // }
         }
 
-        int ret = zmk_keymap_set_layer_sensor_binding_at_idx(set_req->layer_id, set_req->sensor_id, i,
-                                                             binding);
+        int ret = zmk_keymap_set_layer_sensor_binding_at_idx(set_req->layer_id, set_req->sensor_id,
+                                                             i, binding);
 
         if (ret < 0) {
             LOG_WRN("Setting the binding failed with %d", ret);

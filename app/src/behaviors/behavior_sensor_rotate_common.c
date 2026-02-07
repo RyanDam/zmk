@@ -9,6 +9,7 @@
 #include <zmk/events/position_state_changed.h>
 
 #include "behavior_sensor_rotate_common.h"
+#include "zmk/behavior.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -47,8 +48,8 @@ int zmk_behavior_sensor_rotate_common_accept_data(
     }
 
     // LOG_DBG(
-    //     "val1: %d, val2: %d, remainder: %d/%d triggers: %d inc keycode 0x%02X dec keycode 0x%02X",
-    //     value.val1, value.val2, data->remainder[sensor_index][event.layer].val1,
+    //     "val1: %d, val2: %d, remainder: %d/%d triggers: %d inc keycode 0x%02X dec keycode
+    //     0x%02X", value.val1, value.val2, data->remainder[sensor_index][event.layer].val1,
     //     data->remainder[sensor_index][event.layer].val2, triggers, binding->param1,
     //     binding->param2);
 
@@ -76,13 +77,36 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
     if (triggers > 0) {
         triggered_binding = cfg->cw_binding;
         if (cfg->override_params) {
-            triggered_binding.param1 = binding->param1;
+            const zmk_behavior_local_id_t behavior_local_id = binding->param1 >> 24;
+            if (behavior_local_id == 0) {
+                // no special behavior override
+                triggered_binding.param1 = binding->param1;
+            } else {
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
+                triggered_binding.local_id = behavior_local_id;
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
+                triggered_binding.behavior_dev =
+                    zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
+                triggered_binding.param1 = binding->param1 & 0xffffff;
+            }
         }
     } else if (triggers < 0) {
         triggers = -triggers;
         triggered_binding = cfg->ccw_binding;
         if (cfg->override_params) {
-            triggered_binding.param1 = binding->param2;
+            // triggered_binding.param1 = binding->param2;
+            const zmk_behavior_local_id_t behavior_local_id = binding->param2 >> 24;
+            if (behavior_local_id == 0) {
+                // no special behavior override
+                triggered_binding.param1 = binding->param2;
+            } else {
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
+                triggered_binding.local_id = behavior_local_id;
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
+                triggered_binding.behavior_dev =
+                    zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
+                triggered_binding.param1 = binding->param2 & 0xffffff;
+            }
         }
     } else {
         return ZMK_BEHAVIOR_TRANSPARENT;
