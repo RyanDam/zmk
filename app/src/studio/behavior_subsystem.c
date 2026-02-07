@@ -126,10 +126,10 @@ static bool encode_metadata_sets(pb_ostream_t *stream, const pb_field_t *field, 
     struct encode_metadata_sets_state *state = (struct encode_metadata_sets_state *)*arg;
     bool ret = true;
 
-    LOG_DBG("Encoding the %d metadata sets with %p", state->sets_len, state->sets);
+    // LOG_DBG("Encoding the %d metadata sets with %p", state->sets_len, state->sets);
 
     for (int i = 0; i < state->sets_len; i++) {
-        LOG_DBG("Encoding set %d", i);
+        // LOG_DBG("Encoding set %d", i);
         if (!pb_encode_tag_for_field(stream, field)) {
             return false;
         }
@@ -167,7 +167,7 @@ zmk_studio_Response get_behavior_details(const zmk_studio_Request *req) {
     uint32_t behavior_id = req->subsystem.behaviors.request_type.get_behavior_details.behavior_id;
     const char *behavior_name = zmk_behavior_find_behavior_name_from_local_id(behavior_id);
 
-    LOG_DBG("behavior_id %d, name %s", behavior_id, behavior_name);
+    // LOG_DBG("behavior_id %d, name %s", behavior_id, behavior_name);
 
     if (!behavior_name) {
         LOG_WRN("No behavior found for ID %d", behavior_id);
@@ -188,11 +188,11 @@ zmk_studio_Response get_behavior_details(const zmk_studio_Request *req) {
 
     struct behavior_parameter_metadata desc = {0};
     int ret = behavior_get_parameter_metadata(device, &desc);
-    if (ret < 0) {
-        LOG_DBG("Failed to fetch the metadata for %s! %d", zbm->metadata.display_name, ret);
-    } else {
-        LOG_DBG("Got metadata with %d sets", desc.sets_len);
-    }
+    // if (ret < 0) {
+    //     LOG_DBG("Failed to fetch the metadata for %s! %d", zbm->metadata.display_name, ret);
+    // } else {
+    //     LOG_DBG("Got metadata with %d sets", desc.sets_len);
+    // }
 
     zmk_behaviors_GetBehaviorDetailsResponse resp =
         zmk_behaviors_GetBehaviorDetailsResponse_init_zero;
