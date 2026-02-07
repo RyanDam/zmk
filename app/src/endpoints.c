@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "zmk/endpoints_types.h"
 #include <zephyr/init.h>
 #include <zephyr/settings/settings.h>
 
@@ -284,8 +285,18 @@ static bool is_ble_ready(void) {
 static enum zmk_transport get_selected_transport(void) {
     if (is_ble_ready()) {
         if (is_usb_ready()) {
-            LOG_DBG("Both endpoint transports are ready. Using %d", preferred_transport);
-            return preferred_transport;
+            if (preferred_transport == ZMK_TRANSPORT_BLE) {
+                LOG_DBG("Both endpoint transports are ready. Current preferred using "
+                        "ZMK_TRANSPORT_BLE");
+            } else if (preferred_transport == ZMK_TRANSPORT_USB) {
+                LOG_DBG("Both endpoint transports are ready. Current preferred using "
+                        "ZMK_TRANSPORT_USB");
+            } else {
+                LOG_DBG("Both endpoint transports are ready. Current preferred using %d",
+                        preferred_transport);
+            }
+            LOG_WRN("Both endpoint transports are ready. FORCED using ZMK_TRANSPORT_USB");
+            return ZMK_TRANSPORT_USB;
         }
 
         LOG_DBG("Only BLE is ready.");
