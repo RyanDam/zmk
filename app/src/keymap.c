@@ -950,11 +950,11 @@ int zmk_keymap_sensor_event(uint8_t sensor_index, const struct zmk_sensor_channe
 
     zmk_keymap_layer_index_t layer_id = zmk_keymap_highest_layer_active();
     int layer_idx = layer_id;
-    LOG_DBG("current_layer_id: %d", layer_id);
+    // LOG_DBG("current_layer_id: %d", layer_id);
 
     struct zmk_behavior_binding *binding = &zmk_sensor_keymap[layer_id][sensor_index][0];
-    LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx,
-            layer_id, sensor_index, binding->behavior_dev);
+    // LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx,
+    //         layer_id, sensor_index, binding->behavior_dev);
 
     const struct device *behavior = zmk_behavior_get_binding(binding->behavior_dev);
     if (!behavior) {
@@ -1027,14 +1027,15 @@ int zmk_keymap_sensor_event(uint8_t sensor_index, const struct zmk_sensor_channe
         ret = behavior_sensor_keymap_binding_process(binding, event, mode);
 
         if (ret == ZMK_BEHAVIOR_OPAQUE) {
-            LOG_DBG("sensor event processing complete, behavior response was opaque");
+            // LOG_DBG("sensor event processing complete, behavior response was opaque");
             opaque_response = true;
         } else if (ret < 0) {
             LOG_DBG("Behavior returned error: %d", ret);
             return ret;
-        } else {
-            LOG_DBG("sensor event processing complete, behavior response was transparent");
         }
+        // else {
+        //     LOG_DBG("sensor event processing complete, behavior response was transparent");
+        // }
     } else {
         LOG_DBG("Behavior returned error: %d", ret);
     }
@@ -1075,7 +1076,7 @@ ZMK_SUBSCRIPTION(keymap, zmk_sensor_event);
 static int keymap_handle_set(const char *name, size_t len, settings_read_cb read_cb, void *cb_arg) {
     const char *next;
 
-    LOG_DBG("Setting Keymap setting %s", name);
+    // LOG_DBG("Setting Keymap setting %s", name);
 
     if (settings_name_steq(name, "l_n", &next) && next) {
         char *endptr;
@@ -1139,10 +1140,10 @@ static int keymap_handle_set(const char *name, size_t len, settings_read_cb read
         const char *name =
             zmk_behavior_find_behavior_name_from_local_id(binding_setting.behavior_local_id);
 
-        if (!name) {
-            LOG_WRN("Loaded device %d from settings but no device found by that local ID",
-                    binding_setting.behavior_local_id);
-        }
+        // if (!name) {
+        //     LOG_WRN("Loaded device %d from settings but no device found by that local ID",
+        //             binding_setting.behavior_local_id);
+        // }
 
         zmk_keymap[layer][key_position] = (struct zmk_behavior_binding){
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
@@ -1206,10 +1207,10 @@ static int keymap_handle_set(const char *name, size_t len, settings_read_cb read
         const char *name =
             zmk_behavior_find_behavior_name_from_local_id(binding_setting.behavior_local_id);
 
-        if (!name) {
-            LOG_WRN("Loaded device %d from settings but no device found by that local ID",
-                    binding_setting.behavior_local_id);
-        }
+        // if (!name) {
+        //     LOG_WRN("Loaded device %d from settings but no device found by that local ID",
+        //             binding_setting.behavior_local_id);
+        // }
 
         zmk_sensor_keymap[layer][sensor_idx][binding_idx] = (struct zmk_behavior_binding){
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)

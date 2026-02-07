@@ -46,11 +46,11 @@ int zmk_behavior_sensor_rotate_common_accept_data(
         data->remainder[sensor_index][event.layer] = remainder;
     }
 
-    LOG_DBG(
-        "val1: %d, val2: %d, remainder: %d/%d triggers: %d inc keycode 0x%02X dec keycode 0x%02X",
-        value.val1, value.val2, data->remainder[sensor_index][event.layer].val1,
-        data->remainder[sensor_index][event.layer].val2, triggers, binding->param1,
-        binding->param2);
+    // LOG_DBG(
+    //     "val1: %d, val2: %d, remainder: %d/%d triggers: %d inc keycode 0x%02X dec keycode 0x%02X",
+    //     value.val1, value.val2, data->remainder[sensor_index][event.layer].val1,
+    //     data->remainder[sensor_index][event.layer].val2, triggers, binding->param1,
+    //     binding->param2);
 
     data->triggers[sensor_index][event.layer] = triggers;
     return 0;
@@ -88,7 +88,7 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
         return ZMK_BEHAVIOR_TRANSPARENT;
     }
 
-    LOG_DBG("Sensor binding: %s", binding->behavior_dev);
+    // LOG_DBG("Sensor binding: %s", binding->behavior_dev);
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT)
     // set this value so that it always triggers on central, can be handled more properly later

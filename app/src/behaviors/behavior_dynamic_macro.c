@@ -97,7 +97,7 @@ static void queue_macro(struct zmk_behavior_binding_event *event,
 
         switch (step->mode) {
         case MACRO_MODE_TAP:
-            zmk_behavior_queue_add(event, step->binding, true, 0); // dynamic macro doesn't have tap time
+            zmk_behavior_queue_add(event, step->binding, true, 30); // dynamic macro doesn't have tap time, default to 30ms
             zmk_behavior_queue_add(event, step->binding, false, step->wait_ms);
             break;
         case MACRO_MODE_PRESS:
@@ -170,7 +170,7 @@ BEHAVIOR_DT_INST_DEFINE(0, behavior_dynamic_macro_init, NULL, NULL, NULL,
 static int dynamic_macros_handle_set(const char *name, size_t len, settings_read_cb read_cb,
                                      void *cb_arg) {
     const char *next;
-    LOG_DBG("Loading setting: %s", name);
+    // LOG_DBG("Loading setting: %s", name);
     if (settings_name_steq(name, "dm", &next) && next) {
         char *endptr;
         unsigned long macro_idx = strtoul(next, &endptr, 10);
@@ -183,22 +183,22 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
             return -EINVAL;
         }
 
-        LOG_DBG("Loading step %ld for macro %ld", step_idx, macro_idx);
+        // LOG_DBG("Loading step %ld for macro %ld", step_idx, macro_idx);
 
         struct zmk_dynamic_macro_step_setting step_setting;
         if (read_cb(cb_arg, &step_setting, sizeof(step_setting)) != sizeof(step_setting)) {
              return -EINVAL;
         }
 
-        LOG_DBG("Loaded step %ld for macro %ld: behavior: %d, param1: %d, param2: %d, wait_ms: %d, mode: %d",
-                 step_idx,
-                 macro_idx,
-                 step_setting.behavior_local_id,
-                 step_setting.param1,
-                 step_setting.param2, 
-                 step_setting.wait_ms, 
-                 step_setting.mode
-        );
+        // LOG_DBG("Loaded step %ld for macro %ld: behavior: %d, param1: %d, param2: %d, wait_ms: %d, mode: %d",
+        //          step_idx,
+        //          macro_idx,
+        //          step_setting.behavior_local_id,
+        //          step_setting.param1,
+        //          step_setting.param2, 
+        //          step_setting.wait_ms, 
+        //          step_setting.mode
+        // );
 
         const char *behavior_dev = zmk_behavior_find_behavior_name_from_local_id(step_setting.behavior_local_id);
         dynamic_macros[macro_idx][step_idx] = (struct zmk_dynamic_macro_step){
@@ -214,11 +214,11 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
         // Mark this macro as dirty since it was loaded from settings
         dirty_macro_indices[macro_idx] = 1;
 
-        if (behavior_dev) {
-            LOG_DBG("Done loading step %ld for macro %ld", step_idx, macro_idx);
-        } else {
-            LOG_WRN("Invalid behavior local ID: %d", step_setting.behavior_local_id);
-        }
+        // if (behavior_dev) {
+        //     LOG_DBG("Done loading step %ld for macro %ld", step_idx, macro_idx);
+        // } else {
+        //     LOG_WRN("Invalid behavior local ID: %d", step_setting.behavior_local_id);
+        // }
         return 0;
     } else if (settings_name_steq(name, "lm", &next) && next) {
         char *endptr;
