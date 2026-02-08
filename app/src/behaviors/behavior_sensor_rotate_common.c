@@ -76,37 +76,49 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
     struct zmk_behavior_binding triggered_binding;
     if (triggers > 0) {
         triggered_binding = cfg->cw_binding;
-        if (cfg->override_params) {
-            const zmk_behavior_local_id_t behavior_local_id = binding->param1 >> 24;
+        // Get cw binding from keymap
+        const struct zmk_behavior_binding *cw_binding =
+            zmk_keymap_get_layer_sensor_binding_at_idx(event.layer, sensor_index, 0);
+        if (cw_binding) {
+            const zmk_behavior_local_id_t behavior_local_id = cw_binding->param2;
             if (behavior_local_id == 0) {
-                // no special behavior override
-                triggered_binding.param1 = binding->param1;
+                triggered_binding.param1 = cw_binding->param1;
+                triggered_binding.param1 = cw_binding->param1;
             } else {
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
                 triggered_binding.local_id = behavior_local_id;
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
                 triggered_binding.behavior_dev =
                     zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
-                triggered_binding.param1 = binding->param1 & 0xffffff;
+                triggered_binding.param1 = cw_binding->param1;
             }
+            triggered_binding.param2 = 0;
+        } else if (cfg->override_params) {
+            // fallback to original ZMK logic
+            triggered_binding.param1 = binding->param1;
         }
     } else if (triggers < 0) {
         triggers = -triggers;
         triggered_binding = cfg->ccw_binding;
-        if (cfg->override_params) {
-            // triggered_binding.param1 = binding->param2;
-            const zmk_behavior_local_id_t behavior_local_id = binding->param2 >> 24;
+        // Get ccw binding from keymap
+        const struct zmk_behavior_binding *ccw_binding =
+            zmk_keymap_get_layer_sensor_binding_at_idx(event.layer, sensor_index, 1);
+        if (ccw_binding) {
+            const zmk_behavior_local_id_t behavior_local_id = ccw_binding->param2;
             if (behavior_local_id == 0) {
-                // no special behavior override
-                triggered_binding.param1 = binding->param2;
+                triggered_binding.param1 = ccw_binding->param1;
             } else {
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
                 triggered_binding.local_id = behavior_local_id;
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
                 triggered_binding.behavior_dev =
                     zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
-                triggered_binding.param1 = binding->param2 & 0xffffff;
+                triggered_binding.param1 = ccw_binding->param1;
             }
+            triggered_binding.param2 = 0;
+        } else if (cfg->override_params) {
+            // fallback to original ZMK logic
+            triggered_binding.param1 = binding->param2;
         }
     } else {
         return ZMK_BEHAVIOR_TRANSPARENT;
@@ -120,7 +132,7 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
 #endif
 
     for (int i = 0; i < triggers; i++) {
-        LOG_DBG("Sensor tap time ms: %d", cfg->tap_ms);
+        // LOG_DBG("Sensor tap time ms: %d", cfg->tap_ms);
         zmk_behavior_queue_add(&event, triggered_binding, true, cfg->tap_ms);
         zmk_behavior_queue_add(&event, triggered_binding, false, 0);
     }
