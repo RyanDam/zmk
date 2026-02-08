@@ -28,7 +28,7 @@
 #endif
 
 #ifndef ZMK_POINTING_DEFAULT_SCRL_VAL
-#define ZMK_POINTING_DEFAULT_SCRL_VAL 10
+#define ZMK_POINTING_DEFAULT_SCRL_VAL 30
 #endif
 
 /* Mouse move behavior */
