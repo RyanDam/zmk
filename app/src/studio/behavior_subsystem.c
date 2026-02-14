@@ -187,7 +187,8 @@ zmk_studio_Response get_behavior_details(const zmk_studio_Request *req) {
     __ASSERT(zbm != NULL, "Can't find a device without also having metadata");
 
     struct behavior_parameter_metadata desc = {0};
-    int ret = behavior_get_parameter_metadata(device, &desc);
+    behavior_get_parameter_metadata(device, &desc);
+    // int ret = behavior_get_parameter_metadata(device, &desc);
     // if (ret < 0) {
     //     LOG_DBG("Failed to fetch the metadata for %s! %d", zbm->metadata.display_name, ret);
     // } else {
