@@ -18,6 +18,8 @@
 
 #define FULL_ROTATION 360
 
+// static int counter = 0;
+
 LOG_MODULE_REGISTER(KAILH_ENC, CONFIG_SENSOR_LOG_LEVEL);
 
 static int kailh_enc_get_ab_state(const struct device *dev) {
@@ -36,24 +38,26 @@ static int kailh_enc_sample_fetch(const struct device *dev, enum sensor_channel 
 
     val = kailh_enc_get_ab_state(dev);
 
-    LOG_DBG("prev: %d, new: %d", drv_data->ab_state, val);
+    // LOG_DBG("count %d, prev: %d, new: %d", counter++, drv_data->ab_state, val);
 
     switch (val | (drv_data->ab_state << 2)) {
     case 0b0010: // 0 -> 2, 2
     case 0b0100: // 1 -> 0, 4
     case 0b1101: // 3 -> 1, 13
     case 0b1011: // 2 -> 3, 11
-    case 0b1100: // 3 -> 0, 12
-    case 0b1111: // 3 -> 3, 15
-    case 0b0101: // 1 -> 1, 5
+    // case 0b1100: // 3 -> 0, 12
+    // case 0b1111: // 3 -> 3, 15
+    // case 0b0101: // 1 -> 1, 5
         delta = -1;
         break;
     case 0b0001: // 0 -> 1, 1
     case 0b0111: // 1 -> 3, 7
     case 0b1110: // 3 -> 2, 14
     case 0b1000: // 2 -> 0, 8
-    case 0b1010: // 2 -> 2, 10 
-    case 0b1001: // 2 -> 1, 9
+    // case 0b1010: // 2 -> 2, 10 
+    // case 0b1001: // 2 -> 1, 9
+    // case 0b0000: // 0 -> 0, 0
+    // case 0b0011: // 0 -> 3, 3
         delta = 1;
         break;
     default:
