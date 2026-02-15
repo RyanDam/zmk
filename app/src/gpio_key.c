@@ -13,6 +13,8 @@
 
 #include <zephyr/logging/log.h>
 
+#include <zmk/ble.h>
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define DT_DRV_COMPAT zmk_gpio_key
@@ -56,6 +58,11 @@ static void gpio_key_monitor_thread(void *d0, void *d1, void *d2) {
     const struct gpio_key_config *config = dev->config;
     int previous_state = -1; // Initialize to invalid state
     uint32_t last_debounce_time = 0;
+    bool is_pressing = false; // Track if key is currently pressed
+    bool is_hold_processed = false; // Track if hold action has been processed
+    uint32_t press_start_time = 0; // Time when press started
+    uint32_t tap_threshold_ms = 500; // 500ms tap threshold
+    uint32_t hold_threshold_ms = 7000; // 7000ms tap threshold
 
     LOG_INF("Starting GPIO key monitoring thread on pin %d", config->gpio.pin);
 
@@ -88,10 +95,44 @@ static void gpio_key_monitor_thread(void *d0, void *d1, void *d2) {
                 previous_state = current_state;
                 LOG_DBG("GPIO key state initialized to %d", current_state);
             } else {
-                // State changed, log the event
+                // State changed, process the event
                 const char *state_str = current_state ? "HIGH" : "LOW";
                 LOG_INF("GPIO key state changed to %s on pin %d", state_str, config->gpio.pin);
+                
+                if (current_state == 0) {
+                    // GPIO went LOW (pressed)
+                    is_pressing = true;
+                    is_hold_processed = false; // Reset hold processed flag
+                    press_start_time = k_uptime_get();
+                } else if (current_state == 1 && is_pressing) {
+                    // GPIO went HIGH (released after being pressed)
+                    uint32_t press_duration = k_uptime_get() - press_start_time;
+                    
+                    if (press_duration < tap_threshold_ms && !is_hold_processed) {
+                        // Tap detected (pressed and released quickly, not a hold)
+                        LOG_INF("GPIO key tap detected on pin %d", config->gpio.pin);
+                        zmk_ble_prof_next();
+                    }
+                    
+                    is_pressing = false;
+                }
+                
                 previous_state = current_state;
+            }
+        }
+
+        // Check for hold condition (GPIO still LOW for more than threshold)
+        if (is_pressing && current_state == 0) {
+            uint32_t current_time = k_uptime_get();
+            uint32_t press_duration = current_time - press_start_time;
+            
+            if (press_duration >= hold_threshold_ms && !is_hold_processed) {
+                // Hold detected
+                LOG_INF("GPIO key hold reached threshold (%d ms) on pin %d", 
+                        hold_threshold_ms, config->gpio.pin);
+                zmk_ble_clear_bonds();
+                is_pressing = false;
+                is_hold_processed = true; // Mark hold as processed
             }
         }
 
