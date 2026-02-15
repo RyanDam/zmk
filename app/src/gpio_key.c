@@ -14,6 +14,7 @@
 #include <zephyr/logging/log.h>
 
 #include <zmk/ble.h>
+#include <indicator/indicator.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -131,6 +132,7 @@ static void gpio_key_monitor_thread(void *d0, void *d1, void *d2) {
                 LOG_INF("GPIO key hold reached threshold (%d ms) on pin %d", 
                         hold_threshold_ms, config->gpio.pin);
                 zmk_ble_clear_bonds();
+                indicate_connectivity();
                 is_pressing = false;
                 is_hold_processed = true; // Mark hold as processed
             }

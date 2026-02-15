@@ -104,7 +104,7 @@ void indicate_connectivity(void) {
 
     if (zmk_ble_active_profile_is_connected()) {
         LOG_CONN_CENTRAL(profile_index, "connected");
-        blink.duration_ms = 1000;
+        blink.duration_ms = 2000;
         blink.blink_time = 0;
     } else if (zmk_ble_active_profile_is_open()) {
         LOG_CONN_CENTRAL(profile_index, "open");
