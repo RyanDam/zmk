@@ -83,7 +83,7 @@ static void gpio_key_monitor_thread(void *d0, void *d1, void *d2) {
             uint32_t current_time = k_uptime_get();
             if ((current_time - last_debounce_time) < (config->debounce_ms)) {
                 // Still in debounce period, skip logging
-                k_sleep(K_MSEC(50));
+                k_sleep(K_MSEC(30));
                 continue;
             }
             last_debounce_time = current_time;
@@ -139,7 +139,7 @@ static void gpio_key_monitor_thread(void *d0, void *d1, void *d2) {
         }
 
         // Sleep for a short interval to avoid busy-waiting
-        k_sleep(K_MSEC(50));
+        k_sleep(K_MSEC(30));
     }
 }
 
