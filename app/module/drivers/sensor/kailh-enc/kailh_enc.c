@@ -18,8 +18,6 @@
 
 #define FULL_ROTATION 360
 
-// static int counter = 0;
-
 LOG_MODULE_REGISTER(KAILH_ENC, CONFIG_SENSOR_LOG_LEVEL);
 
 static int kailh_enc_get_ab_state(const struct device *dev) {
@@ -38,26 +36,24 @@ static int kailh_enc_sample_fetch(const struct device *dev, enum sensor_channel 
 
     val = kailh_enc_get_ab_state(dev);
 
-    // LOG_DBG("count %d, prev: %d, new: %d", counter++, drv_data->ab_state, val);
-
     switch (val | (drv_data->ab_state << 2)) {
     case 0b0010: // 0 -> 2, 2
     case 0b0100: // 1 -> 0, 4
     case 0b1101: // 3 -> 1, 13
     case 0b1011: // 2 -> 3, 11
-    // case 0b1100: // 3 -> 0, 12
-    // case 0b1111: // 3 -> 3, 15
-    // case 0b0101: // 1 -> 1, 5
+                 // case 0b1100: // 3 -> 0, 12
+                 // case 0b1111: // 3 -> 3, 15
+                 // case 0b0101: // 1 -> 1, 5
         delta = -1;
         break;
     case 0b0001: // 0 -> 1, 1
     case 0b0111: // 1 -> 3, 7
     case 0b1110: // 3 -> 2, 14
     case 0b1000: // 2 -> 0, 8
-    // case 0b1010: // 2 -> 2, 10 
-    // case 0b1001: // 2 -> 1, 9
-    // case 0b0000: // 0 -> 0, 0
-    // case 0b0011: // 0 -> 3, 3
+                 // case 0b1010: // 2 -> 2, 10
+                 // case 0b1001: // 2 -> 1, 9
+                 // case 0b0000: // 0 -> 0, 0
+                 // case 0b0011: // 0 -> 3, 3
         delta = 1;
         break;
     default:
@@ -65,7 +61,7 @@ static int kailh_enc_sample_fetch(const struct device *dev, enum sensor_channel 
         break;
     }
 
-    LOG_DBG("Delta: %d", delta);
+    LOG_DBG("prev: %d, new: %d, delta: %d", drv_data->ab_state, val, delta);
 
     drv_data->pulses += delta;
     drv_data->ab_state = val;
@@ -83,7 +79,7 @@ static int kailh_enc_sample_fetch(const struct device *dev, enum sensor_channel 
 }
 
 static int kailh_enc_channel_get(const struct device *dev, enum sensor_channel chan,
-                            struct sensor_value *val) {
+                                 struct sensor_value *val) {
     struct kailh_enc_data *drv_data = dev->data;
     const struct kailh_enc_config *drv_cfg = dev->config;
     int32_t pulses = drv_data->pulses;
@@ -121,8 +117,9 @@ int kailh_enc_init(const struct device *dev) {
     struct kailh_enc_data *drv_data = dev->data;
     const struct kailh_enc_config *drv_cfg = dev->config;
 
-    LOG_DBG("A: %s %d B: %s %d resolution %d", drv_cfg->a.port->name, drv_cfg->a.pin,
-            drv_cfg->b.port->name, drv_cfg->b.pin, drv_cfg->resolution);
+    LOG_DBG("A: %s %d flags %d, B: %s %d flags %d, resolution %d", drv_cfg->a.port->name,
+            drv_cfg->a.pin, drv_cfg->a.dt_flags, drv_cfg->b.port->name, drv_cfg->b.pin,
+            drv_cfg->a.dt_flags, drv_cfg->resolution);
 
     if (!device_is_ready(drv_cfg->a.port)) {
         LOG_ERR("A GPIO device is not ready");
@@ -156,15 +153,15 @@ int kailh_enc_init(const struct device *dev) {
     return 0;
 }
 
-#define KAILH_ENC_INST(n)                                                                           \
-    static struct kailh_enc_data kailh_enc_data_##n;                                                 \
-    static const struct kailh_enc_config kailh_enc_cfg_##n = {                                       \
+#define KAILH_ENC_INST(n)                                                                          \
+    static struct kailh_enc_data kailh_enc_data_##n;                                               \
+    static const struct kailh_enc_config kailh_enc_cfg_##n = {                                     \
         .a = GPIO_DT_SPEC_INST_GET(n, a_gpios),                                                    \
         .b = GPIO_DT_SPEC_INST_GET(n, b_gpios),                                                    \
         .resolution = DT_INST_PROP_OR(n, resolution, 1),                                           \
         .steps = DT_INST_PROP_OR(n, steps, 0),                                                     \
     };                                                                                             \
-    DEVICE_DT_INST_DEFINE(n, kailh_enc_init, NULL, &kailh_enc_data_##n, &kailh_enc_cfg_##n, POST_KERNEL, \
-                          CONFIG_SENSOR_INIT_PRIORITY, &kailh_enc_driver_api);
+    DEVICE_DT_INST_DEFINE(n, kailh_enc_init, NULL, &kailh_enc_data_##n, &kailh_enc_cfg_##n,        \
+                          POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &kailh_enc_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KAILH_ENC_INST)

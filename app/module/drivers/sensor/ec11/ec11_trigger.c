@@ -22,7 +22,7 @@ LOG_MODULE_DECLARE(EC11, CONFIG_SENSOR_LOG_LEVEL);
 static inline void setup_int(const struct device *dev, bool enable) {
     const struct ec11_config *cfg = dev->config;
 
-    LOG_DBG("enabled %s", (enable ? "true" : "false"));
+    LOG_DBG("Interrupt enabled %s", (enable ? "true" : "false"));
 
     if (gpio_pin_interrupt_configure_dt(&cfg->a, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
         LOG_WRN("Unable to set A pin GPIO interrupt");
@@ -37,7 +37,7 @@ static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback 
                                  uint32_t pins) {
     struct ec11_data *drv_data = CONTAINER_OF(cb, struct ec11_data, a_gpio_cb);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     setup_int(drv_data->dev, false);
 
@@ -52,7 +52,7 @@ static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback 
                                  uint32_t pins) {
     struct ec11_data *drv_data = CONTAINER_OF(cb, struct ec11_data, b_gpio_cb);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     setup_int(drv_data->dev, false);
 
@@ -89,7 +89,7 @@ static void ec11_thread(int dev_ptr, int unused) {
 static void ec11_work_cb(struct k_work *work) {
     struct ec11_data *drv_data = CONTAINER_OF(work, struct ec11_data, work);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     ec11_thread_cb(drv_data->dev);
 }

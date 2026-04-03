@@ -36,8 +36,6 @@ static int ec11_sample_fetch(const struct device *dev, enum sensor_channel chan)
 
     val = ec11_get_ab_state(dev);
 
-    LOG_DBG("prev: %d, new: %d", drv_data->ab_state, val);
-
     switch (val | (drv_data->ab_state << 2)) {
     case 0b0010:
     case 0b0100:
@@ -56,7 +54,7 @@ static int ec11_sample_fetch(const struct device *dev, enum sensor_channel chan)
         break;
     }
 
-    LOG_DBG("Delta: %d", delta);
+    LOG_DBG("prev: %d, new: %d, delta: %d", drv_data->ab_state, val, delta);
 
     drv_data->pulses += delta;
     drv_data->ab_state = val;
@@ -112,8 +110,9 @@ int ec11_init(const struct device *dev) {
     struct ec11_data *drv_data = dev->data;
     const struct ec11_config *drv_cfg = dev->config;
 
-    LOG_DBG("A: %s %d B: %s %d resolution %d", drv_cfg->a.port->name, drv_cfg->a.pin,
-            drv_cfg->b.port->name, drv_cfg->b.pin, drv_cfg->resolution);
+    LOG_DBG("A: %s %d flags %d, B: %s %d flags %d, resolution %d", drv_cfg->a.port->name,
+            drv_cfg->a.pin, drv_cfg->a.dt_flags, drv_cfg->b.port->name, drv_cfg->b.pin,
+            drv_cfg->a.dt_flags, drv_cfg->resolution);
 
     if (!device_is_ready(drv_cfg->a.port)) {
         LOG_ERR("A GPIO device is not ready");

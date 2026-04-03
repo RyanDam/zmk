@@ -22,7 +22,7 @@ LOG_MODULE_DECLARE(KAILH_ENC, CONFIG_SENSOR_LOG_LEVEL);
 static inline void setup_int(const struct device *dev, bool enable) {
     const struct kailh_enc_config *cfg = dev->config;
 
-    LOG_DBG("enabled %s", (enable ? "true" : "false"));
+    LOG_DBG("Interrupt enabled %s", (enable ? "true" : "false"));
 
     if (gpio_pin_interrupt_configure_dt(&cfg->a, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
         LOG_WRN("Unable to set A pin GPIO interrupt");
@@ -34,10 +34,10 @@ static inline void setup_int(const struct device *dev, bool enable) {
 }
 
 static void kailh_enc_a_gpio_callback(const struct device *dev, struct gpio_callback *cb,
-                                 uint32_t pins) {
+                                      uint32_t pins) {
     struct kailh_enc_data *drv_data = CONTAINER_OF(cb, struct kailh_enc_data, a_gpio_cb);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     setup_int(drv_data->dev, false);
 
@@ -49,10 +49,10 @@ static void kailh_enc_a_gpio_callback(const struct device *dev, struct gpio_call
 }
 
 static void kailh_enc_b_gpio_callback(const struct device *dev, struct gpio_callback *cb,
-                                 uint32_t pins) {
+                                      uint32_t pins) {
     struct kailh_enc_data *drv_data = CONTAINER_OF(cb, struct kailh_enc_data, b_gpio_cb);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     setup_int(drv_data->dev, false);
 
@@ -89,14 +89,14 @@ static void kailh_enc_thread(int dev_ptr, int unused) {
 static void kailh_enc_work_cb(struct k_work *work) {
     struct kailh_enc_data *drv_data = CONTAINER_OF(work, struct kailh_enc_data, work);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     kailh_enc_thread_cb(drv_data->dev);
 }
 #endif
 
 int kailh_enc_trigger_set(const struct device *dev, const struct sensor_trigger *trig,
-                     sensor_trigger_handler_t handler) {
+                          sensor_trigger_handler_t handler) {
     struct kailh_enc_data *drv_data = dev->data;
 
     setup_int(dev, false);

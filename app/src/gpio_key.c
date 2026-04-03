@@ -21,10 +21,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define DT_DRV_COMPAT zmk_gpio_key
 
-#define GPIO_KEY_SCAN_MS 30
+#define GPIO_KEY_SCAN_MS 10
 #define GPIO_KEY_TAP_THRESHOLD_MS 500
 #define GPIO_KEY_HOLD_THRESHOLD_MS 7000
-
 
 struct gpio_key_config {
     struct gpio_dt_spec gpio;
