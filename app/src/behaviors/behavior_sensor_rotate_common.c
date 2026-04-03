@@ -48,7 +48,7 @@ int zmk_behavior_sensor_rotate_common_accept_data(
     }
 
     LOG_DBG(
-        "val1: %d, val2: %d, remainder: %d/%d triggers: %d inc keycode 0x%02X dec keycode 0x%02X", 
+        "val1: %d, val2: %d, remainder: %d/%d triggers: %d inc keycode 0x%02X dec keycode 0x%02X",
         value.val1, value.val2, data->remainder[sensor_index][event.layer].val1,
         data->remainder[sensor_index][event.layer].val2, triggers, binding->param1,
         binding->param2);
@@ -82,7 +82,7 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
         if (cw_binding) {
             const zmk_behavior_local_id_t behavior_local_id = cw_binding->param2;
             if (behavior_local_id == 0) {
-                triggered_binding.param1 = cw_binding->param1;
+                triggered_binding.behavior_dev = cw_binding->behavior_dev;
                 triggered_binding.param1 = cw_binding->param1;
             } else {
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
@@ -106,6 +106,7 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
         if (ccw_binding) {
             const zmk_behavior_local_id_t behavior_local_id = ccw_binding->param2;
             if (behavior_local_id == 0) {
+                triggered_binding.behavior_dev = ccw_binding->behavior_dev;
                 triggered_binding.param1 = ccw_binding->param1;
             } else {
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
