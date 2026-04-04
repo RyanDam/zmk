@@ -316,7 +316,7 @@ static uint8_t zmk_keymap_layer_sensor_pending_changes[ZMK_KEYMAP_LAYERS_LEN]
                                                       [SENSOR_PENDING_ARRAY_SIZE];
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
-int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint8_t binding_idx,
+int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint16_t binding_idx,
                                         struct zmk_behavior_binding binding) {
     if (binding_idx >= ZMK_KEYMAP_LEN) {
         return -EINVAL;

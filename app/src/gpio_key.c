@@ -75,7 +75,9 @@ static void gpio_key_work_handler(struct k_work *work) {
 
             if (press_duration < GPIO_KEY_TAP_THRESHOLD_MS && !data->is_hold_processed) {
                 LOG_DBG("GPIO key tap detected on pin %d", config->gpio.pin);
+#ifdef CONFIG_ZMK_BLE
                 zmk_ble_prof_next();
+#endif
             }
 
             data->is_pressing = false;
@@ -88,8 +90,10 @@ static void gpio_key_work_handler(struct k_work *work) {
         if (press_duration >= GPIO_KEY_HOLD_THRESHOLD_MS) {
             LOG_DBG("GPIO key hold reached threshold (%d ms) on pin %d", GPIO_KEY_HOLD_THRESHOLD_MS,
                     config->gpio.pin);
+#ifdef CONFIG_ZMK_BLE
             zmk_ble_clear_bonds();
             indicate_connectivity();
+#endif
             data->is_hold_processed = true;
             data->is_pressing = false;
         }
