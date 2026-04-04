@@ -261,7 +261,7 @@ const char *zmk_keymap_layer_name(zmk_keymap_layer_id_t layer_id) {
 }
 
 const struct zmk_behavior_binding *
-zmk_keymap_get_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint8_t binding_idx) {
+zmk_keymap_get_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint16_t binding_idx) {
     if (binding_idx >= ZMK_KEYMAP_LEN) {
         return NULL;
     }
@@ -385,7 +385,7 @@ int zmk_keymap_set_layer_sensor_binding_at_idx(zmk_keymap_layer_id_t layer_id, u
 
 #else
 
-int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint8_t binding_idx,
+int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint16_t binding_idx,
                                         struct zmk_behavior_binding binding) {
     return -ENOTSUP;
 }
