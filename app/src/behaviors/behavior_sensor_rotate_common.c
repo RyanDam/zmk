@@ -73,65 +73,76 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
 
     int triggers = data->triggers[sensor_index][event.layer];
 
+    // LOG_DBG("dt_binding dev: %s, param1: %d, param2: %d", binding->behavior_dev, binding->param1,
+    //         binding->param2);
+
     struct zmk_behavior_binding triggered_binding;
-    if (triggers > 0) {
-        triggered_binding = cfg->cw_binding;
-        // Get cw binding from keymap
+    if (triggers != 0) {
+        // Clarify on how the binding work
+        // - For freshly loaded firmware, the keymap_binding will have param 1 and param 2 is for cw
+        // and ccw example: dt_binding dev: sensor_rotate_kp, param1: 458827, param2: 458830. extra
+        // note is for ccw binding, the keymap binding will be empty: ccw_binding dev: , param1: 0,
+        // param2: 0
+        // - For studio loaded binding, the keymap_binding will have param 1 is for binding and
+        // param 2 is for behavior local id.
+
         const struct zmk_behavior_binding *cw_binding =
             zmk_keymap_get_layer_sensor_binding_at_idx(event.layer, sensor_index, 0);
-        if (cw_binding) {
-            const zmk_behavior_local_id_t behavior_local_id = cw_binding->param2;
-            if (behavior_local_id == 0) {
-                triggered_binding.behavior_dev = cw_binding->behavior_dev;
-                triggered_binding.param1 = cw_binding->param1;
-            } else {
-#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
-                triggered_binding.local_id = behavior_local_id;
-#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
-                triggered_binding.behavior_dev =
-                    zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
-                triggered_binding.param1 = cw_binding->param1;
-            }
-            triggered_binding.param2 = 0;
-        } else if (cfg->override_params) {
-            // fallback to original ZMK logic
-            triggered_binding.param1 = binding->param1;
-        }
-    } else if (triggers < 0) {
-        triggers = -triggers;
-        triggered_binding = cfg->ccw_binding;
-        // Get ccw binding from keymap
         const struct zmk_behavior_binding *ccw_binding =
             zmk_keymap_get_layer_sensor_binding_at_idx(event.layer, sensor_index, 1);
-        if (ccw_binding) {
-            const zmk_behavior_local_id_t behavior_local_id = ccw_binding->param2;
-            if (behavior_local_id == 0) {
-                triggered_binding.behavior_dev = ccw_binding->behavior_dev;
-                triggered_binding.param1 = ccw_binding->param1;
-            } else {
-#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
-                triggered_binding.local_id = behavior_local_id;
-#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
-                triggered_binding.behavior_dev =
-                    zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
-                triggered_binding.param1 = ccw_binding->param1;
-            }
+
+        // LOG_DBG("cw_binding dev: %s, param1: %d, param2: %d", cw_binding->behavior_dev,
+        //         cw_binding->param1, cw_binding->param2);
+        // LOG_DBG("ccw_binding dev: %s, param1: %d, param2: %d", ccw_binding->behavior_dev,
+        //         ccw_binding->param1, ccw_binding->param2);
+
+        if (ccw_binding->param1 == 0) {
+            // ccw_binding is empty, which means this is raw binding from device tree
+            // need to extract cw and ccw from dt_binding
+            const uint32_t binding_id = triggers > 0 ? binding->param1 : binding->param2;
+            const zmk_behavior_local_id_t behavior_local_id =
+                zmk_behavior_get_local_id("key_press");
+
+            // LOG_DBG("dt binding id: %d, local id: %d", binding_id, behavior_local_id);
+
+            triggered_binding.behavior_dev =
+                zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
+            triggered_binding.param1 = binding_id;
             triggered_binding.param2 = 0;
-        } else if (cfg->override_params) {
-            // fallback to original ZMK logic
-            triggered_binding.param1 = binding->param2;
+        } else {
+            // keymap binding is set from the studio code
+            const uint32_t binding_id = triggers > 0 ? cw_binding->param1 : ccw_binding->param1;
+            zmk_behavior_local_id_t behavior_local_id =
+                triggers > 0 ? cw_binding->param2 : ccw_binding->param2;
+
+            // LOG_DBG("keymap binding id: %d, local id: %d", binding_id, behavior_local_id);
+
+            if (behavior_local_id == 0) {
+                // hardcode to key_press
+                behavior_local_id = zmk_behavior_get_local_id("key_press");
+                LOG_DBG("keymap fallback local id: %d", behavior_local_id);
+            }
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
+            triggered_binding.local_id = behavior_local_id;
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
+            triggered_binding.behavior_dev =
+                zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
+            triggered_binding.param1 = binding_id;
+            triggered_binding.param2 = 0;
         }
     } else {
         return ZMK_BEHAVIOR_TRANSPARENT;
     }
 
-    // LOG_DBG("Sensor binding: %s", binding->behavior_dev);
+    // LOG_DBG("triggered_binding dev: %s, param1: %d, param2: %d", triggered_binding.behavior_dev,
+    //         triggered_binding.param1, triggered_binding.param2);
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT)
     // set this value so that it always triggers on central, can be handled more properly later
     event.source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL;
 #endif
 
+    triggers = abs(triggers);
     for (int i = 0; i < triggers; i++) {
         // LOG_DBG("Sensor tap time ms: %d", cfg->tap_ms);
         zmk_behavior_queue_add(&event, triggered_binding, true, cfg->tap_ms);
