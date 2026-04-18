@@ -22,7 +22,7 @@ LOG_MODULE_DECLARE(KAILH_ENC, CONFIG_SENSOR_LOG_LEVEL);
 static inline void setup_int(const struct device *dev, bool enable) {
     const struct kailh_enc_config *cfg = dev->config;
 
-    LOG_DBG("Interrupt enabled %s", (enable ? "true" : "false"));
+    // LOG_DBG("Interrupt enabled %s", (enable ? "true" : "false"));
 
     if (gpio_pin_interrupt_configure_dt(&cfg->a, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
         LOG_WRN("Unable to set A pin GPIO interrupt");
@@ -41,11 +41,8 @@ static void kailh_enc_a_gpio_callback(const struct device *dev, struct gpio_call
 
     setup_int(drv_data->dev, false);
 
-#if defined(CONFIG_KAILH_ENC_TRIGGER_OWN_THREAD)
-    k_sem_give(&drv_data->gpio_sem);
-#elif defined(CONFIG_KAILH_ENC_TRIGGER_GLOBAL_THREAD)
-    k_work_submit(&drv_data->work);
-#endif
+    k_timer_stop(&drv_data->debounce_timer);
+    k_timer_start(&drv_data->debounce_timer, K_MSEC(drv_data->debounce_period_ms), K_NO_WAIT);
 }
 
 static void kailh_enc_b_gpio_callback(const struct device *dev, struct gpio_callback *cb,
@@ -53,6 +50,15 @@ static void kailh_enc_b_gpio_callback(const struct device *dev, struct gpio_call
     struct kailh_enc_data *drv_data = CONTAINER_OF(cb, struct kailh_enc_data, b_gpio_cb);
 
     // LOG_DBG("");
+
+    setup_int(drv_data->dev, false);
+
+    k_timer_stop(&drv_data->debounce_timer);
+    k_timer_start(&drv_data->debounce_timer, K_MSEC(drv_data->debounce_period_ms), K_NO_WAIT);
+}
+
+static void kailh_enc_debounce_timer_handler(struct k_timer *timer) {
+    struct kailh_enc_data *drv_data = CONTAINER_OF(timer, struct kailh_enc_data, debounce_timer);
 
     setup_int(drv_data->dev, false);
 
@@ -105,6 +111,7 @@ int kailh_enc_trigger_set(const struct device *dev, const struct sensor_trigger 
 
     drv_data->trigger = trig;
     drv_data->handler = handler;
+    drv_data->debounce_period_ms = CONFIG_KAILH_ENC_DEBOUNCE_PERIOD;
 
     setup_int(dev, true);
 
@@ -116,6 +123,8 @@ int kailh_enc_init_interrupt(const struct device *dev) {
     const struct kailh_enc_config *drv_cfg = dev->config;
 
     drv_data->dev = dev;
+    k_timer_init(&drv_data->debounce_timer, kailh_enc_debounce_timer_handler, NULL);
+
     /* setup gpio interrupt */
 
     gpio_init_callback(&drv_data->a_gpio_cb, kailh_enc_a_gpio_callback, BIT(drv_cfg->a.pin));

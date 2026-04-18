@@ -39,6 +39,8 @@ struct kailh_enc_data {
 #elif defined(CONFIG_KAILH_ENC_TRIGGER_GLOBAL_THREAD)
     struct k_work work;
 #endif
+    struct k_timer debounce_timer;
+    uint32_t debounce_period_ms;
 
 #endif /* CONFIG_KAILH_ENC_TRIGGER */
 };

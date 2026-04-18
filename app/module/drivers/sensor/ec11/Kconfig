@@ -49,4 +49,13 @@ config EC11_THREAD_STACK_SIZE
     help
       Stack size of thread used by the driver to handle interrupts.
 
+config EC11_DEBOUNCE_PERIOD
+    int "Debounce period in milliseconds"
+    depends on EC11_TRIGGER
+    default 1
+    help
+      Time in milliseconds to debounce the encoder edges.
+      A timer is started on each edge; only when it expires
+      without a new edge is the state processed.
+
 endif # EC11

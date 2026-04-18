@@ -49,4 +49,13 @@ config KAILH_ENC_THREAD_STACK_SIZE
     help
       Stack size of thread used by the driver to handle interrupts.
 
+config KAILH_ENC_DEBOUNCE_PERIOD
+    int "Debounce period in milliseconds"
+    depends on KAILH_ENC_TRIGGER
+    default 1
+    help
+      Time in milliseconds to debounce the encoder edges.
+      A timer is started on each edge; only when it expires
+      without a new edge is the state processed.
+
 endif # KAILH_ENC

@@ -72,8 +72,8 @@ int zmk_behavior_invoke_binding(const struct zmk_behavior_binding *src_binding,
 
     const struct device *behavior = zmk_behavior_get_binding(binding.behavior_dev);
 
-    // LOG_DBG("Invokeing behaviour %s param1 %d param2 %d pressed %d", binding.behavior_dev,
-            binding.param1, binding.param2, pressed);
+    // LOG_DBG("Invoking behaviour %s param1 %d param2 %d pressed %d", binding.behavior_dev,
+    //         binding.param1, binding.param2, pressed);
 
             if (!behavior) {
                 // LOG_DBG("No behavior assigned to %d on layer %d", event.position, event.layer);
