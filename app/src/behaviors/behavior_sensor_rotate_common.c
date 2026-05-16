@@ -145,7 +145,7 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
     triggers = abs(triggers);
     for (int i = 0; i < triggers; i++) {
         // LOG_DBG("Sensor tap time ms: %d", cfg->tap_ms);
-        zmk_behavior_queue_add(&event, triggered_binding, true, cfg->tap_ms);
+        zmk_behavior_queue_add(&event, triggered_binding, true, 60);
         zmk_behavior_queue_add(&event, triggered_binding, false, 0);
     }
 
