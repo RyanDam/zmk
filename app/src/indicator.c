@@ -82,7 +82,7 @@ K_MSGQ_DEFINE(led_msgq, sizeof(struct blink_item), 16, 1);
 
 static void update_leds(uint8_t color, bool on) {
 #if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
-    LOG_INF("update_leds: color=0x%02x on=%d", color, on);
+    // LOG_INF("update_leds: color=0x%02x on=%d", color, on);
     for (int i = 0; i < 4; i++) {
         bool led_active = on && (color & (1 << i));
         if (led_active) {
@@ -90,10 +90,10 @@ static void update_leds(uint8_t color, bool on) {
         } else {
             pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
         }
-        LOG_INF("  pixel[%d]: r=%d g=%d b=%d", i, pixels[i].r, pixels[i].g, pixels[i].b);
+        // LOG_INF("  pixel[%d]: r=%d g=%d b=%d", i, pixels[i].r, pixels[i].g, pixels[i].b);
     }
     int rc = led_strip_update_rgb(strip_dev, pixels, 4);
-    LOG_INF("led_strip_update_rgb returned %d", rc);
+    // LOG_INF("led_strip_update_rgb returned %d", rc);
     if (rc < 0) {
         LOG_ERR("Failed to update LED strip (%d)", rc);
     }
@@ -172,7 +172,7 @@ void indicate_battery(void) {
     };
 
     if (battery_level == 0) {
-        LOG_INF("Battery level undetermined (zero), blinking magenta");
+        // LOG_INF("Battery level undetermined (zero), blinking magenta");
         blink.color = COLOR_IND_1;
     } else if (battery_level >= 80) {
         blink.color = COLOR_IND_1 | COLOR_IND_2 | COLOR_IND_3 | COLOR_IND_4;
@@ -237,7 +237,7 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
     ARG_UNUSED(d1);
     ARG_UNUSED(d2);
 
-    LOG_INF("led_process_thread started");
+    // LOG_INF("led_process_thread started");
 
     struct blink_item blink;
     uint32_t start_time = 0;
@@ -248,8 +248,8 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
     while (true) {
 
         if (k_msgq_get(&led_msgq, &blink, state == BLINK_STATE_IDLE ? K_FOREVER : K_NO_WAIT) == 0) {
-            LOG_INF("Got blink item: color=0x%02x duration=%d blink_time=%d", blink.color,
-                    blink.duration_ms, blink.blink_time);
+            // LOG_INF("Got blink item: color=0x%02x duration=%d blink_time=%d", blink.color,
+            //         blink.duration_ms, blink.blink_time);
             start_time = k_uptime_get();
             state = BLINK_STATE_ON;
             blink_left = blink.blink_time > 0 ? blink.blink_time : 0;
@@ -258,7 +258,7 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
 
         if (state == BLINK_STATE_ON) {
             if ((k_uptime_get() - start_time) >= blink.duration_ms) {
-                LOG_INF("State -> OFF");
+                // LOG_INF("State -> OFF");
                 state = BLINK_STATE_OFF;
                 state_changed = true;
                 start_time = k_uptime_get();
@@ -267,10 +267,10 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
             if ((k_uptime_get() - start_time) >= blink.sleep_ms) {
                 if (blink_left > 0) {
                     blink_left--;
-                    LOG_INF("State -> ON (blinks left: %d)", blink_left);
+                    // LOG_INF("State -> ON (blinks left: %d)", blink_left);
                     state = BLINK_STATE_ON;
                 } else {
-                    LOG_INF("State -> IDLE");
+                    // LOG_INF("State -> IDLE");
                     state = BLINK_STATE_IDLE;
                 }
                 state_changed = true;
@@ -280,10 +280,10 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
 
         if (state_changed) {
             if (state == BLINK_STATE_ON) {
-                LOG_INF("Applying LEDs ON with color 0x%02x", blink.color);
+                // LOG_INF("Applying LEDs ON with color 0x%02x", blink.color);
                 update_leds(blink.color, true);
             } else if (state == BLINK_STATE_OFF) {
-                LOG_INF("Applying LEDs OFF");
+                // LOG_INF("Applying LEDs OFF");
                 update_leds(0, false);
             }
             state_changed = false;
@@ -301,65 +301,65 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
     ARG_UNUSED(d1);
     ARG_UNUSED(d2);
 
-    LOG_INF("led_init_thread started");
+    // LOG_INF("led_init_thread started");
 
 #if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
-    LOG_INF("LED strip device pointer: %p", (void *)strip_dev);
+    // LOG_INF("LED strip device pointer: %p", (void *)strip_dev);
     if (device_is_ready(strip_dev)) {
-        LOG_INF("LED strip device '%s' is ready", strip_dev->name);
-        size_t len = led_strip_length(strip_dev);
-        LOG_INF("LED strip length: %d pixels", len);
+        // LOG_INF("LED strip device '%s' is ready", strip_dev->name);
+        // size_t len = led_strip_length(strip_dev);
+        // LOG_INF("LED strip length: %d pixels", len);
 
         // Test: flash all LEDs red to verify strip works
-        LOG_INF("Running LED strip test pattern...");
+        // LOG_INF("Running LED strip test pattern...");
         struct led_rgb test_pixels[4];
         for (int i = 0; i < 4; i++) {
             test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
         }
         int rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        LOG_INF("Test off: led_strip_update_rgb returned %d", rc);
+        // LOG_INF("Test off: led_strip_update_rgb returned %d", rc);
         k_sleep(K_MSEC(100));
 
         for (int i = 0; i < 4; i++) {
             test_pixels[i] = (struct led_rgb){.r = 50, .g = 0, .b = 0};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        LOG_INF("Test red: led_strip_update_rgb returned %d", rc);
+        // LOG_INF("Test red: led_strip_update_rgb returned %d", rc);
         k_sleep(K_MSEC(500));
 
         for (int i = 0; i < 4; i++) {
             test_pixels[i] = (struct led_rgb){.r = 0, .g = 50, .b = 0};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        LOG_INF("Test green: led_strip_update_rgb returned %d", rc);
+        // LOG_INF("Test green: led_strip_update_rgb returned %d", rc);
         k_sleep(K_MSEC(500));
 
         for (int i = 0; i < 4; i++) {
             test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 50};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        LOG_INF("Test blue: led_strip_update_rgb returned %d", rc);
+        // LOG_INF("Test blue: led_strip_update_rgb returned %d", rc);
         k_sleep(K_MSEC(500));
 
         for (int i = 0; i < 4; i++) {
             test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        LOG_INF("Test off (final): led_strip_update_rgb returned %d", rc);
+        // LOG_INF("Test off (final): led_strip_update_rgb returned %d", rc);
     } else {
         LOG_ERR("LED strip device is NOT ready! Check device tree and Kconfig.");
     }
 #else
-    LOG_INF("Using direct GPIO LEDs");
+    // LOG_INF("Using direct GPIO LEDs");
 #endif
 
 #if IS_ENABLED(CONFIG_ZMK_BLE)
-    LOG_INF("Indicating initial connectivity status");
+    // LOG_INF("Indicating initial connectivity status");
     indicate_connectivity();
 #endif
 
     initialized = true;
-    LOG_INF("led_init_thread: initialized = true");
+    // LOG_INF("led_init_thread: initialized = true");
 }
 
 K_THREAD_DEFINE(led_init_tid, 1024, led_init_thread, NULL, NULL, NULL,
