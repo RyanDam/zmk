@@ -101,6 +101,13 @@ add_subdirectory_ifdef(CONFIG_ZMK_HID_INDICATORS src/indicators)
 target_sources_ifdef(CONFIG_ZMK_SPLIT app PRIVATE src/events/split_peripheral_status_changed.c)
 add_subdirectory_ifdef(CONFIG_ZMK_SPLIT src/split)
 
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_gesture_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_start_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_move_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_end_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_tap_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/behaviors/behavior_mpr121_touchpad.c)
+
 target_sources_ifdef(CONFIG_USB_DEVICE_STACK app PRIVATE src/usb.c)
 target_sources_ifdef(CONFIG_ZMK_USB app PRIVATE src/usb_hid.c)
 target_sources_ifdef(CONFIG_ZMK_RGB_UNDERGLOW app PRIVATE src/rgb_underglow.c)
