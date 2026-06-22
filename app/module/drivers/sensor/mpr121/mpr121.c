@@ -196,7 +196,13 @@ mpr121_detect_gesture(const struct mpr121_config *cfg, struct mpr121_grid_pos st
     }
 
     if (abs_dx > abs_dy) {
+        if (abs_dy / abs_dx > 0.5f) {
+            return MPR121_GESTURE_NONE;
+        }
         return dx > 0 ? MPR121_GESTURE_SWIPE_RIGHT : MPR121_GESTURE_SWIPE_LEFT;
+    }
+    if (abs_dx / abs_dy > 0.5f) {
+        return MPR121_GESTURE_NONE;
     }
     return dy > 0 ? MPR121_GESTURE_SWIPE_DOWN : MPR121_GESTURE_SWIPE_UP;
 }
@@ -264,9 +270,9 @@ static void mpr121_poll_handler(struct k_work *work) {
         pos.x *= cfg->movement_scale;
         pos.y *= cfg->movement_scale;
 
-        // ab_filter_reset(&data->ab_filter);
-        // ab_filter_update(&data->ab_filter, pos.x, pos.y, cfg->ab_filter_alpha,
-        //                  (float)cfg->poll_interval_ms);
+        ab_filter_reset(&data->ab_filter);
+        ab_filter_update(&data->ab_filter, pos.x, pos.y, cfg->ab_filter_alpha,
+                         (float)cfg->poll_interval_ms);
 
         data->start_pos = pos;
         data->last_pos = pos;
@@ -285,16 +291,16 @@ static void mpr121_poll_handler(struct k_work *work) {
         raw_pos.x *= cfg->movement_scale;
         raw_pos.y *= cfg->movement_scale;
 
-        // ab_filter_update(&data->ab_filter, raw_pos.x, raw_pos.y, cfg->ab_filter_alpha,
-        //                  (float)cfg->poll_interval_ms);
-        // struct mpr121_grid_pos pos = {
-        //     .x = data->ab_filter.x,
-        //     .y = data->ab_filter.y,
-        // };
+        ab_filter_update(&data->ab_filter, raw_pos.x, raw_pos.y, cfg->ab_filter_alpha,
+                         (float)cfg->poll_interval_ms);
         struct mpr121_grid_pos pos = {
-            .x = raw_pos.x,
-            .y = raw_pos.y,
+            .x = data->ab_filter.x,
+            .y = data->ab_filter.y,
         };
+        // struct mpr121_grid_pos pos = {
+        //     .x = raw_pos.x,
+        //     .y = raw_pos.y,
+        // };
 
         float dx = pos.x - data->last_pos.x;
         float dy = pos.y - data->last_pos.y;
@@ -467,15 +473,15 @@ static int mpr121_init(const struct device *dev) {
     static const struct mpr121_config mpr121_cfg_##n = {                                           \
         .i2c = I2C_DT_SPEC_INST_GET(n),                                                            \
         .interrupt_gpio = GPIO_DT_SPEC_INST_GET_OR(n, interrupt_gpios, {0}),                       \
-        .touch_threshold = DT_INST_PROP_OR(n, touch_threshold, 3),                                 \
-        .release_threshold = DT_INST_PROP_OR(n, release_threshold, 1),                             \
-        .gesture_min_displacement = DT_INST_PROP_OR(n, gesture_min_displacement, 20),              \
-        .gesture_min_velocity = DT_INST_PROP_OR(n, gesture_min_velocity, 200),                     \
+        .touch_threshold = DT_INST_PROP_OR(n, touch_threshold, 4),                                 \
+        .release_threshold = DT_INST_PROP_OR(n, release_threshold, 2),                             \
+        .gesture_min_displacement = DT_INST_PROP_OR(n, gesture_min_displacement, 100),             \
+        .gesture_min_velocity = DT_INST_PROP_OR(n, gesture_min_velocity, 1000),                    \
         .gesture_max_duration_ms = DT_INST_PROP_OR(n, gesture_max_duration_ms, 300),               \
-        .poll_interval_ms = DT_INST_PROP_OR(n, poll_interval_ms, 10),                              \
+        .poll_interval_ms = DT_INST_PROP_OR(n, poll_interval_ms, 5),                               \
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
-        .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 5),                       \
-        .movement_scale = DT_INST_PROP_OR(n, movement_scale, 100),                                 \
+        .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 20),                      \
+        .movement_scale = DT_INST_PROP_OR(n, movement_scale, 200),                                 \
         .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 50) / 100.0f,                       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \

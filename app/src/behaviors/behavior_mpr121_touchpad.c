@@ -120,7 +120,7 @@ static int mpr121_touchpad_handler_gesture(const zmk_event_t *eh) {
     }
 
     static const char *names[] = {"NONE", "LEFT", "RIGHT", "UP", "DOWN"};
-    LOG_INF("Gesture: %s disp=%u vel=%u", names[evt->gesture_type], evt->displacement,
+    LOG_INF("Gesture detected: %s disp=%u vel=%u", names[evt->gesture_type], evt->displacement,
             evt->velocity);
 
     uint8_t binding_idx = 4 + (evt->gesture_type - 1);
