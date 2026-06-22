@@ -9,6 +9,8 @@
 #include <zmk/events/mpr121_gesture_event.h>
 #include <zmk/events/mpr121_touch_event.h>
 #include <zmk/behavior.h>
+#include <zmk/hid.h>
+#include <zmk/endpoints.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -77,7 +79,14 @@ static int mpr121_touchpad_handler_move(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    // invoke_binding(1);
+#if IS_ENABLED(CONFIG_ZMK_POINTING)
+    float raw_dx = evt->dx;
+    float raw_dy = evt->dy;
+    zmk_hid_mouse_movement_set(raw_dx, raw_dy);
+    zmk_endpoint_send_mouse_report();
+    zmk_hid_mouse_movement_set(0, 0);
+#endif
+
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -100,7 +109,7 @@ static int mpr121_touchpad_handler_tap(const zmk_event_t *eh) {
     }
 
     LOG_INF("Tap: x=%d y=%d dur=%u", (int)(evt->x * 100), (int)(evt->y * 100), evt->duration_ms);
-    invoke_binding(3);
+    // invoke_binding(3);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -115,7 +124,7 @@ static int mpr121_touchpad_handler_gesture(const zmk_event_t *eh) {
             evt->velocity);
 
     uint8_t binding_idx = 4 + (evt->gesture_type - 1);
-    invoke_binding(binding_idx);
+    // invoke_binding(binding_idx);
     return ZMK_EV_EVENT_BUBBLE;
 }
 

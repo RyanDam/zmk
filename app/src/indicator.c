@@ -86,7 +86,7 @@ static void update_leds(uint8_t color, bool on) {
     for (int i = 0; i < 4; i++) {
         bool led_active = on && (color & (1 << i));
         if (led_active) {
-            pixels[i] = (struct led_rgb){.r = 28, .g = 28, .b = 0};
+            pixels[i] = (struct led_rgb){.r = 10, .g = 10, .b = 0};
         } else {
             pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
         }
@@ -321,21 +321,21 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
         k_sleep(K_MSEC(100));
 
         for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 50, .g = 0, .b = 0};
+            test_pixels[i] = (struct led_rgb){.r = 10, .g = 0, .b = 0};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
         // LOG_INF("Test red: led_strip_update_rgb returned %d", rc);
         k_sleep(K_MSEC(500));
 
         for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 0, .g = 50, .b = 0};
+            test_pixels[i] = (struct led_rgb){.r = 0, .g = 10, .b = 0};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
         // LOG_INF("Test green: led_strip_update_rgb returned %d", rc);
         k_sleep(K_MSEC(500));
 
         for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 50};
+            test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 10};
         }
         rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
         // LOG_INF("Test blue: led_strip_update_rgb returned %d", rc);
