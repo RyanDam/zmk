@@ -9,6 +9,8 @@
 #include <zephyr/drivers/i2c.h>
 #include <stdint.h>
 
+#include "mpr121_ab_filter.h"
+
 #define MPR121_I2C_ADDRESS 0x5A
 
 #define MPR121_TOUCHSTATUS_L 0x00
@@ -63,9 +65,7 @@ struct mpr121_config {
     uint32_t tap_max_duration_ms;
     uint16_t tap_max_displacement;
     uint16_t movement_scale;
-    float kf_process_noise;
-    float kf_measurement_noise;
-    float kf_initial_cov;
+    float ab_filter_alpha;
 };
 
 struct mpr121_data {
@@ -81,9 +81,5 @@ struct mpr121_data {
     uint32_t touch_start_time;
     float total_movement;
 
-    float kf_x_est;
-    float kf_x_cov;
-    float kf_y_est;
-    float kf_y_cov;
-    bool kf_strided_x;
+    struct mpr121_ab_filter ab_filter;
 };

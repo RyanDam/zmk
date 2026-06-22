@@ -20,26 +20,10 @@
 
 LOG_MODULE_REGISTER(mpr121, CONFIG_SENSOR_LOG_LEVEL);
 
-static const int col_electrodes[MPR121_NUM_COLS] = {11, 10, 9, 5, 4, 3};
-static const int row_electrodes[MPR121_NUM_ROWS] = {0, 1, 2, 8, 7, 6};
-
-static int electrode_to_col(int electrode) {
-    for (int i = 0; i < MPR121_NUM_COLS; i++) {
-        if (col_electrodes[i] == electrode) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static int electrode_to_row(int electrode) {
-    for (int i = 0; i < MPR121_NUM_ROWS; i++) {
-        if (row_electrodes[i] == electrode) {
-            return i;
-        }
-    }
-    return -1;
-}
+static const int col_electrode_idx[MPR121_NUM_ELECTRODES] = {-1, -1, -1, 5, 4, 3,
+                                                             -1, -1, -1, 2, 1, 0};
+static const int row_electrode_idx[MPR121_NUM_ELECTRODES] = {0, 1, 2, -1, -1, -1,
+                                                             5, 4, 3, -1, -1, -1};
 
 static int mpr121_i2c_write(const struct device *dev, uint8_t reg, uint8_t val) {
     const struct mpr121_config *cfg = dev->config;
@@ -54,30 +38,48 @@ static int mpr121_i2c_read(const struct device *dev, uint8_t reg, uint8_t *buf, 
 
 static uint16_t mpr121_read_touch_status(const struct device *dev) {
     uint8_t buf[2];
-    if (mpr121_i2c_read(dev, MPR121_TOUCHSTATUS_L, &buf[0], 1) < 0) {
+    if (mpr121_i2c_read(dev, MPR121_TOUCHSTATUS_L, buf, 2) < 0) {
         return 0;
     }
-    if (mpr121_i2c_read(dev, MPR121_TOUCHSTATUS_H, &buf[1], 1) < 0) {
-        return 0;
-    }
-    return (buf[1] << 8) | (buf[0] & 0x0FFF);
+    return ((uint16_t)(buf[1] & 0x1F) << 8) | buf[0];
 }
 
-static float mpr121_kf_update(float *est, float *cov, float measurement, float Q, float R) {
-    *cov += Q;
-    float K = *cov / (*cov + R);
-    *est = *est + K * (measurement - *est);
-    *cov = (1.0f - K) * (*cov);
-    return *est;
+static int mpr121_read_filtered_data(const struct device *dev,
+                                     uint16_t out[MPR121_NUM_ELECTRODES]) {
+    uint8_t buf[MPR121_NUM_ELECTRODES * 2];
+    int ret = mpr121_i2c_read(dev, MPR121_FILTDATA_0, buf, sizeof(buf));
+    if (ret < 0) {
+        return ret;
+    }
+    for (int i = 0; i < MPR121_NUM_ELECTRODES; i++) {
+        out[i] = (uint16_t)buf[i * 2] | ((uint16_t)(buf[i * 2 + 1] & 0x03) << 8);
+    }
+    return 0;
+}
+
+static int mpr121_read_baselines(const struct device *dev, uint16_t out[MPR121_NUM_ELECTRODES]) {
+    uint8_t buf[MPR121_NUM_ELECTRODES];
+    int ret = mpr121_i2c_read(dev, MPR121_BASELINE_0, buf, sizeof(buf));
+    if (ret < 0) {
+        return ret;
+    }
+    for (int i = 0; i < MPR121_NUM_ELECTRODES; i++) {
+        out[i] = (uint16_t)buf[i] << 2;
+    }
+    return 0;
 }
 
 static struct mpr121_grid_pos mpr121_calc_position(uint16_t touch_status, float last_x,
                                                    float last_y) {
     struct mpr121_grid_pos pos = {last_x, last_y};
 
+    if (!touch_status) {
+        return pos;
+    }
+
     float sum_x = 0.0f;
-    float sum_y = 0.0f;
     int count_x = 0;
+    float sum_y = 0.0f;
     int count_y = 0;
 
     for (int e = 0; e < MPR121_NUM_ELECTRODES; e++) {
@@ -85,24 +87,77 @@ static struct mpr121_grid_pos mpr121_calc_position(uint16_t touch_status, float 
             continue;
         }
 
-        int col = electrode_to_col(e);
-        int row = electrode_to_row(e);
+        int ci = col_electrode_idx[e];
+        int ri = row_electrode_idx[e];
 
-        if (col >= 0) {
-            sum_x += col;
+        if (ci >= 0) {
+            sum_x += (float)ci;
             count_x++;
         }
-        if (row >= 0) {
-            sum_y += row;
+        if (ri >= 0) {
+            sum_y += (float)ri;
             count_y++;
         }
     }
 
     if (count_x > 0) {
-        pos.x = (sum_x / count_x) / 5.0f;
+        pos.x = (sum_x / (float)count_x) / 5.0f;
     }
     if (count_y > 0) {
-        pos.y = (sum_y / count_y) / 5.0f;
+        pos.y = (sum_y / (float)count_y) / 5.0f;
+    }
+
+    return pos;
+}
+
+static struct mpr121_grid_pos mpr121_calc_position_weighted(const struct device *dev,
+                                                            uint16_t touch_status, float last_x,
+                                                            float last_y) {
+    struct mpr121_grid_pos pos = {last_x, last_y};
+
+    if (!touch_status) {
+        return pos;
+    }
+
+    uint16_t filtered[MPR121_NUM_ELECTRODES];
+    uint16_t baseline[MPR121_NUM_ELECTRODES];
+
+    if (mpr121_read_filtered_data(dev, filtered) < 0 || mpr121_read_baselines(dev, baseline) < 0) {
+        LOG_WRN("Filtered data read failed, falling back to binary centroid");
+        return mpr121_calc_position(touch_status, last_x, last_y);
+    }
+
+    float sum_wx = 0.0f;
+    float total_wx = 0.0f;
+    float sum_wy = 0.0f;
+    float total_wy = 0.0f;
+
+    for (int e = 0; e < MPR121_NUM_ELECTRODES; e++) {
+        if (!(touch_status & BIT(e))) {
+            continue;
+        }
+
+        float drop = (float)baseline[e] - (float)filtered[e];
+        float weight = (drop > 0.0f) ? drop : 0.0f;
+
+        int ci = col_electrode_idx[e];
+        int ri = row_electrode_idx[e];
+
+        if (ci >= 0) {
+            sum_wx += weight * (float)ci;
+            total_wx += weight;
+        }
+        if (ri >= 0) {
+            sum_wy += weight * (float)ri;
+            total_wy += weight;
+        }
+    }
+
+    if (total_wx > 0.0f) {
+        pos.x = (sum_wx / total_wx) / 5.0f;
+    }
+    if (total_wy > 0.0f) {
+        pos.y = (sum_wy / total_wy) / 5.0f;
     }
 
     return pos;
@@ -157,8 +212,6 @@ static void mpr121_handle_touch_end(const struct device *dev) {
     float total_dy = data->last_pos.y - data->start_pos.y;
     float total_disp = fmaxf(fabsf(total_dx), fabsf(total_dy));
 
-    // LOG_INF("Touch end: dur=%u disp=%d", duration_ms, (int)(total_disp * 100));
-
     raise_zmk_mpr121_touch_end_event((struct zmk_mpr121_touch_end_event){
         .x = data->last_pos.x,
         .y = data->last_pos.y,
@@ -167,8 +220,6 @@ static void mpr121_handle_touch_end(const struct device *dev) {
 
     if (duration_ms <= cfg->tap_max_duration_ms &&
         (int)(total_disp * 100) <= cfg->tap_max_displacement) {
-        // LOG_INF("Tap: x=%d y=%d", (int)(data->start_pos.x * 100), (int)(data->start_pos.y *
-        // 100));
         raise_zmk_mpr121_touch_tap_event((struct zmk_mpr121_touch_tap_event){
             .x = data->start_pos.x,
             .y = data->start_pos.y,
@@ -180,8 +231,6 @@ static void mpr121_handle_touch_end(const struct device *dev) {
             cfg, data->start_pos, data->last_pos, duration_ms, &displacement, &velocity);
 
         if (gesture != MPR121_GESTURE_NONE) {
-            // static const char *names[] = {"NONE", "LEFT", "RIGHT", "UP", "DOWN"};
-            // LOG_INF("Gesture: %s disp=%u vel=%u", names[gesture], displacement, velocity);
             raise_zmk_mpr121_gesture_event((struct zmk_mpr121_gesture_event){
                 .gesture_type = gesture,
                 .displacement = displacement,
@@ -202,49 +251,50 @@ static void mpr121_poll_handler(struct k_work *work) {
     bool currently_touched = (touch_status != 0);
 
     if (!data->is_touched && currently_touched) {
-        struct mpr121_grid_pos pos = mpr121_calc_position(touch_status, 0.5, 0.5);
+        uint16_t combined_status = touch_status;
+
+        for (int s = 0; s < 4; s++) {
+            k_msleep(2);
+            uint16_t ts = mpr121_read_touch_status(dev);
+            combined_status |= ts;
+        }
+
+        struct mpr121_grid_pos pos =
+            mpr121_calc_position_weighted(dev, combined_status, 0.5f, 0.5f);
         pos.x *= cfg->movement_scale;
         pos.y *= cfg->movement_scale;
+
+        // ab_filter_reset(&data->ab_filter);
+        // ab_filter_update(&data->ab_filter, pos.x, pos.y, cfg->ab_filter_alpha,
+        //                  (float)cfg->poll_interval_ms);
+
         data->start_pos = pos;
         data->last_pos = pos;
         data->touch_start_time = k_uptime_get();
         data->is_touched = true;
         data->total_movement = 0;
 
-        // data->kf_x_est = pos.x;
-        // data->kf_x_cov = cfg->kf_initial_cov;
-        // data->kf_y_est = pos.y;
-        // data->kf_y_cov = cfg->kf_initial_cov;
-        // data->kf_strided_x = true;
-
-        // LOG_INF("Touch start: x=%d y=%d", (int)(pos.x * 100), (int)(pos.y * 100));
         raise_zmk_mpr121_touch_start_event((struct zmk_mpr121_touch_start_event){
             .x = pos.x,
             .y = pos.y,
         });
     } else if (data->is_touched && currently_touched) {
-        struct mpr121_grid_pos pos =
-            mpr121_calc_position(touch_status, data->last_pos.x / cfg->movement_scale,
-                                 data->last_pos.y / cfg->movement_scale);
-        pos.x *= cfg->movement_scale;
-        pos.y *= cfg->movement_scale;
-        // struct mpr121_grid_pos raw_pos =
-        //     mpr121_calc_position(touch_status, data->last_pos.x / cfg->movement_scale,
-        //                          data->last_pos.y / cfg->movement_scale);
-        // raw_pos.x *= cfg->movement_scale;
-        // raw_pos.y *= cfg->movement_scale;
+        struct mpr121_grid_pos raw_pos =
+            mpr121_calc_position_weighted(dev, touch_status, data->last_pos.x / cfg->movement_scale,
+                                          data->last_pos.y / cfg->movement_scale);
+        raw_pos.x *= cfg->movement_scale;
+        raw_pos.y *= cfg->movement_scale;
 
-        // struct mpr121_grid_pos pos;
-        // if (data->kf_strided_x) {
-        //     pos.x = mpr121_kf_update(&data->kf_x_est, &data->kf_x_cov, raw_pos.x,
-        //                              cfg->kf_process_noise, cfg->kf_measurement_noise);
-        //     pos.y = data->kf_y_est;
-        // } else {
-        //     pos.x = data->kf_x_est;
-        //     pos.y = mpr121_kf_update(&data->kf_y_est, &data->kf_y_cov, raw_pos.y,
-        //                              cfg->kf_process_noise, cfg->kf_measurement_noise);
-        // }
-        // data->kf_strided_x = !data->kf_strided_x;
+        // ab_filter_update(&data->ab_filter, raw_pos.x, raw_pos.y, cfg->ab_filter_alpha,
+        //                  (float)cfg->poll_interval_ms);
+        // struct mpr121_grid_pos pos = {
+        //     .x = data->ab_filter.x,
+        //     .y = data->ab_filter.y,
+        // };
+        struct mpr121_grid_pos pos = {
+            .x = raw_pos.x,
+            .y = raw_pos.y,
+        };
 
         float dx = pos.x - data->last_pos.x;
         float dy = pos.y - data->last_pos.y;
@@ -269,15 +319,10 @@ static void mpr121_poll_handler(struct k_work *work) {
     data->last_touch_status = touch_status;
 
     if (data->is_touched) {
-        /* Still touching — continue polling at the configured interval. */
         k_work_schedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
     } else {
         int pin_level = gpio_pin_get_dt(&data->config->interrupt_gpio);
         if (pin_level < 0) {
-            /*
-             * Pin read failed — something is wrong with the GPIO.  Try to
-             * re-enable the interrupt anyway as a best-effort recovery.
-             */
             LOG_ERR("Failed to read IRQ pin level: %d, attempting re-enable", pin_level);
             int ret = gpio_pin_interrupt_configure_dt(&data->config->interrupt_gpio,
                                                       GPIO_INT_EDGE_TO_ACTIVE);
@@ -288,27 +333,12 @@ static void mpr121_poll_handler(struct k_work *work) {
             return;
         }
         if (pin_level == 1) {
-            /*
-             * IRQ pin is already HIGH — a touch event arrived while the
-             * interrupt was disabled.  Do NOT re-enable the edge interrupt
-             * (the edge was already missed).  Instead, immediately start
-             * polling to process the pending event.
-             */
             LOG_DBG("IRQ already active, skipping interrupt, restarting poll");
             k_work_reschedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
         } else {
-            /*
-             * IRQ pin is LOW (idle) — safe to re-enable the edge interrupt.
-             * The next touch will produce a clean LOW->HIGH transition.
-             */
             int ret =
                 gpio_pin_interrupt_configure_dt(&data->config->interrupt_gpio, GPIO_INT_EDGE_BOTH);
             if (ret < 0) {
-                /*
-                 * Re-enable failed (e.g., GPIO driver issue).  Fall back to
-                 * a short polling interval so the touchpad remains functional
-                 * rather than becoming permanently unresponsive.
-                 */
                 LOG_ERR("Failed to re-enable IRQ interrupt: %d, falling back to poll", ret);
                 k_work_schedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
                 return;
@@ -370,7 +400,7 @@ static int mpr121_init_hw(const struct device *dev) {
     mpr121_i2c_write(dev, MPR121_NCLT, 0x00);
     mpr121_i2c_write(dev, MPR121_FDLT, 0x00);
     mpr121_i2c_write(dev, MPR121_DEBOUNCE, 0x00);
-    mpr121_i2c_write(dev, MPR121_CONFIG1, 0x30);
+    mpr121_i2c_write(dev, MPR121_CONFIG1, 0x50);
     mpr121_i2c_write(dev, MPR121_CONFIG2, 0x20);
 
     ret = mpr121_i2c_write(dev, MPR121_ECR, 0x80 | MPR121_NUM_ELECTRODES);
@@ -391,6 +421,7 @@ static int mpr121_init(const struct device *dev) {
     data->config = cfg;
     data->last_touch_status = 0;
     data->is_touched = false;
+    data->ab_filter = (struct mpr121_ab_filter){0};
 
     if (!device_is_ready(cfg->i2c.bus)) {
         LOG_ERR("I2C bus %s not ready", cfg->i2c.bus->name);
@@ -445,9 +476,7 @@ static int mpr121_init(const struct device *dev) {
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
         .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 5),                       \
         .movement_scale = DT_INST_PROP_OR(n, movement_scale, 100),                                 \
-        .kf_process_noise = DT_INST_PROP_OR(n, kalman_process_noise, 50) / 100.0f,                 \
-        .kf_measurement_noise = DT_INST_PROP_OR(n, kalman_measurement_noise, 10) / 100.0f,         \
-        .kf_initial_cov = DT_INST_PROP_OR(n, kalman_initial_cov, 100) / 100.0f,                    \
+        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 50) / 100.0f,                       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \
                           CONFIG_SENSOR_INIT_PRIORITY, NULL);
