@@ -63,6 +63,9 @@ struct mpr121_config {
     uint32_t tap_max_duration_ms;
     uint16_t tap_max_displacement;
     uint16_t movement_scale;
+    float kf_process_noise;
+    float kf_measurement_noise;
+    float kf_initial_cov;
 };
 
 struct mpr121_data {
@@ -77,4 +80,10 @@ struct mpr121_data {
     struct mpr121_grid_pos last_pos;
     uint32_t touch_start_time;
     float total_movement;
+
+    float kf_x_est;
+    float kf_x_cov;
+    float kf_y_est;
+    float kf_y_cov;
+    bool kf_strided_x;
 };

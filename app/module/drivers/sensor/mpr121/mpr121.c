@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdint.h>
 #define DT_DRV_COMPAT nxp_mpr121
 
 #include <zephyr/device.h>
@@ -53,14 +54,26 @@ static int mpr121_i2c_read(const struct device *dev, uint8_t reg, uint8_t *buf, 
 
 static uint16_t mpr121_read_touch_status(const struct device *dev) {
     uint8_t buf[2];
-    if (mpr121_i2c_read(dev, MPR121_TOUCHSTATUS_L, buf, 2) < 0) {
+    if (mpr121_i2c_read(dev, MPR121_TOUCHSTATUS_L, &buf[0], 1) < 0) {
+        return 0;
+    }
+    if (mpr121_i2c_read(dev, MPR121_TOUCHSTATUS_H, &buf[1], 1) < 0) {
         return 0;
     }
     return (buf[1] << 8) | (buf[0] & 0x0FFF);
 }
 
-static struct mpr121_grid_pos mpr121_calc_position(uint16_t touch_status) {
-    struct mpr121_grid_pos pos = {0.0f, 0.0f};
+static float mpr121_kf_update(float *est, float *cov, float measurement, float Q, float R) {
+    *cov += Q;
+    float K = *cov / (*cov + R);
+    *est = *est + K * (measurement - *est);
+    *cov = (1.0f - K) * (*cov);
+    return *est;
+}
+
+static struct mpr121_grid_pos mpr121_calc_position(uint16_t touch_status, float last_x,
+                                                   float last_y) {
+    struct mpr121_grid_pos pos = {last_x, last_y};
 
     float sum_x = 0.0f;
     float sum_y = 0.0f;
@@ -177,9 +190,6 @@ static void mpr121_handle_touch_end(const struct device *dev) {
             });
         }
     }
-
-    data->is_touched = false;
-    data->total_movement = 0;
 }
 
 static void mpr121_poll_handler(struct k_work *work) {
@@ -192,7 +202,7 @@ static void mpr121_poll_handler(struct k_work *work) {
     bool currently_touched = (touch_status != 0);
 
     if (!data->is_touched && currently_touched) {
-        struct mpr121_grid_pos pos = mpr121_calc_position(touch_status);
+        struct mpr121_grid_pos pos = mpr121_calc_position(touch_status, 0.5, 0.5);
         pos.x *= cfg->movement_scale;
         pos.y *= cfg->movement_scale;
         data->start_pos = pos;
@@ -201,15 +211,41 @@ static void mpr121_poll_handler(struct k_work *work) {
         data->is_touched = true;
         data->total_movement = 0;
 
+        // data->kf_x_est = pos.x;
+        // data->kf_x_cov = cfg->kf_initial_cov;
+        // data->kf_y_est = pos.y;
+        // data->kf_y_cov = cfg->kf_initial_cov;
+        // data->kf_strided_x = true;
+
         // LOG_INF("Touch start: x=%d y=%d", (int)(pos.x * 100), (int)(pos.y * 100));
         raise_zmk_mpr121_touch_start_event((struct zmk_mpr121_touch_start_event){
             .x = pos.x,
             .y = pos.y,
         });
     } else if (data->is_touched && currently_touched) {
-        struct mpr121_grid_pos pos = mpr121_calc_position(touch_status);
+        struct mpr121_grid_pos pos =
+            mpr121_calc_position(touch_status, data->last_pos.x / cfg->movement_scale,
+                                 data->last_pos.y / cfg->movement_scale);
         pos.x *= cfg->movement_scale;
         pos.y *= cfg->movement_scale;
+        // struct mpr121_grid_pos raw_pos =
+        //     mpr121_calc_position(touch_status, data->last_pos.x / cfg->movement_scale,
+        //                          data->last_pos.y / cfg->movement_scale);
+        // raw_pos.x *= cfg->movement_scale;
+        // raw_pos.y *= cfg->movement_scale;
+
+        // struct mpr121_grid_pos pos;
+        // if (data->kf_strided_x) {
+        //     pos.x = mpr121_kf_update(&data->kf_x_est, &data->kf_x_cov, raw_pos.x,
+        //                              cfg->kf_process_noise, cfg->kf_measurement_noise);
+        //     pos.y = data->kf_y_est;
+        // } else {
+        //     pos.x = data->kf_x_est;
+        //     pos.y = mpr121_kf_update(&data->kf_y_est, &data->kf_y_cov, raw_pos.y,
+        //                              cfg->kf_process_noise, cfg->kf_measurement_noise);
+        // }
+        // data->kf_strided_x = !data->kf_strided_x;
+
         float dx = pos.x - data->last_pos.x;
         float dy = pos.y - data->last_pos.y;
 
@@ -226,15 +262,59 @@ static void mpr121_poll_handler(struct k_work *work) {
         data->last_pos = pos;
     } else if (data->is_touched && !currently_touched) {
         mpr121_handle_touch_end(dev);
+        data->is_touched = false;
+        data->total_movement = 0;
     }
 
     data->last_touch_status = touch_status;
 
     if (data->is_touched) {
+        /* Still touching — continue polling at the configured interval. */
         k_work_schedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
     } else {
-        gpio_pin_interrupt_configure_dt(&data->config->interrupt_gpio, GPIO_INT_EDGE_TO_ACTIVE);
-        LOG_DBG("Re-enabled interrupt");
+        int pin_level = gpio_pin_get_dt(&data->config->interrupt_gpio);
+        if (pin_level < 0) {
+            /*
+             * Pin read failed — something is wrong with the GPIO.  Try to
+             * re-enable the interrupt anyway as a best-effort recovery.
+             */
+            LOG_ERR("Failed to read IRQ pin level: %d, attempting re-enable", pin_level);
+            int ret = gpio_pin_interrupt_configure_dt(&data->config->interrupt_gpio,
+                                                      GPIO_INT_EDGE_TO_ACTIVE);
+            if (ret < 0) {
+                LOG_ERR("Re-enable also failed: %d, falling back to poll", ret);
+                k_work_schedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
+            }
+            return;
+        }
+        if (pin_level == 1) {
+            /*
+             * IRQ pin is already HIGH — a touch event arrived while the
+             * interrupt was disabled.  Do NOT re-enable the edge interrupt
+             * (the edge was already missed).  Instead, immediately start
+             * polling to process the pending event.
+             */
+            LOG_DBG("IRQ already active, skipping interrupt, restarting poll");
+            k_work_reschedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
+        } else {
+            /*
+             * IRQ pin is LOW (idle) — safe to re-enable the edge interrupt.
+             * The next touch will produce a clean LOW->HIGH transition.
+             */
+            int ret =
+                gpio_pin_interrupt_configure_dt(&data->config->interrupt_gpio, GPIO_INT_EDGE_BOTH);
+            if (ret < 0) {
+                /*
+                 * Re-enable failed (e.g., GPIO driver issue).  Fall back to
+                 * a short polling interval so the touchpad remains functional
+                 * rather than becoming permanently unresponsive.
+                 */
+                LOG_ERR("Failed to re-enable IRQ interrupt: %d, falling back to poll", ret);
+                k_work_schedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
+                return;
+            }
+            LOG_DBG("Re-enabled interrupt");
+        }
     }
 }
 
@@ -336,7 +416,7 @@ static int mpr121_init(const struct device *dev) {
             return ret;
         }
 
-        ret = gpio_pin_interrupt_configure_dt(&cfg->interrupt_gpio, GPIO_INT_EDGE_TO_ACTIVE);
+        ret = gpio_pin_interrupt_configure_dt(&cfg->interrupt_gpio, GPIO_INT_EDGE_BOTH);
         if (ret < 0) {
             LOG_ERR("GPIO interrupt config failed: %d", ret);
             return ret;
@@ -365,6 +445,9 @@ static int mpr121_init(const struct device *dev) {
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
         .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 5),                       \
         .movement_scale = DT_INST_PROP_OR(n, movement_scale, 100),                                 \
+        .kf_process_noise = DT_INST_PROP_OR(n, kalman_process_noise, 50) / 100.0f,                 \
+        .kf_measurement_noise = DT_INST_PROP_OR(n, kalman_measurement_noise, 10) / 100.0f,         \
+        .kf_initial_cov = DT_INST_PROP_OR(n, kalman_initial_cov, 100) / 100.0f,                    \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \
                           CONFIG_SENSOR_INIT_PRIORITY, NULL);
