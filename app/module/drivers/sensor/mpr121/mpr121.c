@@ -482,7 +482,7 @@ static int mpr121_init(const struct device *dev) {
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
         .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 20),                      \
         .movement_scale = DT_INST_PROP_OR(n, movement_scale, 200),                                 \
-        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 50) / 100.0f,                       \
+        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 80) / 100.0f,                       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \
                           CONFIG_SENSOR_INIT_PRIORITY, NULL);
