@@ -51,6 +51,75 @@ static const uint8_t COLOR_IND_3 = 1 << 2;
 static const uint8_t COLOR_IND_4 = 1 << 3;
 static const uint8_t COLOR_WHITE = COLOR_IND_1 | COLOR_IND_2 | COLOR_IND_3 | COLOR_IND_4;
 
+typedef enum {
+    COLOR_TYPE_LAYER,
+    COLOR_TYPE_BLE,
+    COLOR_TYPE_BATTERY,
+} led_color_type_t;
+
+static void get_color_rgb(led_color_type_t type, uint8_t *r, uint8_t *g, uint8_t *b) {
+    switch (type) {
+    case COLOR_TYPE_LAYER:
+        *r = 0;
+        *g = 10;
+        *b = 0;
+        break;
+    case COLOR_TYPE_BLE:
+        *r = 0;
+        *g = 0;
+        *b = 10;
+        break;
+    case COLOR_TYPE_BATTERY:
+        *r = 10;
+        *g = 0;
+        *b = 0;
+        break;
+    }
+}
+
+static void hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b) {
+    uint32_t hue = h * 255 / 360;
+    uint8_t region = hue / 43;
+    uint8_t remainder = (hue - (region * 43)) * 255 / 43;
+
+    uint8_t pv = (255 - s) * v / 255;
+    uint8_t qv = (255 - ((remainder * s) >> 8)) * v / 255;
+    uint8_t tv = (255 - ((s * (255 - remainder)) >> 8)) * v / 255;
+
+    switch (region) {
+    case 0:
+        *r = v;
+        *g = tv;
+        *b = pv;
+        break;
+    case 1:
+        *r = qv;
+        *g = v;
+        *b = pv;
+        break;
+    case 2:
+        *r = pv;
+        *g = v;
+        *b = tv;
+        break;
+    case 3:
+        *r = pv;
+        *g = qv;
+        *b = v;
+        break;
+    case 4:
+        *r = tv;
+        *g = pv;
+        *b = v;
+        break;
+    default:
+        *r = v;
+        *g = pv;
+        *b = qv;
+        break;
+    }
+}
+
 static const uint8_t color_idx[] = {COLOR_BLACK,
                                     COLOR_IND_1,
                                     COLOR_IND_2,
@@ -71,6 +140,7 @@ static const char *color_names[] = {"----", "x---", "-x--", "--x-", "---x", "xxx
 
 struct blink_item {
     uint8_t color;
+    led_color_type_t type;
     uint8_t blink_time;
     uint16_t duration_ms;
     uint16_t sleep_ms;
@@ -80,26 +150,25 @@ static bool initialized = false;
 
 K_MSGQ_DEFINE(led_msgq, sizeof(struct blink_item), 16, 1);
 
-static void update_leds(uint8_t color, bool on) {
+static void update_leds(struct blink_item *blink, bool on) {
 #if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
-    // LOG_INF("update_leds: color=0x%02x on=%d", color, on);
+    uint8_t r = 0, g = 0, b = 0;
+    get_color_rgb(blink->type, &r, &g, &b);
     for (int i = 0; i < 4; i++) {
-        bool led_active = on && (color & (1 << i));
+        bool led_active = on && (blink->color & (1 << i));
         if (led_active) {
-            pixels[i] = (struct led_rgb){.r = 10, .g = 10, .b = 0};
+            pixels[i] = (struct led_rgb){.r = r, .g = g, .b = b};
         } else {
             pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
         }
-        // LOG_INF("  pixel[%d]: r=%d g=%d b=%d", i, pixels[i].r, pixels[i].g, pixels[i].b);
     }
     int rc = led_strip_update_rgb(strip_dev, pixels, 4);
-    // LOG_INF("led_strip_update_rgb returned %d", rc);
     if (rc < 0) {
         LOG_ERR("Failed to update LED strip (%d)", rc);
     }
 #else
     for (int i = 0; i < 4; i++) {
-        bool led_active = on && (color & (1 << i));
+        bool led_active = on && (blink->color & (1 << i));
         if (led_active) {
             led_on(led_dev, led_idx[i]);
         } else {
@@ -112,7 +181,8 @@ static void update_leds(uint8_t color, bool on) {
 #if IS_ENABLED(CONFIG_ZMK_BLE)
 
 void indicate_connectivity(void) {
-    struct blink_item blink = {.duration_ms = 500, .sleep_ms = 200, .blink_time = 10};
+    struct blink_item blink = {
+        .duration_ms = 500, .sleep_ms = 200, .blink_time = 10, .type = COLOR_TYPE_BLE};
 
     uint8_t profile_index = zmk_ble_active_profile_index();
 
@@ -163,7 +233,7 @@ ZMK_SUBSCRIPTION(led_output_listener, zmk_ble_active_profile_changed);
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
 
 void indicate_battery(void) {
-    struct blink_item blink = {.duration_ms = 500};
+    struct blink_item blink = {.duration_ms = 500, .type = COLOR_TYPE_BATTERY};
     uint8_t battery_level = zmk_battery_state_of_charge();
     int retry = 0;
     while (battery_level == 0 && retry++ < 10) {
@@ -172,7 +242,6 @@ void indicate_battery(void) {
     };
 
     if (battery_level == 0) {
-        // LOG_INF("Battery level undetermined (zero), blinking magenta");
         blink.color = COLOR_IND_1;
     } else if (battery_level >= 80) {
         blink.color = COLOR_IND_1 | COLOR_IND_2 | COLOR_IND_3 | COLOR_IND_4;
@@ -194,8 +263,11 @@ static int led_battery_listener_cb(const zmk_event_t *eh) {
     }
     uint8_t battery_level = as_zmk_battery_state_changed(eh)->state_of_charge;
     if (battery_level > 0 && battery_level <= 5) {
-        struct blink_item blink = {
-            .duration_ms = 500, .color = COLOR_WHITE, .blink_time = 5, .sleep_ms = 500};
+        struct blink_item blink = {.duration_ms = 500,
+                                   .type = COLOR_TYPE_BATTERY,
+                                   .color = COLOR_WHITE,
+                                   .blink_time = 5,
+                                   .sleep_ms = 500};
         k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
     }
     return 0;
@@ -207,7 +279,7 @@ ZMK_SUBSCRIPTION(led_battery_listener, zmk_battery_state_changed);
 
 void indicate_layer(void) {
     uint8_t index = zmk_keymap_highest_layer_active();
-    struct blink_item blink = {.duration_ms = 500, .sleep_ms = 100};
+    struct blink_item blink = {.duration_ms = 500, .sleep_ms = 100, .type = COLOR_TYPE_LAYER};
     LOG_LAYER(index, index);
     blink.color = color_idx[index + 1];
     k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
@@ -280,11 +352,9 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
 
         if (state_changed) {
             if (state == BLINK_STATE_ON) {
-                // LOG_INF("Applying LEDs ON with color 0x%02x", blink.color);
-                update_leds(blink.color, true);
+                update_leds(&blink, true);
             } else if (state == BLINK_STATE_OFF) {
-                // LOG_INF("Applying LEDs OFF");
-                update_leds(0, false);
+                update_leds(&blink, false);
             }
             state_changed = false;
         }
@@ -304,48 +374,24 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
     // LOG_INF("led_init_thread started");
 
 #if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
-    // LOG_INF("LED strip device pointer: %p", (void *)strip_dev);
     if (device_is_ready(strip_dev)) {
-        // LOG_INF("LED strip device '%s' is ready", strip_dev->name);
-        // size_t len = led_strip_length(strip_dev);
-        // LOG_INF("LED strip length: %d pixels", len);
+        struct led_rgb rainbow_pixels[4];
+        uint8_t r, g, b;
 
-        // Test: flash all LEDs red to verify strip works
-        // LOG_INF("Running LED strip test pattern...");
-        struct led_rgb test_pixels[4];
-        for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
+        for (int step = 0; step < 60; step++) {
+            for (int i = 0; i < 4; i++) {
+                uint8_t hue = (step * 6 + i * 30) % 360;
+                hsv_to_rgb(hue, 255, 10, &r, &g, &b);
+                rainbow_pixels[i] = (struct led_rgb){.r = r, .g = g, .b = b};
+            }
+            led_strip_update_rgb(strip_dev, rainbow_pixels, 4);
+            k_sleep(K_MSEC(33));
         }
-        int rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        // LOG_INF("Test off: led_strip_update_rgb returned %d", rc);
-        k_sleep(K_MSEC(100));
-
-        for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 10, .g = 0, .b = 0};
-        }
-        rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        // LOG_INF("Test red: led_strip_update_rgb returned %d", rc);
-        k_sleep(K_MSEC(500));
 
         for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 0, .g = 10, .b = 0};
+            rainbow_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
         }
-        rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        // LOG_INF("Test green: led_strip_update_rgb returned %d", rc);
-        k_sleep(K_MSEC(500));
-
-        for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 10};
-        }
-        rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        // LOG_INF("Test blue: led_strip_update_rgb returned %d", rc);
-        k_sleep(K_MSEC(500));
-
-        for (int i = 0; i < 4; i++) {
-            test_pixels[i] = (struct led_rgb){.r = 0, .g = 0, .b = 0};
-        }
-        rc = led_strip_update_rgb(strip_dev, test_pixels, 4);
-        // LOG_INF("Test off (final): led_strip_update_rgb returned %d", rc);
+        led_strip_update_rgb(strip_dev, rainbow_pixels, 4);
     } else {
         LOG_ERR("LED strip device is NOT ready! Check device tree and Kconfig.");
     }
