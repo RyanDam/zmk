@@ -130,14 +130,12 @@ struct zmk_rpc_subsystem_settings_reset {
 #define ZMK_RPC_NOTIFICATION(subsys, _type, ...)                                                   \
     ((zmk_studio_Notification){                                                                    \
         .which_subsystem = zmk_studio_Notification_##subsys##_tag,                                 \
-        .subsystem =                                                                               \
-            {                                                                                      \
-                .subsys =                                                                          \
-                    {                                                                              \
-                        .which_notification_type = zmk_##subsys##_Notification_##_type##_tag,      \
-                        .notification_type = {._type = __VA_ARGS__},                               \
-                    },                                                                             \
+        .subsystem = {                                                                             \
+            .subsys = {                                                                            \
+                .which_notification_type = zmk_##subsys##_Notification_##_type##_tag,              \
+                .notification_type = {._type = __VA_ARGS__},                                       \
             },                                                                                     \
+        },                                                                                         \
     })
 
 /**
@@ -152,22 +150,17 @@ struct zmk_rpc_subsystem_settings_reset {
 #define ZMK_RPC_RESPONSE(subsys, _type, ...)                                                       \
     ((zmk_studio_Response){                                                                        \
         .which_type = zmk_studio_Response_request_response_tag,                                    \
-        .type =                                                                                    \
-            {                                                                                      \
-                .request_response =                                                                \
-                    {                                                                              \
-                        .which_subsystem = zmk_studio_RequestResponse_##subsys##_tag,              \
-                        .subsystem =                                                               \
-                            {                                                                      \
-                                .subsys =                                                          \
-                                    {                                                              \
-                                        .which_response_type =                                     \
-                                            zmk_##subsys##_Response_##_type##_tag,                 \
-                                        .response_type = {._type = __VA_ARGS__},                   \
-                                    },                                                             \
-                            },                                                                     \
+        .type = {                                                                                  \
+            .request_response = {                                                                  \
+                .which_subsystem = zmk_studio_RequestResponse_##subsys##_tag,                      \
+                .subsystem = {                                                                     \
+                    .subsys = {                                                                    \
+                        .which_response_type = zmk_##subsys##_Response_##_type##_tag,              \
+                        .response_type = {._type = __VA_ARGS__},                                   \
                     },                                                                             \
+                },                                                                                 \
             },                                                                                     \
+        },                                                                                         \
     })
 
 typedef int(zmk_rpc_event_mapper_cb)(const zmk_event_t *ev, zmk_studio_Notification *n);

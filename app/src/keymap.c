@@ -23,6 +23,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/sensor_event.h>
+#include <zmk/touchpad.h>
 
 static zmk_keymap_layers_state_t _zmk_keymap_layer_locks = 0;
 static zmk_keymap_layers_state_t _zmk_keymap_layer_state = 0;
@@ -149,6 +150,14 @@ uint8_t map_layer_id_to_index(zmk_keymap_layer_id_t layer_id) {
 #define LAYER_ID_TO_INDEX(_layer) _layer
 
 #endif // IS_ENABLED(CONFIG_ZMK_KEYMAP_LAYER_REORDERING)
+
+zmk_keymap_layer_index_t zmk_keymap_layer_id_to_index(zmk_keymap_layer_id_t layer_id) {
+#if IS_ENABLED(CONFIG_ZMK_KEYMAP_LAYER_REORDERING)
+    return map_layer_id_to_index(layer_id);
+#else
+    return layer_id;
+#endif
+}
 
 static inline int set_layer_state(zmk_keymap_layer_id_t layer_id, bool state, bool locking) {
     int ret = 0;
@@ -570,6 +579,12 @@ int zmk_keymap_check_unsaved_changes(void) {
 #endif // IS_ENABLED(CONFIG_ZMK_KEYMAP_LAYER_REORDERING)
     }
 
+#if IS_ENABLED(CONFIG_ZMK_TOUCHPAD)
+    if (zmk_touchpad_check_unsaved_changes()) {
+        return 1;
+    }
+#endif
+
     return 0;
 }
 
@@ -707,7 +722,19 @@ int zmk_keymap_save_changes(void) {
     }
 #endif // IS_ENABLED(CONFIG_ZMK_KEYMAP_LAYER_REORDERING)
 
-    return save_layer_names();
+    ret = save_layer_names();
+    if (ret < 0) {
+        return ret;
+    }
+
+#if IS_ENABLED(CONFIG_ZMK_TOUCHPAD)
+    ret = zmk_touchpad_save_changes();
+    if (ret < 0) {
+        return ret;
+    }
+#endif
+
+    return 0;
 }
 
 #if IS_ENABLED(CONFIG_ZMK_KEYMAP_LAYER_REORDERING)
@@ -757,6 +784,10 @@ int zmk_keymap_discard_changes(void) {
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
         }
     }
+
+#if IS_ENABLED(CONFIG_ZMK_TOUCHPAD)
+    zmk_touchpad_discard_changes();
+#endif
 
     return ret;
 }

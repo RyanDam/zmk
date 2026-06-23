@@ -106,7 +106,7 @@ target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_start_eve
 target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_move_event.c)
 target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_end_event.c)
 target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_tap_event.c)
-target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/behaviors/behavior_mpr121_touchpad.c)
+target_sources_ifdef(CONFIG_ZMK_TOUCHPAD app PRIVATE src/touchpad.c)
 
 target_sources_ifdef(CONFIG_USB_DEVICE_STACK app PRIVATE src/usb.c)
 target_sources_ifdef(CONFIG_ZMK_USB app PRIVATE src/usb_hid.c)
@@ -138,6 +138,7 @@ if (CONFIG_ZMK_STUDIO_RPC)
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/keymap.proto
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/macros.proto
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/sensors.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/touchpad.proto
   )
 
   target_include_directories(app PUBLIC ${CMAKE_CURRENT_BINARY_DIR})

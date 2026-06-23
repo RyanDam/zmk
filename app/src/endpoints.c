@@ -448,7 +448,8 @@ static enum zmk_transport get_selected_transport(void) {
         break;
     }
 
-    LOG_DBG("Preferred endpoint transport is %d but no transports are ready", preferred_transport);
+    // LOG_DBG("Preferred endpoint transport is %d but no transports are ready",
+    // preferred_transport);
     return ZMK_TRANSPORT_NONE;
 }
 

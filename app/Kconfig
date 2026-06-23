@@ -710,6 +710,13 @@ config ZMK_KEYMAP_SENSORS_MAX_BINDINGS
 
 endif # ZMK_KEYMAP_SENSORS
 
+config ZMK_TOUCHPAD
+    bool "Touchpad Support"
+    default y
+    depends on MPR121
+    help
+      Touchpad module with per-layer bindings and mode support.
+
 module = ZMK
 module-str = zmk
 source "subsys/logging/Kconfig.template.log_config"
