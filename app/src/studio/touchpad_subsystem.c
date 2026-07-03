@@ -43,7 +43,9 @@ static bool encode_layers(pb_ostream_t *stream, const pb_field_t *field, void *c
             // LOG_WRN("  name=%s", layer_msg.name);
         }
 
-        layer_msg.mode = zmk_touchpad_get_mode(lidx);
+        layer_msg.mode = zmk_touchpad_get_mode(lidx) == TOUCHPAD_MODE_MOUSE_SIMULATION
+                             ? zmk_touchpad_Mode_MODE_MOUSE_SIMULATION
+                             : zmk_touchpad_Mode_MODE_GESTURE;
         // LOG_WRN("  mode=%d", layer_msg.mode);
 
         layer_msg.bindings_count = TOUCHPAD_NUM_BINDINGS;
@@ -75,6 +77,7 @@ zmk_studio_Response get_config(const zmk_studio_Request *req) {
     // LOG_WRN("get_config: encoding %d layers", ZMK_KEYMAP_LAYERS_LEN);
     zmk_touchpad_TouchpadConfig config = zmk_touchpad_TouchpadConfig_init_zero;
     config.layers.funcs.encode = encode_layers;
+    config.sensitivity = zmk_touchpad_get_sensitivity();
     return TP_RESPONSE(get_config, config);
 }
 
@@ -161,6 +164,32 @@ zmk_studio_Response set_layer_bindings(const zmk_studio_Request *req) {
     return TP_RESPONSE(set_layer_bindings, resp);
 }
 
+zmk_studio_Response set_sensitivity(const zmk_studio_Request *req) {
+    const zmk_touchpad_SetSensitivityRequest *set_req =
+        &req->subsystem.touchpad.request_type.set_sensitivity;
+
+    zmk_touchpad_SetSensitivityResponse resp = zmk_touchpad_SetSensitivityResponse_init_zero;
+
+    if (set_req->sensitivity < 100 || set_req->sensitivity > 300) {
+        resp.result = zmk_touchpad_SensitivityResult_SENSITIVITY_INVALID_VALUE;
+        return TP_RESPONSE(set_sensitivity, resp);
+    }
+
+    int ret = zmk_touchpad_set_sensitivity(set_req->sensitivity);
+    if (ret < 0) {
+        resp.result = zmk_touchpad_SensitivityResult_SENSITIVITY_INVALID_VALUE;
+        return TP_RESPONSE(set_sensitivity, resp);
+    }
+
+    resp.result = zmk_touchpad_SensitivityResult_SENSITIVITY_OK;
+    {
+        zmk_studio_Notification notify = KEYMAP_NOTIFICATION(unsaved_changes_status_changed, true);
+        raise_zmk_studio_rpc_notification(
+            (struct zmk_studio_rpc_notification){.notification = notify});
+    }
+    return TP_RESPONSE(set_sensitivity, resp);
+}
+
 static zmk_studio_Response check_unsaved_changes(const zmk_studio_Request *req) {
     // LOG_DBG("");
     return TP_RESPONSE(check_unsaved_changes, zmk_touchpad_check_unsaved_changes() > 0);
@@ -210,3 +239,4 @@ ZMK_RPC_SUBSYSTEM_HANDLER(touchpad, set_layer_bindings, ZMK_STUDIO_RPC_HANDLER_S
 ZMK_RPC_SUBSYSTEM_HANDLER(touchpad, check_unsaved_changes, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(touchpad, save_changes, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(touchpad, discard_changes, ZMK_STUDIO_RPC_HANDLER_SECURED);
+ZMK_RPC_SUBSYSTEM_HANDLER(touchpad, set_sensitivity, ZMK_STUDIO_RPC_HANDLER_SECURED);

@@ -82,4 +82,9 @@ struct mpr121_data {
     float total_movement;
 
     struct mpr121_ab_filter ab_filter;
+
+    uint16_t movement_scale_override;
 };
+
+uint16_t mpr121_get_effective_scale(void);
+int mpr121_set_movement_scale(uint16_t scale);

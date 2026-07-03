@@ -18,9 +18,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/behavior.h>
 #include <zmk/hid.h>
 #include <zmk/endpoints.h>
+#include <mpr121.h>
 
 #define TP_MODE_KEY "touchpad/mode/%d"
 #define TP_BIND_KEY "touchpad/b/%d/%d"
+#define TP_SENS_KEY "touchpad/sensitivity"
 
 #define PENDING_ARRAY_SIZE DIV_ROUND_UP(TOUCHPAD_NUM_BINDINGS, 8)
 
@@ -31,6 +33,9 @@ static struct zmk_behavior_binding touchpad_stock_bindings[ZMK_KEYMAP_LAYERS_LEN
 static touchpad_mode_t touchpad_stock_mode[ZMK_KEYMAP_LAYERS_LEN];
 static uint8_t touchpad_pending_mode[ZMK_KEYMAP_LAYERS_LEN];
 static uint8_t touchpad_pending_bindings[ZMK_KEYMAP_LAYERS_LEN][PENDING_ARRAY_SIZE];
+
+static uint16_t touchpad_sensitivity;
+static uint8_t touchpad_pending_sensitivity;
 
 #if DT_NODE_EXISTS(DT_NODELABEL(touchpad))
 
@@ -145,6 +150,21 @@ int zmk_touchpad_check_unsaved_changes(void) {
                 return 1;
         }
     }
+    if (touchpad_pending_sensitivity)
+        return 1;
+    return 0;
+}
+
+uint16_t zmk_touchpad_get_sensitivity(void) { return mpr121_get_effective_scale(); }
+
+int zmk_touchpad_set_sensitivity(uint16_t sensitivity) {
+    if (sensitivity < 100 || sensitivity > 300)
+        return -EINVAL;
+    if (touchpad_sensitivity == sensitivity)
+        return 0;
+    touchpad_sensitivity = sensitivity;
+    touchpad_pending_sensitivity = 1;
+    mpr121_set_movement_scale(sensitivity);
     return 0;
 }
 
@@ -331,6 +351,16 @@ int zmk_touchpad_save_changes(void) {
             }
         }
     }
+    if (touchpad_pending_sensitivity) {
+        LOG_DBG("Touchpad save sensitivity %s %u", TP_SENS_KEY, touchpad_sensitivity);
+        int ret =
+            settings_save_one(TP_SENS_KEY, &touchpad_sensitivity, sizeof(touchpad_sensitivity));
+        if (ret < 0) {
+            LOG_ERR("Failed to save sensitivity (%d)", ret);
+            return ret;
+        }
+        touchpad_pending_sensitivity = 0;
+    }
     return 0;
 }
 
@@ -341,6 +371,9 @@ int zmk_touchpad_discard_changes(void) {
         touchpad_pending_mode[l] = 0;
         memset(touchpad_pending_bindings[l], 0, PENDING_ARRAY_SIZE);
     }
+    touchpad_sensitivity = 0;
+    touchpad_pending_sensitivity = 0;
+    mpr121_set_movement_scale(0);
     return settings_load_subtree("touchpad");
 }
 
@@ -359,6 +392,10 @@ int zmk_touchpad_reset_settings(void) {
         touchpad_mode[l] = touchpad_stock_mode[l];
         memcpy(touchpad_bindings[l], touchpad_stock_bindings[l], sizeof(touchpad_bindings[l]));
     }
+    settings_delete(TP_SENS_KEY);
+    touchpad_sensitivity = 0;
+    touchpad_pending_sensitivity = 0;
+    mpr121_set_movement_scale(0);
     return 0;
 }
 
@@ -374,7 +411,7 @@ static int touchpad_handle_set(const char *name, size_t len, settings_read_cb re
         if (len != sizeof(touchpad_mode[layer]))
             return -EINVAL;
         int err = read_cb(cb_arg, &touchpad_mode[layer], len);
-        // LOG_DBG("Init touchpad mode, layer %d mode %d", layer, touchpad_mode[layer]);
+        LOG_DBG("Init touchpad mode, layer %d mode %d", layer, touchpad_mode[layer]);
         if (err <= 0)
             return err;
     } else if (settings_name_steq(name, "b", &next) && next) {
@@ -404,12 +441,18 @@ static int touchpad_handle_set(const char *name, size_t len, settings_read_cb re
             .param1 = setting.param1,
             .param2 = setting.param2,
         };
-        // LOG_DBG("Init touchpad binding, layer %d bind_idx %d, name bev %s bev id %d bev %s, %d,
-        // %d",
-        //         layer, bind_idx, name_dev, setting.behavior_local_id,
-        //         touchpad_bindings[layer][bind_idx].behavior_dev,
-        //         touchpad_bindings[layer][bind_idx].param1,
-        //         touchpad_bindings[layer][bind_idx].param2);
+        LOG_DBG(
+            "Init touchpad binding, layer %d bind_idx %d, name bev %s bev id %d bev %s, %d, % d ",
+            layer, bind_idx, name_dev, setting.behavior_local_id,
+            touchpad_bindings[layer][bind_idx].behavior_dev,
+            touchpad_bindings[layer][bind_idx].param1, touchpad_bindings[layer][bind_idx].param2);
+    } else if (strcmp(name, "sensitivity") == 0) {
+        if (len != sizeof(touchpad_sensitivity))
+            return -EINVAL;
+        int err = read_cb(cb_arg, &touchpad_sensitivity, len);
+        if (err <= 0)
+            return err;
+        LOG_DBG("Init touchpad sensitivity %u", touchpad_sensitivity);
     }
     return 0;
 }
@@ -437,6 +480,10 @@ static int touchpad_init(void) {
     int ret = settings_load_subtree("touchpad");
     if (ret < 0) {
         LOG_WRN("Failed to load touchpad settings (%d)", ret);
+    }
+
+    if (touchpad_sensitivity > 0) {
+        mpr121_set_movement_scale(touchpad_sensitivity);
     }
 
     LOG_INF("Touchpad module initialized");

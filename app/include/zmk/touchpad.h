@@ -37,3 +37,6 @@ int zmk_touchpad_check_unsaved_changes(void);
 int zmk_touchpad_save_changes(void);
 int zmk_touchpad_discard_changes(void);
 int zmk_touchpad_reset_settings(void);
+
+uint16_t zmk_touchpad_get_sensitivity(void);
+int zmk_touchpad_set_sensitivity(uint16_t sensitivity);

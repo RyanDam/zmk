@@ -127,6 +127,7 @@ static struct mpr121_grid_pos mpr121_calc_position_weighted(const struct device 
         return mpr121_calc_position(touch_status, last_x, last_y);
     }
 
+    // LOG_INF("---- START READ SECTION ----");
     float sum_wx = 0.0f;
     float total_wx = 0.0f;
     float sum_wy = 0.0f;
@@ -146,10 +147,14 @@ static struct mpr121_grid_pos mpr121_calc_position_weighted(const struct device 
         if (ci >= 0) {
             sum_wx += weight * (float)ci;
             total_wx += weight;
+            // LOG_INF("Touchpad WEIGHT X %d base %f filter %f weight %f", ci, (double)baseline[e],
+            //         (double)filtered[e], (double)weight);
         }
         if (ri >= 0) {
             sum_wy += weight * (float)ri;
             total_wy += weight;
+            // LOG_INF("Touchpad WEIGHT Y %d base %f filter %f weight %f", ri, (double)baseline[e],
+            //         (double)filtered[e], (double)weight);
         }
     }
 
@@ -159,6 +164,10 @@ static struct mpr121_grid_pos mpr121_calc_position_weighted(const struct device 
     if (total_wy > 0.0f) {
         pos.y = (sum_wy / total_wy) / 5.0f;
     }
+
+    // LOG_ERR("Touchpad SUM wx %f TOTAL wx %f", (double)sum_wx, (double)total_wx);
+    // LOG_ERR("Touchpad SUM wy %f TOTAL wy %f", (double)sum_wy, (double)total_wy);
+    // LOG_ERR("Touchpad CAL X %f Y %f", (double)pos.x, (double)pos.y);
 
     return pos;
 }
@@ -253,6 +262,8 @@ static void mpr121_poll_handler(struct k_work *work) {
     const struct device *dev = data->dev;
     const struct mpr121_config *cfg = dev->config;
 
+    uint16_t scale = data->movement_scale_override ?: cfg->movement_scale;
+
     uint16_t touch_status = mpr121_read_touch_status(dev);
     bool currently_touched = (touch_status != 0);
 
@@ -267,8 +278,8 @@ static void mpr121_poll_handler(struct k_work *work) {
 
         struct mpr121_grid_pos pos =
             mpr121_calc_position_weighted(dev, combined_status, 0.5f, 0.5f);
-        pos.x *= cfg->movement_scale;
-        pos.y *= cfg->movement_scale;
+        pos.x *= scale;
+        pos.y *= scale;
 
         ab_filter_reset(&data->ab_filter);
         ab_filter_update(&data->ab_filter, pos.x, pos.y, cfg->ab_filter_alpha,
@@ -285,11 +296,10 @@ static void mpr121_poll_handler(struct k_work *work) {
             .y = pos.y,
         });
     } else if (data->is_touched && currently_touched) {
-        struct mpr121_grid_pos raw_pos =
-            mpr121_calc_position_weighted(dev, touch_status, data->last_pos.x / cfg->movement_scale,
-                                          data->last_pos.y / cfg->movement_scale);
-        raw_pos.x *= cfg->movement_scale;
-        raw_pos.y *= cfg->movement_scale;
+        struct mpr121_grid_pos raw_pos = mpr121_calc_position_weighted(
+            dev, touch_status, data->last_pos.x / scale, data->last_pos.y / scale);
+        raw_pos.x *= scale;
+        raw_pos.y *= scale;
 
         ab_filter_update(&data->ab_filter, raw_pos.x, raw_pos.y, cfg->ab_filter_alpha,
                          (float)cfg->poll_interval_ms);
@@ -402,11 +412,24 @@ static int mpr121_init_hw(const struct device *dev) {
     mpr121_i2c_write(dev, MPR121_NHDF, 0x05);
     mpr121_i2c_write(dev, MPR121_NCLF, 0x01);
     mpr121_i2c_write(dev, MPR121_FDLF, 0x00);
-    mpr121_i2c_write(dev, MPR121_NHDT, 0x00);
-    mpr121_i2c_write(dev, MPR121_NCLT, 0x00);
-    mpr121_i2c_write(dev, MPR121_FDLT, 0x00);
-    mpr121_i2c_write(dev, MPR121_DEBOUNCE, 0x00);
-    mpr121_i2c_write(dev, MPR121_CONFIG1, 0x50);
+    // Slow the baseline during a touched state significantly
+    mpr121_i2c_write(dev, MPR121_NHDT, 0x01); // was 0x00
+    mpr121_i2c_write(dev, MPR121_NCLT, 0xFF); // was 0x00 — make baseline very slow to move
+    mpr121_i2c_write(dev, MPR121_FDLT, 0xFF); // was 0x00
+
+    // DEBOUNCE = 0x00 (line 410) — both DT and DR are zero, meaning zero debounce. Through a
+    // plastic cover you'll likely want 0x11 (DT=1, DR=1) or 0x22 to filter false triggers.
+    mpr121_i2c_write(dev, MPR121_DEBOUNCE, 0x11);
+
+    // CONFIG1 = 0x50 (line 411) — this is register 0x5C. Breaking it down: FFI = 01 (10 samples)
+    // and CDC = 010000 (16 µA). For your plastic overlay, consider bumping CDC to 0x58 (FFI=01,
+    // CDC=24 µA = 0x18) if signals feel weak.
+    mpr121_i2c_write(dev, MPR121_CONFIG1, 0x58);
+
+    // CONFIG2 = 0x20 (line 412) — this is register 0x5D. CDT = 001 (0.5 µs, default), SFI = 00 (4
+    // samples), ESI = 000 (1 ms — very fast, but your poll loop at 5 ms dominates anyway). This is
+    // fine as-is. If you see noise through the overlay, changing to 0x24 sets ESI to 16 ms (the
+    // datasheet default) and reduces power.
     mpr121_i2c_write(dev, MPR121_CONFIG2, 0x20);
 
     ret = mpr121_i2c_write(dev, MPR121_ECR, 0x80 | MPR121_NUM_ELECTRODES);
@@ -428,6 +451,7 @@ static int mpr121_init(const struct device *dev) {
     data->last_touch_status = 0;
     data->is_touched = false;
     data->ab_filter = (struct mpr121_ab_filter){0};
+    data->movement_scale_override = 0;
 
     if (!device_is_ready(cfg->i2c.bus)) {
         LOG_ERR("I2C bus %s not ready", cfg->i2c.bus->name);
@@ -468,6 +492,27 @@ static int mpr121_init(const struct device *dev) {
     return 0;
 }
 
+uint16_t mpr121_get_effective_scale(void) {
+    const struct device *dev = DEVICE_DT_GET_OR_NULL(DT_INST(0, nxp_mpr121));
+    if (!dev || !device_is_ready(dev)) {
+        return 200;
+    }
+    struct mpr121_data *data = dev->data;
+    const struct mpr121_config *cfg = dev->config;
+    return data->movement_scale_override ?: cfg->movement_scale;
+}
+
+int mpr121_set_movement_scale(uint16_t scale) {
+    const struct device *dev = DEVICE_DT_GET_OR_NULL(DT_INST(0, nxp_mpr121));
+    if (!dev || !device_is_ready(dev)) {
+        return -ENODEV;
+    }
+    struct mpr121_data *data = dev->data;
+    data->movement_scale_override = scale;
+    LOG_INF("MPR121 movement scale set to %u", scale);
+    return 0;
+}
+
 #define MPR121_INST(n)                                                                             \
     static struct mpr121_data mpr121_data_##n;                                                     \
     static const struct mpr121_config mpr121_cfg_##n = {                                           \
@@ -482,7 +527,7 @@ static int mpr121_init(const struct device *dev) {
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
         .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 20),                      \
         .movement_scale = DT_INST_PROP_OR(n, movement_scale, 200),                                 \
-        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 80) / 100.0f,                       \
+        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 50) / 100.0f,                       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \
                           CONFIG_SENSOR_INIT_PRIORITY, NULL);
