@@ -812,7 +812,7 @@ static int keymap_track_changed_bindings(const char *key, size_t len, settings_r
             return -EINVAL;
         }
 
-        uint8_t key_position = strtoul(endptr + 1, &endptr, 10);
+        uint32_t key_position = strtoul(endptr + 1, &endptr, 10);
 
         if (*endptr != '\0') {
             LOG_WRN("Invalid key_position number: %s with endptr %s", next, endptr);
@@ -1005,6 +1005,9 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
         .timestamp = timestamp,
     };
 
+    LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx, layer_id,
+            sensor_index, binding->behavior_dev ? binding->behavior_dev : "(null)");
+
     const struct zmk_sensor_config *sensor_config = zmk_sensors_get_config_at_index(sensor_index);
 
     int ret = behavior_sensor_keymap_binding_accept_data(binding, event, sensor_config,
@@ -1144,7 +1147,7 @@ static int keymap_handle_set(const char *name, size_t len, settings_read_cb read
             return -EINVAL;
         }
 
-        uint8_t key_position = strtoul(endptr + 1, &endptr, 10);
+        uint32_t key_position = strtoul(endptr + 1, &endptr, 10);
 
         if (*endptr != '\0') {
             LOG_WRN("Invalid key_position number: %s with endptr %s", next, endptr);
