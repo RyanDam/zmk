@@ -315,8 +315,10 @@ static void mpr121_poll_handler(struct k_work *work) {
         float dx = pos.x - data->last_pos.x;
         float dy = pos.y - data->last_pos.y;
 
-        if (dx != 0.0f || dy != 0.0f) {
-            data->total_movement += fabsf(dx) + fabsf(dy);
+        float displacement = sqrtf(dx * dx + dy * dy);
+
+        if (displacement > cfg->move_deadzone) {
+            data->total_movement += displacement;
             raise_zmk_mpr121_touch_move_event((struct zmk_mpr121_touch_move_event){
                 .dx = dx,
                 .dy = dy,
@@ -527,7 +529,8 @@ int mpr121_set_movement_scale(uint16_t scale) {
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
         .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 20),                      \
         .movement_scale = DT_INST_PROP_OR(n, movement_scale, 200),                                 \
-        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 50) / 100.0f,                       \
+        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 30) / 100.0f,                         \
+        .move_deadzone = (float)DT_INST_PROP_OR(n, move_deadzone, 1) / 100.0f,                       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \
                           CONFIG_SENSOR_INIT_PRIORITY, NULL);

@@ -66,6 +66,7 @@ struct mpr121_config {
     uint16_t tap_max_displacement;
     uint16_t movement_scale;
     float ab_filter_alpha;
+    float move_deadzone;
 };
 
 struct mpr121_data {

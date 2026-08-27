@@ -51,6 +51,12 @@ ab_filter_update(struct mpr121_ab_filter *f, float meas_x, float meas_y,
 
     f->x = x_pred + alpha * rx;
     f->y = y_pred + alpha * ry;
-    f->vx = f->vx + (beta / dt_ms) * rx;
-    f->vy = f->vy + (beta / dt_ms) * ry;
+
+    float delta_vx = (beta / dt_ms) * rx;
+    float delta_vy = (beta / dt_ms) * ry;
+
+    // Clamp velocity to prevent single-jump propagation
+    float max_v = 2.0f;
+    f->vx = fmaxf(-max_v, fminf(max_v, f->vx + delta_vx));
+    f->vy = fmaxf(-max_v, fminf(max_v, f->vy + delta_vy));
 }
