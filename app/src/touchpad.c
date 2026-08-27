@@ -158,7 +158,7 @@ int zmk_touchpad_check_unsaved_changes(void) {
 uint16_t zmk_touchpad_get_sensitivity(void) { return mpr121_get_effective_scale(); }
 
 int zmk_touchpad_set_sensitivity(uint16_t sensitivity) {
-    if (sensitivity < 100 || sensitivity > 300)
+    if (sensitivity < 100 || sensitivity > 500)
         return -EINVAL;
     if (touchpad_sensitivity == sensitivity)
         return 0;

@@ -170,7 +170,7 @@ zmk_studio_Response set_sensitivity(const zmk_studio_Request *req) {
 
     zmk_touchpad_SetSensitivityResponse resp = zmk_touchpad_SetSensitivityResponse_init_zero;
 
-    if (set_req->sensitivity < 100 || set_req->sensitivity > 300) {
+    if (set_req->sensitivity < 100 || set_req->sensitivity > 500) {
         resp.result = zmk_touchpad_SensitivityResult_SENSITIVITY_INVALID_VALUE;
         return TP_RESPONSE(set_sensitivity, resp);
     }
