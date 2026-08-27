@@ -2,6 +2,12 @@
 
 ZMK keyboard firmware (Zephyr RTOS). This is a fork: `origin` = RyanDam/zmk, `upstream` = zmkfirmware/zmk.
 
+## Branch features (vs `main`)
+
+The current branch `feat/coban-indicator` adds features on top of `main`: LED indicator behavior (incl. WS2812), dynamic macro behavior, MPR121 touchpad driver + touchpad module, Kailh Choc encoder driver, GPIO key driver, multi-binding sensor keymaps, new Studio RPC subsystems (sensor/touchpad/macro), and USB-first transport selection.
+
+Full details: see [FEATURES.MD](FEATURES.MD).
+
 ## West workspace layout
 
 - `app/` is the west topdir (the only place you edit firmware code: `app/src`, `app/include`, `app/module`, `app/drivers`, `app/dts`).
