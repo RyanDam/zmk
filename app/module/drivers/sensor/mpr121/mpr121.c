@@ -268,6 +268,9 @@ static void mpr121_poll_handler(struct k_work *work) {
     bool currently_touched = (touch_status != 0);
 
     if (!data->is_touched && currently_touched) {
+        mpr121_i2c_write(dev, MPR121_CONFIG2, MPR121_CONFIG2_FAST);
+        LOG_DBG("MPR121 scan rate set to 1ms (active)");
+
         uint16_t combined_status = touch_status;
 
         for (int s = 0; s < 4; s++) {
@@ -339,6 +342,9 @@ static void mpr121_poll_handler(struct k_work *work) {
     if (data->is_touched) {
         k_work_schedule(&data->poll_work, K_MSEC(cfg->poll_interval_ms));
     } else {
+        mpr121_i2c_write(dev, MPR121_CONFIG2, MPR121_CONFIG2_SLOW);
+        LOG_DBG("MPR121 scan rate set to 16ms (idle)");
+
         int pin_level = gpio_pin_get_dt(&data->config->interrupt_gpio);
         if (pin_level < 0) {
             LOG_ERR("Failed to read IRQ pin level: %d, attempting re-enable", pin_level);
@@ -428,11 +434,7 @@ static int mpr121_init_hw(const struct device *dev) {
     // CDC=24 µA = 0x18) if signals feel weak.
     mpr121_i2c_write(dev, MPR121_CONFIG1, 0x58);
 
-    // CONFIG2 = 0x20 (line 412) — this is register 0x5D. CDT = 001 (0.5 µs, default), SFI = 00 (4
-    // samples), ESI = 000 (1 ms — very fast, but your poll loop at 5 ms dominates anyway). This is
-    // fine as-is. If you see noise through the overlay, changing to 0x24 sets ESI to 16 ms (the
-    // datasheet default) and reduces power.
-    mpr121_i2c_write(dev, MPR121_CONFIG2, 0x20);
+    mpr121_i2c_write(dev, MPR121_CONFIG2, MPR121_CONFIG2_FAST);
 
     ret = mpr121_i2c_write(dev, MPR121_ECR, 0x80 | MPR121_NUM_ELECTRODES);
     if (ret < 0) {
@@ -489,6 +491,9 @@ static int mpr121_init(const struct device *dev) {
         LOG_WRN("Interrupt GPIO not ready");
     }
 
+    mpr121_i2c_write(dev, MPR121_CONFIG2, MPR121_CONFIG2_SLOW);
+    LOG_INF("MPR121 idle scan rate set to 16ms");
+
     k_work_init_delayable(&data->poll_work, mpr121_poll_handler);
     LOG_INF("MPR121 driver init ok");
     return 0;
@@ -529,8 +534,8 @@ int mpr121_set_movement_scale(uint16_t scale) {
         .tap_max_duration_ms = DT_INST_PROP_OR(n, tap_max_duration_ms, 200),                       \
         .tap_max_displacement = DT_INST_PROP_OR(n, tap_max_displacement, 20),                      \
         .movement_scale = DT_INST_PROP_OR(n, movement_scale, 200),                                 \
-        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 30) / 100.0f,                         \
-        .move_deadzone = (float)DT_INST_PROP_OR(n, move_deadzone, 1) / 100.0f,                       \
+        .ab_filter_alpha = DT_INST_PROP_OR(n, ab_filter_alpha, 30) / 100.0f,                       \
+        .move_deadzone = (float)DT_INST_PROP_OR(n, move_deadzone, 1) / 100.0f,                     \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, mpr121_init, NULL, &mpr121_data_##n, &mpr121_cfg_##n, POST_KERNEL,    \
                           CONFIG_SENSOR_INIT_PRIORITY, NULL);

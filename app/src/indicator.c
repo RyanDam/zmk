@@ -13,6 +13,10 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/keymap.h>
 
+#if IS_ENABLED(CONFIG_MPR121)
+#include <zmk/events/mpr121_touch_event.h>
+#endif
+
 #include <zephyr/logging/log.h>
 
 #include <indicator/indicator.h>
@@ -55,6 +59,8 @@ typedef enum {
     COLOR_TYPE_LAYER,
     COLOR_TYPE_BLE,
     COLOR_TYPE_BATTERY,
+    COLOR_TYPE_TP_IRQ_ACTIVE,
+    COLOR_TYPE_TP_IRQ_INACTIVE,
 } led_color_type_t;
 
 static void get_color_rgb(led_color_type_t type, uint8_t *r, uint8_t *g, uint8_t *b) {
@@ -72,6 +78,16 @@ static void get_color_rgb(led_color_type_t type, uint8_t *r, uint8_t *g, uint8_t
     case COLOR_TYPE_BATTERY:
         *r = 10;
         *g = 0;
+        *b = 0;
+        break;
+    case COLOR_TYPE_TP_IRQ_ACTIVE:
+        *r = 5;
+        *g = 0;
+        *b = 0;
+        break;
+    case COLOR_TYPE_TP_IRQ_INACTIVE:
+        *r = 0;
+        *g = 3;
         *b = 0;
         break;
     }
@@ -299,6 +315,42 @@ static int led_layer_listener_cb(const zmk_event_t *eh) {
 
 ZMK_LISTENER(led_layer_listener, led_layer_listener_cb);
 ZMK_SUBSCRIPTION(led_layer_listener, zmk_layer_state_changed);
+
+#if IS_ENABLED(CONFIG_MPR121)
+
+void indicate_touchpad_irq(bool active) {
+    struct blink_item blink = {.duration_ms = 200,
+                               .sleep_ms = 100,
+                               .blink_time = 1,
+                               .color = COLOR_WHITE,
+                               .type =
+                                   active ? COLOR_TYPE_TP_IRQ_ACTIVE : COLOR_TYPE_TP_IRQ_INACTIVE};
+    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+}
+
+static int led_tp_irq_active_listener_cb(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    if (initialized) {
+        indicate_touchpad_irq(true);
+    }
+    return 0;
+}
+
+ZMK_LISTENER(led_tp_irq_active_listener, led_tp_irq_active_listener_cb);
+ZMK_SUBSCRIPTION(led_tp_irq_active_listener, zmk_mpr121_touch_start_event);
+
+static int led_tp_irq_inactive_listener_cb(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    if (initialized) {
+        indicate_touchpad_irq(false);
+    }
+    return 0;
+}
+
+ZMK_LISTENER(led_tp_irq_inactive_listener, led_tp_irq_inactive_listener_cb);
+ZMK_SUBSCRIPTION(led_tp_irq_inactive_listener, zmk_mpr121_touch_end_event);
+
+#endif
 
 #define BLINK_STATE_IDLE 0
 #define BLINK_STATE_ON 1
