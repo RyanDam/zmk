@@ -285,7 +285,7 @@ static void mpr121_poll_handler(struct k_work *work) {
         pos.y *= scale;
 
         ab_filter_reset(&data->ab_filter);
-        ab_filter_update(&data->ab_filter, pos.x, pos.y, cfg->ab_filter_alpha,
+        ab_filter_update(&data->ab_filter, pos.x, pos.y, data->ab_filter_tau_ms,
                          (float)cfg->poll_interval_ms);
 
         data->start_pos = pos;
@@ -293,6 +293,8 @@ static void mpr121_poll_handler(struct k_work *work) {
         data->touch_start_time = k_uptime_get();
         data->is_touched = true;
         data->total_movement = 0;
+        data->accum_dx = 0;
+        data->accum_dy = 0;
 
         raise_zmk_mpr121_touch_start_event((struct zmk_mpr121_touch_start_event){
             .x = pos.x,
@@ -304,34 +306,44 @@ static void mpr121_poll_handler(struct k_work *work) {
         raw_pos.x *= scale;
         raw_pos.y *= scale;
 
-        ab_filter_update(&data->ab_filter, raw_pos.x, raw_pos.y, cfg->ab_filter_alpha,
+        ab_filter_update(&data->ab_filter, raw_pos.x, raw_pos.y, data->ab_filter_tau_ms,
                          (float)cfg->poll_interval_ms);
         struct mpr121_grid_pos pos = {
             .x = data->ab_filter.x,
             .y = data->ab_filter.y,
         };
-        // struct mpr121_grid_pos pos = {
-        //     .x = raw_pos.x,
-        //     .y = raw_pos.y,
-        // };
 
         float dx = pos.x - data->last_pos.x;
         float dy = pos.y - data->last_pos.y;
+        data->accum_dx += dx;
+        data->accum_dy += dy;
+        data->last_pos = pos;
 
-        float displacement = sqrtf(dx * dx + dy * dy);
+        float accum_disp = sqrtf(data->accum_dx * data->accum_dx + data->accum_dy * data->accum_dy);
 
-        if (displacement > cfg->move_deadzone) {
-            data->total_movement += displacement;
+        if (accum_disp >= 1.0f) {
+            data->total_movement += accum_disp;
             raise_zmk_mpr121_touch_move_event((struct zmk_mpr121_touch_move_event){
-                .dx = dx,
-                .dy = dy,
+                .dx = data->accum_dx,
+                .dy = data->accum_dy,
                 .x = pos.x,
                 .y = pos.y,
             });
+            data->accum_dx = 0;
+            data->accum_dy = 0;
         }
-
-        data->last_pos = pos;
     } else if (data->is_touched && !currently_touched) {
+        if (fabsf(data->accum_dx) >= 0.5f || fabsf(data->accum_dy) >= 0.5f) {
+            raise_zmk_mpr121_touch_move_event((struct zmk_mpr121_touch_move_event){
+                .dx = data->accum_dx,
+                .dy = data->accum_dy,
+                .x = data->last_pos.x,
+                .y = data->last_pos.y,
+            });
+        }
+        data->accum_dx = 0;
+        data->accum_dy = 0;
+
         mpr121_handle_touch_end(dev);
         data->is_touched = false;
         data->total_movement = 0;
@@ -455,6 +467,7 @@ static int mpr121_init(const struct device *dev) {
     data->last_touch_status = 0;
     data->is_touched = false;
     data->ab_filter = (struct mpr121_ab_filter){0};
+    data->ab_filter_tau_ms = -(float)cfg->poll_interval_ms / logf(1.0f - cfg->ab_filter_alpha);
     data->movement_scale_override = 0;
 
     if (!device_is_ready(cfg->i2c.bus)) {

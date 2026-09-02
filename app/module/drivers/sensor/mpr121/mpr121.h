@@ -84,8 +84,11 @@ struct mpr121_data {
     struct mpr121_grid_pos last_pos;
     uint32_t touch_start_time;
     float total_movement;
+    float accum_dx;
+    float accum_dy;
 
     struct mpr121_ab_filter ab_filter;
+    float ab_filter_tau_ms;
 
     uint16_t movement_scale_override;
 };

@@ -33,14 +33,22 @@ ab_filter_reset(struct mpr121_ab_filter *f) {
     f->initialised = false;
 }
 
+static inline float ab_alpha_from_tau(float tau_ms, float dt_ms) {
+    if (tau_ms <= 0.0f) {
+        return 1.0f;
+    }
+    return 1.0f - expf(-dt_ms / tau_ms);
+}
+
 static inline void
 ab_filter_update(struct mpr121_ab_filter *f, float meas_x, float meas_y,
-                 float alpha, float dt_ms) {
+                 float tau_ms, float dt_ms) {
     if (!f->initialised) {
         ab_filter_init(f, meas_x, meas_y);
         return;
     }
 
+    float alpha = ab_alpha_from_tau(tau_ms, dt_ms);
     float beta = ab_beta_from_alpha(alpha);
 
     float x_pred = f->x + f->vx * dt_ms;
@@ -55,7 +63,6 @@ ab_filter_update(struct mpr121_ab_filter *f, float meas_x, float meas_y,
     float delta_vx = (beta / dt_ms) * rx;
     float delta_vy = (beta / dt_ms) * ry;
 
-    // Clamp velocity to prevent single-jump propagation
     float max_v = 2.0f;
     f->vx = fmaxf(-max_v, fminf(max_v, f->vx + delta_vx));
     f->vy = fmaxf(-max_v, fminf(max_v, f->vy + delta_vy));
