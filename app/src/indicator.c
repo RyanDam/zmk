@@ -11,6 +11,7 @@
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/keymap.h>
 
 #if IS_ENABLED(CONFIG_MPR121)
@@ -245,6 +246,31 @@ ZMK_LISTENER(led_output_listener, led_output_listener_cb);
 ZMK_SUBSCRIPTION(led_output_listener, zmk_ble_active_profile_changed);
 
 #endif
+
+static void indicate_usb_connected(void) {
+    struct blink_item blink = {
+        .duration_ms = 500,
+        .sleep_ms = 200,
+        .blink_time = 1,
+        .color = COLOR_WHITE,
+        .type = COLOR_TYPE_BLE};
+    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+}
+
+static enum zmk_usb_conn_state prev_usb_conn_state = ZMK_USB_CONN_NONE;
+
+static int led_usb_conn_listener_cb(const zmk_event_t *eh) {
+    enum zmk_usb_conn_state state = as_zmk_usb_conn_state_changed(eh)->conn_state;
+    bool was_hid = (prev_usb_conn_state == ZMK_USB_CONN_HID);
+    prev_usb_conn_state = state;
+    if (initialized && !was_hid && state == ZMK_USB_CONN_HID) {
+        indicate_usb_connected();
+    }
+    return 0;
+}
+
+ZMK_LISTENER(led_usb_conn_listener, led_usb_conn_listener_cb);
+ZMK_SUBSCRIPTION(led_usb_conn_listener, zmk_usb_conn_state_changed);
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
 
