@@ -57,6 +57,15 @@ properties:
     default: 10
     description: Polling interval in milliseconds while touch is active.
 
+  report-interval-ms:
+    type: int
+    required: false
+    default: 15
+    description: >
+      Interval in milliseconds at which accumulated mouse movement is flushed to a
+      single report. Independent of poll-interval-ms. Tune to the BLE connection
+      interval to batch movement and avoid over-producing reports over BLE.
+
   tap-max-duration-ms:
     type: int
     required: false

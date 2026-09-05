@@ -36,8 +36,9 @@
 #define MPR121_ECR 0x5E
 #define MPR121_SOFTRESET 0x80
 
-#define MPR121_CONFIG2_FAST 0x20 /* CDT=01, SFI=00, ESI=00 (1ms) */
-#define MPR121_CONFIG2_SLOW 0x24 /* CDT=01, SFI=00, ESI=01 (16ms) */
+/* CONFIG2 (0x5D): CDT[5:4]=01 (2us), SFI[3]=0, ESI[2:1]. ESI: 00=1ms 01=16ms 10=32ms 11=64ms */
+#define MPR121_CONFIG2_FAST 0x21 /* (2ms)  */
+#define MPR121_CONFIG2_SLOW 0x24 /* (16ms) */
 
 #define MPR121_NUM_ELECTRODES 12
 #define MPR121_NUM_COLS 6
@@ -65,6 +66,7 @@ struct mpr121_config {
     uint16_t gesture_min_velocity;
     uint32_t gesture_max_duration_ms;
     uint32_t poll_interval_ms;
+    uint32_t report_interval_ms;
     uint32_t tap_max_duration_ms;
     uint16_t tap_max_displacement;
     uint16_t movement_scale;
@@ -86,6 +88,7 @@ struct mpr121_data {
     float total_movement;
     float accum_dx;
     float accum_dy;
+    int32_t last_report_time;
 
     struct mpr121_ab_filter ab_filter;
     float ab_filter_tau_ms;
