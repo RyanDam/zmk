@@ -134,3 +134,27 @@ config ZMK_BEHAVIOR_MACRO
     bool
     default y
     depends on DT_HAS_ZMK_BEHAVIOR_MACRO_ENABLED || DT_HAS_ZMK_BEHAVIOR_MACRO_ONE_PARAM_ENABLED || DT_HAS_ZMK_BEHAVIOR_MACRO_TWO_PARAM_ENABLED
+
+config ZMK_BEHAVIOR_DYNAMIC_MACRO
+    bool "Dynamic Macro Behavior"
+    depends on ZMK_STUDIO
+    default y
+    help
+      Enable support for dynamic macros, which can be updated at runtime.
+
+if ZMK_BEHAVIOR_DYNAMIC_MACRO
+
+config ZMK_DYNAMIC_MACROS_COUNT
+    int "Number of dynamic macros"
+    default 16
+    help
+      The number of available dynamic macro slots.
+
+config ZMK_DYNAMIC_MACROS_MAX_STEPS
+    int "Maximum steps per dynamic macro"
+    default 64
+    help
+      The maximum number of bindings (steps) that a single dynamic macro can hold.
+
+endif
+

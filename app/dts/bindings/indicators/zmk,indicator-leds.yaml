@@ -5,6 +5,13 @@ description: Display the states of HID indicators using LEDs
 
 compatible: "zmk,indicator-leds"
 
+properties:
+  led-strip:
+    type: phandles
+    description: |
+      Phandle to a ws2812 led-strip node. When present, indicators use the
+      LED strip instead of direct GPIO LEDs.
+
 child-binding:
   properties:
     leds:

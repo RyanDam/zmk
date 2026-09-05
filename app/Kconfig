@@ -702,7 +702,20 @@ config ZMK_KEYMAP_SENSORS_DEFAULT_TRIGGERS_PER_ROTATION
       detents per rotation of the encoder.
     default 20
 
+config ZMK_KEYMAP_SENSORS_MAX_BINDINGS
+    int "Max sensor bindings"
+    default 2
+    help
+      Maximum number of bindings per sensor.
+
 endif # ZMK_KEYMAP_SENSORS
+
+config ZMK_TOUCHPAD
+    bool "Touchpad Support"
+    default y
+    depends on MPR121
+    help
+      Touchpad module with per-layer bindings and mode support.
 
 module = ZMK
 module-str = zmk

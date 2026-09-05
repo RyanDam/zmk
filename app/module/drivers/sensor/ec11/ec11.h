@@ -39,6 +39,8 @@ struct ec11_data {
 #elif defined(CONFIG_EC11_TRIGGER_GLOBAL_THREAD)
     struct k_work work;
 #endif
+    struct k_timer debounce_timer;
+    uint32_t debounce_period_ms;
 
 #endif /* CONFIG_EC11_TRIGGER */
 };

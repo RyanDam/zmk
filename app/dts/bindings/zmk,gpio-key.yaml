@@ -1,0 +1,25 @@
+# Copyright (c) 2025 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Driver for monitoring GPIO key state changes
+
+compatible: "zmk,gpio-key"
+
+include: base.yaml
+
+properties:
+  gpios:
+    type: phandle-array
+    required: true
+    description: The GPIO pin to monitor for state changes (phandle, pin, flags)
+  pull-up:
+    type: boolean
+    description: Enable pull-up resistor on the GPIO pin
+  pull-down:
+    type: boolean
+    description: Enable pull-down resistor on the GPIO pin
+  debounce-ms:
+    type: int
+    default: 0
+    description: Debounce time in milliseconds to filter out noise

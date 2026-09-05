@@ -72,47 +72,52 @@ int zmk_behavior_invoke_binding(const struct zmk_behavior_binding *src_binding,
 
     const struct device *behavior = zmk_behavior_get_binding(binding.behavior_dev);
 
-    if (!behavior) {
-        LOG_WRN("No behavior assigned to %d on layer %d", event.position, event.layer);
-        return 1;
-    }
+    // LOG_DBG("Invoking behaviour %s param1 %d param2 %d pressed %d", binding.behavior_dev,
+    //         binding.param1, binding.param2, pressed);
 
-    int err = behavior_keymap_binding_convert_central_state_dependent_params(&binding, event);
-    if (err) {
-        LOG_ERR("Failed to convert relative to absolute behavior binding (err %d)", err);
-        return err;
-    }
+            if (!behavior) {
+                // LOG_DBG("No behavior assigned to %d on layer %d", event.position, event.layer);
+                return 1;
+            }
 
-    enum behavior_locality locality = BEHAVIOR_LOCALITY_CENTRAL;
-    err = behavior_get_locality(behavior, &locality);
-    if (err) {
-        LOG_ERR("Failed to get behavior locality %d", err);
-        return err;
-    }
+            int err =
+                behavior_keymap_binding_convert_central_state_dependent_params(&binding, event);
+            if (err) {
+                LOG_ERR("Failed to convert relative to absolute behavior binding (err %d)", err);
+                return err;
+            }
 
-    switch (locality) {
-    case BEHAVIOR_LOCALITY_CENTRAL:
-        return invoke_locally(&binding, event, pressed);
-    case BEHAVIOR_LOCALITY_EVENT_SOURCE:
+            enum behavior_locality locality = BEHAVIOR_LOCALITY_CENTRAL;
+            err = behavior_get_locality(behavior, &locality);
+            if (err) {
+                LOG_ERR("Failed to get behavior locality %d", err);
+                return err;
+            }
+
+            switch (locality) {
+            case BEHAVIOR_LOCALITY_CENTRAL:
+                return invoke_locally(&binding, event, pressed);
+            case BEHAVIOR_LOCALITY_EVENT_SOURCE:
 #if IS_ENABLED(CONFIG_ZMK_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-        if (event.source == ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL) {
-            return invoke_locally(&binding, event, pressed);
-        } else {
-            return zmk_split_central_invoke_behavior(event.source, &binding, event, pressed);
-        }
+                if (event.source == ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL) {
+                    return invoke_locally(&binding, event, pressed);
+                } else {
+                    return zmk_split_central_invoke_behavior(event.source, &binding, event,
+                                                             pressed);
+                }
 #else
-        return invoke_locally(&binding, event, pressed);
+                return invoke_locally(&binding, event, pressed);
 #endif
-    case BEHAVIOR_LOCALITY_GLOBAL:
+            case BEHAVIOR_LOCALITY_GLOBAL:
 #if IS_ENABLED(CONFIG_ZMK_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-        for (int i = 0; i < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; i++) {
-            zmk_split_central_invoke_behavior(i, &binding, event, pressed);
-        }
+                for (int i = 0; i < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; i++) {
+                    zmk_split_central_invoke_behavior(i, &binding, event, pressed);
+                }
 #endif
-        return invoke_locally(&binding, event, pressed);
-    }
+                return invoke_locally(&binding, event, pressed);
+            }
 
-    return -ENOTSUP;
+            return -ENOTSUP;
 }
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
