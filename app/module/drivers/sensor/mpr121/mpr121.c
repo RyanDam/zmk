@@ -20,10 +20,30 @@
 
 LOG_MODULE_REGISTER(mpr121, CONFIG_SENSOR_LOG_LEVEL);
 
-static const int col_electrode_idx[MPR121_NUM_ELECTRODES] = {-1, -1, -1, 5, 4, 3,
-                                                             -1, -1, -1, 2, 1, 0};
-static const int row_electrode_idx[MPR121_NUM_ELECTRODES] = {0, 1, 2, -1, -1, -1,
-                                                             5, 4, 3, -1, -1, -1};
+// Virtual coordinate (normalized 0..1) for each physical electrode.
+// x = -1.0f means the electrode contributes no x (it is a row electrode);
+// y = -1.0f means it contributes no y (it is a column electrode).
+// The physical grid is diagonal: column electrodes are offset +0.5 cell in X
+// (x = (col + 0.5) / 6.0), row electrodes are not offset (y = row / 5.0).
+struct mpr121_electrode_coord {
+    float x;
+    float y;
+};
+
+static const struct mpr121_electrode_coord mpr121_electrode_coord[MPR121_NUM_ELECTRODES] = {
+    { -1.0f, 0.0f },    /* e0  row0 */
+    { -1.0f, 0.2f },    /* e1  row1 */
+    { -1.0f, 0.4f },    /* e2  row2 */
+    { 0.9167f, -1.0f }, /* e3  col5 */
+    { 0.75f, -1.0f },   /* e4  col4 */
+    { 0.5833f, -1.0f }, /* e5  col3 */
+    { -1.0f, 1.0f },    /* e6  row5 */
+    { -1.0f, 0.8f },    /* e7  row4 */
+    { -1.0f, 0.6f },    /* e8  row3 */
+    { 0.4167f, -1.0f }, /* e9  col2 */
+    { 0.25f, -1.0f },   /* e10 col1 */
+    { 0.0833f, -1.0f }, /* e11 col0 */
+};
 
 static int mpr121_i2c_write(const struct device *dev, uint8_t reg, uint8_t val) {
     const struct mpr121_config *cfg = dev->config;
@@ -118,24 +138,24 @@ static struct mpr121_grid_pos mpr121_calc_position(uint16_t touch_status, float 
             continue;
         }
 
-        int ci = col_electrode_idx[e];
-        int ri = row_electrode_idx[e];
+        float cx = mpr121_electrode_coord[e].x;
+        float cy = mpr121_electrode_coord[e].y;
 
-        if (ci >= 0) {
-            sum_x += (float)ci;
+        if (cx >= 0.0f) {
+            sum_x += cx;
             count_x++;
         }
-        if (ri >= 0) {
-            sum_y += (float)ri;
+        if (cy >= 0.0f) {
+            sum_y += cy;
             count_y++;
         }
     }
 
     if (count_x > 0) {
-        pos.x = (sum_x / (float)count_x) / 5.0f;
+        pos.x = sum_x / (float)count_x;
     }
     if (count_y > 0) {
-        pos.y = (sum_y / (float)count_y) / 5.0f;
+        pos.y = sum_y / (float)count_y;
     }
 
     return pos;
@@ -172,28 +192,28 @@ static struct mpr121_grid_pos mpr121_calc_position_weighted(const struct device 
         float drop = (float)baseline[e] - (float)filtered[e];
         float weight = (drop > 0.0f) ? drop : 0.0f;
 
-        int ci = col_electrode_idx[e];
-        int ri = row_electrode_idx[e];
+        float cx = mpr121_electrode_coord[e].x;
+        float cy = mpr121_electrode_coord[e].y;
 
-        if (ci >= 0) {
-            sum_wx += weight * (float)ci;
+        if (cx >= 0.0f) {
+            sum_wx += weight * cx;
             total_wx += weight;
-            // LOG_INF("Touchpad WEIGHT X %d base %f filter %f weight %f", ci, (double)baseline[e],
+            // LOG_INF("Touchpad WEIGHT X %f base %f filter %f weight %f", (double)cx, (double)baseline[e],
             //         (double)filtered[e], (double)weight);
         }
-        if (ri >= 0) {
-            sum_wy += weight * (float)ri;
+        if (cy >= 0.0f) {
+            sum_wy += weight * cy;
             total_wy += weight;
-            // LOG_INF("Touchpad WEIGHT Y %d base %f filter %f weight %f", ri, (double)baseline[e],
+            // LOG_INF("Touchpad WEIGHT Y %f base %f filter %f weight %f", (double)cy, (double)baseline[e],
             //         (double)filtered[e], (double)weight);
         }
     }
 
     if (total_wx > 0.0f) {
-        pos.x = (sum_wx / total_wx) / 5.0f;
+        pos.x = sum_wx / total_wx;
     }
     if (total_wy > 0.0f) {
-        pos.y = (sum_wy / total_wy) / 5.0f;
+        pos.y = sum_wy / total_wy;
     }
 
     // LOG_ERR("Touchpad SUM wx %f TOTAL wx %f", (double)sum_wx, (double)total_wx);
