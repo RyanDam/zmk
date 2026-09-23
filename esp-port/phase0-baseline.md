@@ -154,19 +154,34 @@ See `baseline/` for archived results:
 
 ### Known pre-existing failure (blocks the Phase 0 exit gate)
 
-**The native test suite does not build on `feat/esp32`.** Every test target
-fails to compile `app/src/indicator.c`:
+**Neither the native test suite nor the upstream board builds work on
+`feat/esp32`.** `app/src/indicator.c` — a file that exists **only on this
+branch** (absent in `main`) — is compiled unconditionally
+(`app/CMakeLists.txt:116`, no Kconfig guard). Its non-LED-strip `#else` path
+requires devicetree that test keymaps and upstream shields do not provide:
 
 ```
-app/src/indicator.c:47:23: error: ... DT_ALIAS(led_l0) ...
+error: 'DT_N_ALIAS_led_l0_CHILD_IDX' undeclared here (not in a function)   # indicator.c:47, DT_ALIAS(led_l0)
+error: '__device_dts_ord___ORD' undeclared here (not in a function)        # DEVICE_DT_GET(LED_GPIO_NODE_ID) with no gpio_leds node
 ```
 
-`indicator.c` exists only on this branch (not in `main`). Its
-non-LED-strip `#else` path unconditionally references the `led_l0`–`led_l3`
-devicetree aliases, which the test keymaps do not define. The BUILD_ASSERTs
-that would document this requirement are commented out (lines 35–40).
+The `BUILD_ASSERT`s documenting the LED requirement are commented out
+(`indicator.c:35-40`).
 
-- Disposition: fix as a **separate small PR** (guard the `led_idx` array on
-  `DT_NODE_EXISTS(DT_ALIAS(led_lN))` or provide `-1` fallbacks) — Phase 0
-  records the red state rather than masking it.
-- Re-run the suite after the fix and refresh `baseline/tests-*.md`.
+Measured impact (2026-09-23, details in `baseline/`):
+
+- Native test suite: **248/248 targets fail to build** (244 confirmed,
+  4 interrupted, 0 pass) — `baseline/tests-2026-09-23.md`.
+- Board builds: `corne_left`, `reviung41` (RP2040), `bdn9` (STM32) all fail
+  with the same cause; only `cobanpad16a` (defines the LED hardware) builds —
+  `baseline/build-sizes-2026-09-23.md`.
+- Consequence: the upstream CI build matrix is expected to be fully red on
+  this branch until the fix lands — `baseline/ci-2026-09-23.md`.
+
+- Disposition: fix as a **separate small PR** (guard the `#else` path on
+  `DT_NODE_EXISTS(DT_ALIAS(led_lN))` / `DT_NODE_EXISTS(LED_GPIO_NODE_ID)`,
+  or provide `-1` fallbacks with runtime checks) — Phase 0 records the red
+  state rather than masking it.
+- Re-run the suite and the build-size table after the fix and refresh
+  `baseline/tests-*.md` / `baseline/build-sizes-*.md` as the true green
+  baseline before Phase 1 starts.
