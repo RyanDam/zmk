@@ -36,9 +36,9 @@ hardware identifier.
 - Any firmware, manifest, or Zephyr pin changes — this milestone is fixtures and records only.
 
 ## Acceptance / verification
-- [ ] Tracking branch exists with the recorded baseline (ZMK commit, west module revisions, patch list).
+- [x] Tracking branch exists with the recorded baseline (ZMK commit, west module revisions, patch list).
 - [ ] At least one developer can flash/monitor each ESP development board independently.
 - [ ] Matrix fixture built and documented with its pin map and conflict notes.
 - [ ] Reference boards fully documented (chip marking, flash/PSRAM, USB route, PCB revision).
-- [ ] Baseline CI results and build sizes archived.
-- [ ] Test-results format defined and demonstrated with at least one sample entry.
+- [x] Baseline CI results and build sizes archived.
+- [x] Test-results format defined and demonstrated with at least one sample entry.
