@@ -54,6 +54,7 @@ if ((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
   target_sources(app PRIVATE src/behaviors/behavior_caps_word.c)
   target_sources(app PRIVATE src/behaviors/behavior_key_repeat.c)
   target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_MACRO app PRIVATE src/behaviors/behavior_macro.c)
+  target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO app PRIVATE src/behaviors/behavior_dynamic_macro.c)
   target_sources(app PRIVATE src/behaviors/behavior_momentary_layer.c)
   target_sources(app PRIVATE src/behaviors/behavior_mod_morph.c)
   target_sources(app PRIVATE src/behaviors/behavior_outputs.c)
@@ -100,11 +101,21 @@ add_subdirectory_ifdef(CONFIG_ZMK_HID_INDICATORS src/indicators)
 target_sources_ifdef(CONFIG_ZMK_SPLIT app PRIVATE src/events/split_peripheral_status_changed.c)
 add_subdirectory_ifdef(CONFIG_ZMK_SPLIT src/split)
 
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_gesture_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_start_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_move_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_end_event.c)
+target_sources_ifdef(CONFIG_MPR121 app PRIVATE src/events/mpr121_touch_tap_event.c)
+target_sources_ifdef(CONFIG_ZMK_TOUCHPAD app PRIVATE src/touchpad.c)
+
 target_sources_ifdef(CONFIG_USB_DEVICE_STACK app PRIVATE src/usb.c)
 target_sources_ifdef(CONFIG_ZMK_USB app PRIVATE src/usb_hid.c)
 target_sources_ifdef(CONFIG_ZMK_RGB_UNDERGLOW app PRIVATE src/rgb_underglow.c)
 target_sources_ifdef(CONFIG_ZMK_BACKLIGHT app PRIVATE src/backlight.c)
 target_sources_ifdef(CONFIG_ZMK_LOW_PRIORITY_WORK_QUEUE app PRIVATE src/workqueue.c)
+target_sources(app PRIVATE src/indicator.c)
+target_sources(app PRIVATE src/behaviors/behavior_indicator.c)
+target_sources(app PRIVATE src/gpio_key.c)
 target_sources(app PRIVATE src/main.c)
 
 add_subdirectory(src/display/)
@@ -125,6 +136,9 @@ if (CONFIG_ZMK_STUDIO_RPC)
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/core.proto
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/behaviors.proto
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/keymap.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/macros.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/sensors.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/touchpad.proto
   )
 
   target_include_directories(app PUBLIC ${CMAKE_CURRENT_BINARY_DIR})

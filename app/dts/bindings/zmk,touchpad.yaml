@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT
+
+description: |
+  ZMK touchpad configuration with per-layer bindings.
+
+compatible: "zmk,touchpad"
+
+child-binding:
+  description: "Touchpad configuration for a layer (matched by definition order)"
+
+  properties:
+    mode:
+      type: int
+      required: false
+      description: |
+        Touchpad mode for this layer:
+        0 = gesture mode (only gesture bindings fire)
+        1 = mouse simulation (touch start/end fire, mouse movement enabled)
+      default: 0
+
+    bindings:
+      type: phandle-array
+      required: false
+      description: |
+        Behavior bindings (7 entries, in order):
+        [0] = touch start
+        [1] = touch end
+        [2] = tap
+        [3] = gesture left
+        [4] = gesture right
+        [5] = gesture up
+        [6] = gesture down

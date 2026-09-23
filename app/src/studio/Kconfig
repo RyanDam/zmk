@@ -109,6 +109,13 @@ config ZMK_STUDIO_RPC_TX_BUF_SIZE
     int "TX Buffer Size"
     default 64
 
+config ZMK_STUDIO_TOUCHPAD
+    bool "Touchpad Studio Support"
+    depends on ZMK_TOUCHPAD
+    default y
+    help
+      Studio RPC support for touchpad configuration.
+
 endif
 
 endif

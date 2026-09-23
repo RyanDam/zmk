@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: MIT
+
+description: |
+  NXP MPR121 capacitive touchpad sensor driver.
+  Provides touch coordinate tracking and swipe gesture detection
+  using 12 electrode probes mapped to a grid.
+
+compatible: "nxp,mpr121"
+
+include: [i2c-device.yaml]
+
+properties:
+  interrupt-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO pin connected to the MPR121 RDY/INT pin for touch detection interrupt.
+
+  touch-threshold:
+    type: int
+    required: false
+    default: 4
+    description: Touch detection threshold (1-255). Higher values require stronger touch signal.
+
+  release-threshold:
+    type: int
+    required: false
+    default: 2
+    description: Release detection threshold (1-255). Must be lower than touch-threshold.
+
+  movement-scale:
+    type: int
+    required: false
+    default: 100
+    description: Mouse movement scaling factor (percentage). 100 = 1:1 grid to movement ratio.
+
+  gesture-min-displacement:
+    type: int
+    required: false
+    default: 200
+    description: Minimum swipe displacement x100 in grid units. Default 200 = 2.0 grid cells.
+
+  gesture-min-velocity:
+    type: int
+    required: false
+    default: 5000
+    description: Minimum swipe velocity x100 in grid units per second. Default 5000 = 50 cells/sec.
+
+  gesture-max-duration-ms:
+    type: int
+    required: false
+    default: 500
+    description: Maximum swipe duration in milliseconds. Longer touches are not considered swipes.
+
+  poll-interval-ms:
+    type: int
+    required: false
+    default: 10
+    description: Polling interval in milliseconds while touch is active.
+
+  report-interval-ms:
+    type: int
+    required: false
+    default: 15
+    description: >
+      Interval in milliseconds at which accumulated mouse movement is flushed to a
+      single report. Independent of poll-interval-ms. Tune to the BLE connection
+      interval to batch movement and avoid over-producing reports over BLE.
+
+  tap-max-duration-ms:
+    type: int
+    required: false
+    default: 300
+    description: Maximum duration in milliseconds for a tap gesture.
+
+  tap-max-displacement:
+    type: int
+    required: false
+    default: 1
+    description: Maximum displacement x100 for a tap (e.g., 5 = 0.05 grid units).

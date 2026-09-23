@@ -1,0 +1,9 @@
+description: Dynamic Macro Behavior
+
+compatible: "zmk,behavior-dynamic-macro"
+
+include: one_param.yaml
+
+properties:
+  "#binding-cells":
+    const: 1

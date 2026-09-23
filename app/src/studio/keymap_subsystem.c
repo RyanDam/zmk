@@ -13,6 +13,7 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #include <zmk/behavior.h>
 #include <zmk/matrix.h>
 #include <zmk/keymap.h>
+#include <zmk/sensors.h>
 #include <zmk/studio/rpc.h>
 #include <zmk/physical_layouts.h>
 

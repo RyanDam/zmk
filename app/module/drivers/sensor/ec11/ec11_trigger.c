@@ -22,7 +22,7 @@ LOG_MODULE_DECLARE(EC11, CONFIG_SENSOR_LOG_LEVEL);
 static inline void setup_int(const struct device *dev, bool enable) {
     const struct ec11_config *cfg = dev->config;
 
-    LOG_DBG("enabled %s", (enable ? "true" : "false"));
+    // LOG_DBG("Interrupt enabled %s", (enable ? "true" : "false"));
 
     if (gpio_pin_interrupt_configure_dt(&cfg->a, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
         LOG_WRN("Unable to set A pin GPIO interrupt");
@@ -37,22 +37,28 @@ static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback 
                                  uint32_t pins) {
     struct ec11_data *drv_data = CONTAINER_OF(cb, struct ec11_data, a_gpio_cb);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     setup_int(drv_data->dev, false);
 
-#if defined(CONFIG_EC11_TRIGGER_OWN_THREAD)
-    k_sem_give(&drv_data->gpio_sem);
-#elif defined(CONFIG_EC11_TRIGGER_GLOBAL_THREAD)
-    k_work_submit(&drv_data->work);
-#endif
+    k_timer_stop(&drv_data->debounce_timer);
+    k_timer_start(&drv_data->debounce_timer, K_MSEC(drv_data->debounce_period_ms), K_NO_WAIT);
 }
 
 static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback *cb,
                                  uint32_t pins) {
     struct ec11_data *drv_data = CONTAINER_OF(cb, struct ec11_data, b_gpio_cb);
 
-    LOG_DBG("");
+    // LOG_DBG("");
+
+    setup_int(drv_data->dev, false);
+
+    k_timer_stop(&drv_data->debounce_timer);
+    k_timer_start(&drv_data->debounce_timer, K_MSEC(drv_data->debounce_period_ms), K_NO_WAIT);
+}
+
+static void ec11_debounce_timer_handler(struct k_timer *timer) {
+    struct ec11_data *drv_data = CONTAINER_OF(timer, struct ec11_data, debounce_timer);
 
     setup_int(drv_data->dev, false);
 
@@ -89,7 +95,7 @@ static void ec11_thread(int dev_ptr, int unused) {
 static void ec11_work_cb(struct k_work *work) {
     struct ec11_data *drv_data = CONTAINER_OF(work, struct ec11_data, work);
 
-    LOG_DBG("");
+    // LOG_DBG("");
 
     ec11_thread_cb(drv_data->dev);
 }
@@ -105,6 +111,7 @@ int ec11_trigger_set(const struct device *dev, const struct sensor_trigger *trig
 
     drv_data->trigger = trig;
     drv_data->handler = handler;
+    drv_data->debounce_period_ms = CONFIG_EC11_DEBOUNCE_PERIOD;
 
     setup_int(dev, true);
 
@@ -116,6 +123,8 @@ int ec11_init_interrupt(const struct device *dev) {
     const struct ec11_config *drv_cfg = dev->config;
 
     drv_data->dev = dev;
+    k_timer_init(&drv_data->debounce_timer, ec11_debounce_timer_handler, NULL);
+
     /* setup gpio interrupt */
 
     gpio_init_callback(&drv_data->a_gpio_cb, ec11_a_gpio_callback, BIT(drv_cfg->a.pin));

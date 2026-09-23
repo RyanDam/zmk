@@ -37,7 +37,7 @@ static struct zmk_rpc_subsystem *find_subsystem_for_choice(uint8_t choice) {
 zmk_studio_Response zmk_rpc_subsystem_delegate_to_subs(const struct zmk_rpc_subsystem *subsys,
                                                        const zmk_studio_Request *req,
                                                        uint8_t which_req) {
-    LOG_DBG("Got subsystem func for %d", subsys->subsystem_choice);
+    // LOG_DBG("Got subsystem func for %d", subsys->subsystem_choice);
 
     for (int i = subsys->handlers_start_index; i <= subsys->handlers_end_index; i++) {
         struct zmk_rpc_subsystem_handler *sub_handler;

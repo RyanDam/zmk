@@ -5,8 +5,10 @@ if SENSOR
 
 rsource "battery/Kconfig"
 rsource "ec11/Kconfig"
+rsource "kailh-enc/Kconfig"
 rsource "max17048/Kconfig"
 
 rsource "encoder_mock/Kconfig"
+rsource "mpr121/Kconfig"
 
 endif # SENSOR
