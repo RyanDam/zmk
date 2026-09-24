@@ -56,7 +56,7 @@ category order.
 ### c — Correctness & reliability
 | File | Title | Severity | Effort | Status |
 |------|-------|----------|--------|--------|
-| [c01](c01-indicator-led-dt-requirement-breaks-builds.md) | indicator.c requires LED devicetree unconditionally, breaking all test and upstream board builds | High | S | TODO |
+| [c01](done/c01-indicator-led-dt-requirement-breaks-builds.md) | indicator.c requires LED devicetree unconditionally, breaking all test and upstream board builds | High | S | DONE |
 
 ### a — Architecture & maintainability
 | File | Title | Severity | Effort | Status |

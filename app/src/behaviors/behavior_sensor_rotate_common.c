@@ -100,6 +100,7 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
             // ccw_binding is empty, which means this is raw binding from device tree
             // need to extract cw and ccw from dt_binding
             const uint32_t binding_id = triggers > 0 ? binding->param1 : binding->param2;
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS)
             const zmk_behavior_local_id_t behavior_local_id =
                 zmk_behavior_get_local_id("key_press");
 
@@ -107,11 +108,17 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
 
             triggered_binding.behavior_dev =
                 zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
+#else
+            // Without local IDs, the round trip get("key_press") -> find_name() always
+            // resolves back to the key_press behavior name.
+            triggered_binding.behavior_dev = "key_press";
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS)
             triggered_binding.param1 = binding_id;
             triggered_binding.param2 = 0;
         } else {
             // keymap binding is set from the studio code
             const uint32_t binding_id = triggers > 0 ? cw_binding->param1 : ccw_binding->param1;
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS)
             zmk_behavior_local_id_t behavior_local_id =
                 triggers > 0 ? cw_binding->param2 : ccw_binding->param2;
 
@@ -127,6 +134,11 @@ int zmk_behavior_sensor_rotate_common_process(struct zmk_behavior_binding *bindi
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS_IN_BINDINGS)
             triggered_binding.behavior_dev =
                 zmk_behavior_find_behavior_name_from_local_id(behavior_local_id);
+#else
+            // Without local IDs, studio-loaded sensor bindings cannot be resolved by name;
+            // fall back to the key_press behavior.
+            triggered_binding.behavior_dev = "key_press";
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS)
             triggered_binding.param1 = binding_id;
             triggered_binding.param2 = 0;
         }

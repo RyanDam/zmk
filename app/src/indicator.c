@@ -26,26 +26,47 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
 
-static const struct device *const strip_dev = DEVICE_DT_GET(DT_CHOSEN(zmk_indicator_strip));
+#define INDICATOR_STRIP_NODE_ID DT_CHOSEN(zmk_indicator_strip)
+
+#if !DT_NODE_EXISTS(INDICATOR_STRIP_NODE_ID)
+#error                                                                                             \
+    "COBAN_INDICATOR_USE_LED_STRIP is enabled but the devicetree defines no zmk,indicator-strip chosen node"
+#endif
+
+static const struct device *const strip_dev = DEVICE_DT_GET(INDICATOR_STRIP_NODE_ID);
 static struct led_rgb pixels[4];
 
 #else
 
 #define LED_GPIO_NODE_ID DT_COMPAT_GET_ANY_STATUS_OKAY(gpio_leds)
 
-// BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l0)),
-//             "An alias for 1st LED is not found");
-// BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l1)),
-//             "An alias for 2nd LED is not found");
-// BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l2)),
-//             "An alias for 3rd LED is not found");
-// BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l3)),
-//             "An alias for 4th LED is not found");
+#define INDICATOR_LED_GPIO_PRESENT                                                                 \
+    (DT_NODE_EXISTS(LED_GPIO_NODE_ID) && DT_NODE_EXISTS(DT_ALIAS(led_l0)) &&                       \
+     DT_NODE_EXISTS(DT_ALIAS(led_l1)) && DT_NODE_EXISTS(DT_ALIAS(led_l2)) &&                       \
+     DT_NODE_EXISTS(DT_ALIAS(led_l3)))
+
+#if INDICATOR_LED_GPIO_PRESENT
+
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l0)), "An alias for 1st LED is not found");
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l1)), "An alias for 2nd LED is not found");
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l2)), "An alias for 3rd LED is not found");
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_l3)), "An alias for 4th LED is not found");
 
 static const struct device *led_dev = DEVICE_DT_GET(LED_GPIO_NODE_ID);
 static const uint8_t led_idx[] = {
     DT_NODE_CHILD_IDX(DT_ALIAS(led_l0)), DT_NODE_CHILD_IDX(DT_ALIAS(led_l1)),
     DT_NODE_CHILD_IDX(DT_ALIAS(led_l2)), DT_NODE_CHILD_IDX(DT_ALIAS(led_l3))};
+
+#define INDICATOR_LED_GPIO_ACTIVE 1
+
+#else
+
+/* No indicator LEDs in the devicetree: keep indicator state tracking
+ * functional, but make the LED output a no-op.
+ */
+#define INDICATOR_LED_GPIO_ACTIVE 0
+
+#endif
 
 #endif
 
@@ -63,6 +84,8 @@ typedef enum {
     COLOR_TYPE_TP_IRQ_ACTIVE,
     COLOR_TYPE_TP_IRQ_INACTIVE,
 } led_color_type_t;
+
+#if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
 
 static void get_color_rgb(led_color_type_t type, uint8_t *r, uint8_t *g, uint8_t *b) {
     switch (type) {
@@ -137,6 +160,8 @@ static void hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v, uint8_t *r, uint8_t *g, 
     }
 }
 
+#endif /* CONFIG_COBAN_INDICATOR_USE_LED_STRIP */
+
 static const uint8_t color_idx[] = {COLOR_BLACK,
                                     COLOR_IND_1,
                                     COLOR_IND_2,
@@ -184,6 +209,7 @@ static void update_leds(struct blink_item *blink, bool on) {
         LOG_ERR("Failed to update LED strip (%d)", rc);
     }
 #else
+#if INDICATOR_LED_GPIO_ACTIVE
     for (int i = 0; i < 4; i++) {
         bool led_active = on && (blink->color & (1 << i));
         if (led_active) {
@@ -192,6 +218,10 @@ static void update_leds(struct blink_item *blink, bool on) {
             led_off(led_dev, led_idx[i]);
         }
     }
+#else
+    ARG_UNUSED(blink);
+    ARG_UNUSED(on);
+#endif
 #endif
 }
 
@@ -247,13 +277,17 @@ ZMK_SUBSCRIPTION(led_output_listener, zmk_ble_active_profile_changed);
 
 #endif
 
+// The zmk_usb_conn_state_changed event is only implemented when the USB
+// device stack is enabled (see src/events/usb_conn_state_changed.c), so the
+// listener must be compiled out on targets without it.
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+
 static void indicate_usb_connected(void) {
-    struct blink_item blink = {
-        .duration_ms = 500,
-        .sleep_ms = 200,
-        .blink_time = 1,
-        .color = COLOR_WHITE,
-        .type = COLOR_TYPE_BLE};
+    struct blink_item blink = {.duration_ms = 500,
+                               .sleep_ms = 200,
+                               .blink_time = 1,
+                               .color = COLOR_WHITE,
+                               .type = COLOR_TYPE_BLE};
     k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
 }
 
@@ -271,6 +305,8 @@ static int led_usb_conn_listener_cb(const zmk_event_t *eh) {
 
 ZMK_LISTENER(led_usb_conn_listener, led_usb_conn_listener_cb);
 ZMK_SUBSCRIPTION(led_usb_conn_listener, zmk_usb_conn_state_changed);
+
+#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
 

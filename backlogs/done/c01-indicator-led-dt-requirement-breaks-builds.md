@@ -2,7 +2,7 @@
 
 - **Category:** c (Correctness & reliability)
 - **Severity:** High
-- **Status:** TODO
+- **Status:** DONE
 - **Effort (est):** S
 
 ## Problem
@@ -79,14 +79,25 @@ compiled for all targets (no CMake/Kconfig restructuring):
   `build-sizes-*.md`), tracked by `d01`.
 
 ## Acceptance / verification
-- [ ] `cd app && ./run-test.sh all` → all 248 targets build; suite result
-      matches snapshots (no new failures, no snapshot changes).
-- [ ] `corne_left` (nice_nano), `reviung41` (sparkfun_pro_micro_rp2040),
+- [x] `cd app && ./run-test.sh all` → all 248 targets build; 246 PASS,
+      2 PENDING (upstream-committed `pending` markers), 0 FAILED; no
+      snapshot changes (`git diff main -- app/tests/` empty). Single clean
+      run recorded in `esp-port/baseline/tests-2026-09-24.md`.
+- [x] `corne_left` (nice_nano), `reviung41` (sparkfun_pro_micro_rp2040),
       `bdn9` and `cobanpad16a` (nice_nano@1) all build cleanly with
-      `west build --pristine`.
+      `west build --pristine` (plus `cobanpad12b`); sizes in
+      `esp-port/baseline/build-sizes-2026-09-24.md`.
 - [ ] `cobanpad16a` LED indicator behavior unchanged (physical check:
-      layer/indicator LEDs respond as before).
-- [ ] No new compiler warnings in the affected targets.
-- [ ] `esp-port/baseline/tests-2026-09-23.md` and
-      `esp-port/baseline/build-sizes-2026-09-23.md` refreshed (or new dated
-      files added) showing the green baseline.
+      layer/indicator LEDs respond as before). — **Not done: requires
+      physical cobanpad16a hardware (user action).** Static evidence: the
+      guarded path compiles in unchanged when the LED devicetree is
+      present, and the firmware is byte-identical in size to the pre-fix
+      baseline.
+- [x] No new compiler warnings in the affected targets (verified by
+      touching the changed sources and recompiling the affected TUs in all
+      five board builds; only a pre-existing CMake `KSCAN` deprecation
+      notice from `keymap-module`).
+- [x] Baseline refreshed with new dated files
+      (`esp-port/baseline/tests-2026-09-24.md`,
+      `esp-port/baseline/build-sizes-2026-09-24.md`); the 2026-09-23 files
+      are kept as the red-baseline history.
