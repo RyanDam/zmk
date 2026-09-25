@@ -35,20 +35,20 @@ be shared.
 
 ## Pin maps
 
-### ESP32-C3 SuperMini (C3FX4/FN4, 4 MB)
+### ESP32-C3 SuperMini (target marking ESP32-C3FN4, 4 MB flash)
 
 Rows: GPIO0, GPIO1, GPIO3, GPIO4. Columns: GPIO5, GPIO10, GPIO20, GPIO21.
 
 | Net | GPIO | Notes |
 | --- | --- | --- |
-| ROW0 | GPIO0 | strapping (low = download mode) — pulled up, driven low only during scan; acceptable, verify boot |
-| ROW1 | GPIO1 | |
+| ROW0 | GPIO0 | 32 kHz crystal pad (XTAL_32K_P); free when no crystal is fitted — the common SuperMini revision has none, verify at intake |
+| ROW1 | GPIO1 | 32 kHz crystal pad (XTAL_32K_N); free when no crystal is fitted |
 | ROW2 | GPIO3 | |
-| ROW3 | GPIO4 | |
-| COL0 | GPIO5 | |
+| ROW3 | GPIO4 | external JTAG MTMS — usable as GPIO; disables the external JTAG path only, USB Serial/JTAG is unaffected |
+| COL0 | GPIO5 | external JTAG MTDI — usable as GPIO; USB Serial/JTAG unaffected |
 | COL1 | GPIO10 | |
-| COL2 | GPIO20 | UART0 TX default — console moves to USB Serial/JTAG |
-| COL3 | GPIO21 | UART0 RX default — console moves to USB Serial/JTAG |
+| COL2 | GPIO20 | UART0 RX default (U0RXD) — console moves to USB Serial/JTAG |
+| COL3 | GPIO21 | UART0 TX default (U0TXD) — console moves to USB Serial/JTAG |
 
 Reserved (do **not** use):
 
@@ -56,7 +56,9 @@ Reserved (do **not** use):
   flash/console/recovery path.
 - GPIO8 — onboard active-low LED (also strapping).
 - GPIO9 — BOOT button (strapping; low = download mode).
-- GPIO2 — strapping (low = download mode).
+- GPIO2 — strapping pin (floating at reset; no boot-mode function on the
+  C3 — download mode is selected by GPIO9). Keep free.
+- GPIO12–GPIO17 — in-package flash SPI (not exposed on the board).
 
 Consequence: with COL2/COL3 on GPIO20/21 the UART0 console is unavailable;
 flashing, logging, and recovery all use USB Serial/JTAG. This is intended.
@@ -68,7 +70,7 @@ Rows: GPIO1, GPIO2, GPIO4, GPIO5. Columns: GPIO6, GPIO7, GPIO8, GPIO15.
 | Net | GPIO | Notes |
 | --- | --- | --- |
 | ROW0 | GPIO1 | |
-| ROW1 | GPIO2 | strapping (low = download mode) — pulled up, driven low only during scan; verify boot |
+| ROW1 | GPIO2 | |
 | ROW2 | GPIO4 | |
 | ROW3 | GPIO5 | |
 | COL0 | GPIO6 | |
@@ -78,26 +80,32 @@ Rows: GPIO1, GPIO2, GPIO4, GPIO5. Columns: GPIO6, GPIO7, GPIO8, GPIO15.
 
 Reserved (do **not** use):
 
-- GPIO0, GPIO3 — strapping (download / boot mode).
+- GPIO0 — strapping (download mode; BOOT button).
+- GPIO3 — strapping (JTAG signal source).
 - GPIO19, GPIO20 — USB-C D-/D+ (USB Serial/JTAG by default; see Phase 8 for
   the OTG/eFuse question).
-- GPIO45, GPIO46 — strapping (VDD_SPI voltage, JTAG source).
-- GPIO48 — JTAG source strapping.
-- GPIO33–GPIO38 — SPI0/1 flash + QSPI PSRAM; never usable.
+- GPIO45 — strapping (VDD_SPI voltage select).
+- GPIO46 — strapping (boot mode / ROM-message control).
+- GPIO48 — JTAG-source-select pin; also the WS2812 RGB + red onboard-LED
+  net.
+- GPIO26–GPIO32 — in-package flash + QSPI PSRAM (not exposed on the board).
+  On the FH4R2 quad config **GPIO33–38 are free** (the DQ4–DQ7/DQS pins are
+  octal-only) — back-side castellated pads.
 - GPIO43, GPIO44 — UART0 TX/RX; **kept free as the recovery console** until
   USB behavior is qualified (Phase 8).
 
 Additional S3 pins available for later fixture expansion (not in the default
-map): GPIO16, GPIO17, GPIO18, GPIO21.
+map): GPIO16, GPIO17, GPIO18, GPIO21, and GPIO33–38 (back-side pads).
 
 ## Conflict notes
 
-- ROW0 on C3 (GPIO0) and ROW1 on S3 (GPIO2) are download-mode strapping pins.
-  The 10 kΩ pull-up keeps them high at reset; the scanner drives them low only
-  briefly during a scan cycle. Verify on first flash that the board still
-  boots normally; if it doesn't, move that row to a non-strapping pin
-  (C3: GPIO10; S3: GPIO16) and update the map.
-- No matrix pin touches the flash/PSRAM SPI, JTAG, or USB nets on either chip.
+- No matrix pin is a strapping pin on either chip (C3 strapping =
+  GPIO2/8/9, S3 strapping = GPIO0/3/45/46 — none appear in the maps). The
+  10 kΩ row pull-ups still give a clean high reset state.
+- No matrix pin touches the flash/PSRAM SPI or USB nets on either chip. On
+  the C3, ROW3 (GPIO4) and COL0 (GPIO5) are the external JTAG pins
+  (MTMS/MTDI); driving them as GPIO disables the external JTAG path only —
+  USB Serial/JTAG (the flash/console/recovery path) is unaffected.
 - The fixture must not power any board rail other than through the board's
   own USB-C input; do not back-power GPIOs from an external supply.
 
