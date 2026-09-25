@@ -2,6 +2,14 @@
 
 ZMK keyboard firmware (Zephyr RTOS). This is a fork: `origin` = RyanDam/zmk, `upstream` = zmkfirmware/zmk.
 
+## Workflow (user preferences)
+
+- Always start work in the main workspace (the current checkout/folder), unless the user explicitly requests isolation — in that case, spawn a git worktree from the current branch.
+- If the work is about a backlog item (see `backlogs/`), always present a detailed implementation plan first and wait for the user's confirmation before implementing.
+- If the user gives a topic or goal they want to achieve, also present a detailed implementation plan first and wait for confirmation.
+- During implementation, do NOT commit or push anything. When the implementation is done, ask the user to review the changes.
+- After review, the user may commit or discard (fully or partially) the changes themselves. Don't be surprised by that — just double-check with git history afterwards.
+
 ## Branch features (vs `main`)
 
 The current branch `feat/coban-indicator` adds features on top of `main`: LED indicator behavior (incl. WS2812), dynamic macro behavior, MPR121 touchpad driver + touchpad module, Kailh Choc encoder driver, GPIO key driver, multi-binding sensor keymaps, new Studio RPC subsystems (sensor/touchpad/macro), and USB-first transport selection.
