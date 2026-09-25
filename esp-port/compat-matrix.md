@@ -6,10 +6,10 @@ board's `reference-boards/` file) before it is worked around in firmware.
 
 | Board (file) | Chip marking | Flash | PSRAM | USB-C route | External PHY? | eFuse `USB_PHY_SEL` | LED | BOOT | Flash/monitor OK | Matrix fixture OK | Issues |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| C3 #1 | pending | — | — | — | — | — | — | — | — | — | — |
-| C3 #2 | pending | — | — | — | — | — | — | — | — | — | — |
-| S3 #1 | pending | — | — | — | — | — | — | — | — | — | — |
-| S3 #2 | pending | — | — | — | — | — | — | — | — | — | — |
+| [C3 #1](fixtures/reference-boards/esp32c3-supermini-generic-01.md) | `FN4P` (as reported; transcribe at intake) | — | — | — | — | n/a (C3) | — | — | — | — | — |
+| [C3 #2](fixtures/reference-boards/esp32c3-supermini-generic-02.md) | `FN4P` (as reported; transcribe at intake) | — | — | — | — | n/a (C3) | — | — | — | — | — |
+| [S3 #1](fixtures/reference-boards/esp32s3-supermini-generic-01.md) | `FH4R2P` (as reported; transcribe at intake) | — | — | — | — | — | — | — | — | — | — |
+| [S3 #2](fixtures/reference-boards/esp32s3-supermini-generic-02.md) | `FH4R2P` (as reported; transcribe at intake) | — | — | — | — | — | — | — | — | — | — |
 
 ## Conventions
 
