@@ -43,10 +43,14 @@ Repeatable procedures for the host OS matrix (Phase 0 task 6). Hardware
 availability is recorded per host; where a host is unavailable the procedure
 and a named owner are recorded instead.
 
+All hosts are available; owner for every host: **Ryan**. Record the exact
+device model and OS version in the first test-results entry per host
+(`test-results/format.md` → Host OS field).
+
 | Host OS | Hardware | Availability | Pairing / typing procedure | Owner |
 | --- | --- | --- | --- | --- |
-| Linux | CI runner + dev machine | available | `bluetoothctl`: `power on`, `agent on`, `default-agent`, `scan on`, `pair <mac>`, `trust <mac>`, `connect <mac>`; verify typing with `evtest`/`wev` or a text editor | TBD |
-| macOS | TBD | pending | System Settings → Bluetooth → pair; verify with any text field; `log stream --predicate 'subsystem == "com.apple.bluetooth"'` for diagnostics | TBD |
-| Windows | TBD | pending | Settings → Bluetooth & devices → add device; verify in Notepad; Event Viewer → Bluetooth support for diagnostics | TBD |
-| Android | TBD | pending | Settings → Bluetooth → pair; verify in a text field | TBD |
-| iOS | TBD | pending | Settings → Bluetooth → pair; verify in Notes | TBD |
+| Linux | CI runner + dev machine | available | `bluetoothctl`: `power on`, `agent on`, `default-agent`, `scan on`, `pair <mac>`, `trust <mac>`, `connect <mac>`; verify typing with `evtest`/`wev` or a text editor | Ryan |
+| macOS | dev machine | available | System Settings → Bluetooth → pair; verify with any text field; `log stream --predicate 'subsystem == "com.apple.bluetooth"'` for diagnostics | Ryan |
+| Windows | dev machine | available | Settings → Bluetooth & devices → add device; verify in Notepad; Event Viewer → Bluetooth support for diagnostics | Ryan |
+| Android | phone | available | Settings → Bluetooth → pair; verify in a text field | Ryan |
+| iOS | iPhone | available | Settings → Bluetooth → pair; verify in Notes | Ryan |
