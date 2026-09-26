@@ -37,7 +37,7 @@ hardware identifier.
 
 ## Acceptance / verification
 - [x] Tracking branch exists with the recorded baseline (ZMK commit, west module revisions, patch list).
-- [ ] At least one developer can flash/monitor each ESP development board independently.
+- [x] At least one developer can flash/monitor each ESP development board independently.
 - [ ] Matrix fixture built and documented with its pin map and conflict notes.
 - [ ] Reference boards fully documented (chip marking, flash/PSRAM, USB route, PCB revision).
 - [x] Baseline CI results and build sizes archived.

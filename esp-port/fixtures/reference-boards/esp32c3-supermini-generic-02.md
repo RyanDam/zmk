@@ -60,3 +60,6 @@ with the board unpowered, or boot log).
 - Antenna: CrossAir CA-C03 ceramic, known-weak Wi-Fi range (layout issue).
   Note observed range quality here if it matters for a test.
 - Do not burn eFuses or run destructive tests on unit 01; use this unit.
+- 2026-09-26: unit 01 passed the flash/monitor bring-up (MAC
+  `ec:da:3b:bf:6a:30`); this unit (02) not yet tested — see
+  `../../test-results/00-c3-001-flash-monitor.md`.

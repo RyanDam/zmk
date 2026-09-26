@@ -155,6 +155,24 @@ board datasheet (PDF), the Zephyr `esp32c3_supermini` board definition
   Phase 0 bring-up use `esp32s3_devkitc/esp32s3`; a dedicated
   `esp32s3_supermini` board lands in Phase 6.
 
+### Confirmed on real hardware (2026-09-26 bring-up)
+
+esptool v5.4.0 (flash + monitor over the native USB port, macOS host)
+reported, for **unit 01 of each chip** (see
+`../test-results/00-c3-001-flash-monitor.md` and
+`../test-results/00-s3-001-flash-monitor.md`):
+
+- **C3:** ESP32-C3 (QFN32) **revision v0.4**, single core 160 MHz,
+  **4 MB flash (XMC)**, no PSRAM, 40 MHz crystal, **USB mode
+  USB-Serial/JTAG** (native — no external PHY). Matches the target C3FN4.
+- **S3:** ESP32-S3 (QFN56) **revision v0.2**, dual core + LP core
+  240 MHz, **4 MB flash (XMC) + 2 MB PSRAM (AP_3v3)**, 40 MHz crystal,
+  **USB mode USB-Serial/JTAG** (native). Matches the target S3FH4R2.
+
+Both units ran the `philosophers` sample with the console routed to USB
+Serial/JTAG (`usb-console.overlay`) and streamed output at 115200 baud —
+the flash/monitor path is proven on both chips.
+
 ## Chip marking reference
 
 The "P" seen in `FN4P` / `FH4R2P` is the start of the **tracking code**,

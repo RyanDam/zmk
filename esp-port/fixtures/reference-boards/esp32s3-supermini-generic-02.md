@@ -76,3 +76,6 @@ with the board unpowered, or boot log).
 - Phase 8 eFuse burning (e.g. `USB_PHY_SEL`) happens on **this** unit, not
   on unit 01. Burning requires explicit approval per the compat-matrix
   conventions.
+- 2026-09-26: unit 01 passed the flash/monitor bring-up (MAC
+  `90:da:72:75:9b:84`); this unit (02) not yet tested — see
+  `../../test-results/00-s3-001-flash-monitor.md`.

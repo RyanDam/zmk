@@ -115,14 +115,21 @@ x86_64 checksums (same manifest), for reference:
 The easiest way is the wrapper script `esp-port/build_esp32.sh` (modelled on
 `app/build_coban.sh`). It sets the toolchain env vars for you, builds with a
 clean (`-p always`) build dir so a stale cache can't pin the wrong variant,
-and works from anywhere in the repo:
+works from anywhere in the repo, and applies
+`esp-port/fixtures/usb-console.overlay` (the SuperMini has no UART0 bridge, so
+without it the monitor shows nothing — see the runbook):
 
 ```sh
-bash esp-port/build_esp32.sh            # build C3 + S3
-bash esp-port/build_esp32.sh c3         # build C3 only
-bash esp-port/build_esp32.sh s3         # build S3 only
-bash esp-port/build_esp32.sh c3 flash   # build C3, then west flash it
+sh esp-port/build_esp32.sh                                      # build C3 + S3 (hello_world)
+sh esp-port/build_esp32.sh --board c3                           # build C3 only
+sh esp-port/build_esp32.sh --board s3 --flash                   # build S3, then west flash it
+sh esp-port/build_esp32.sh --board c3 --sample philosophers --flash
 ```
+
+Options: `--board <c3|s3|all>` (default `all`), `--sample <hello|philosophers>`
+(default `hello`), `--flash`, `--help`. Unknown options are hard errors.
+Build dirs are per-sample: `build/c3-hello`, `build/c3-philosophers`,
+`build/s3-hello`, `build/s3-philosophers`.
 
 To build manually, set the two variables for the build. **Do not export them
 globally** — the ARM ZMK boards (cobanpad16a, etc.) still build with the
@@ -167,3 +174,12 @@ Both samples build and link with the installed toolchains against the pinned
 | `esp32s3_devkitc/esp32s3/procpu` | xtensa-esp32s3-elf 12.2.0 | OK — `zephyr.elf` + esptool image, FLASH 135284 B (1.61%) |
 
 This unblocks Step 3 (flash/monitor) of Phase 0.
+
+## Verified on real hardware (2026-09-26)
+
+Images built with these toolchains were flashed to, and ran on, real
+ESP32-C3 / ESP32-S3 SuperMini units (`philosophers` sample, console on USB
+Serial/JTAG via `fixtures/usb-console.overlay`; esptool v5.4.0 from a macOS
+host). Records: `fixtures/flash-monitor-runbook.md` and
+`test-results/00-c3-001-flash-monitor.md`,
+`test-results/00-s3-001-flash-monitor.md`.

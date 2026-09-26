@@ -1,0 +1,113 @@
+# BUILD
+
+```log
+root@ac924776eb3c:/workspaces/zmk# sh esp-port/build_esp32.sh --board c3 --sample philosophers
+=== building esp32c3_devkitc/esp32c3 (philosophers) -> build/c3-philosophers (pristine) ===
+-- west build: making build dir /workspaces/zmk/build/c3-philosophers pristine
+-- west build: generating a build system
+Loading Zephyr default modules (Zephyr base).
+-- Application: /workspaces/zmk/zephyr/samples/philosophers
+-- CMake version: 3.31.6
+-- Found Python3: /usr/bin/python3 (found suitable version "3.12.3", minimum required is "3.10") found components: Interpreter
+-- Cache files will be written to: /root/.cache/zephyr
+-- Zephyr version: 4.1.0 (/workspaces/zmk/zephyr)
+-- Found west (found suitable version "1.5.0", minimum required is "0.14.0")
+-- Board: esp32c3_devkitc, qualifiers: esp32c3
+Checking /workspaces/zmk/zephyr
+-- Could NOT find Dtc (missing: DTC) (Required is at least version "1.4.6")
+Hint: The project() command has not yet been called.  It sets up system-specific search paths.
+-- Found BOARD.dts: /workspaces/zmk/zephyr/boards/espressif/esp32c3_devkitc/esp32c3_devkitc.dts
+-- Found devicetree overlay: /workspaces/zmk/esp-port/fixtures/usb-console.overlay
+-- Generated zephyr.dts: /workspaces/zmk/build/c3-philosophers/zephyr/zephyr.dts
+-- Generated pickled edt: /workspaces/zmk/build/c3-philosophers/zephyr/edt.pickle
+-- Generated devicetree_generated.h: /workspaces/zmk/build/c3-philosophers/zephyr/include/generated/zephyr/devicetree_generated.h
+-- Including generated dts.cmake file: /workspaces/zmk/build/c3-philosophers/zephyr/dts.cmake
+Parsing /workspaces/zmk/zephyr/Kconfig
+Loaded configuration '/workspaces/zmk/zephyr/boards/espressif/esp32c3_devkitc/esp32c3_devkitc_defconfig'
+Merged configuration '/workspaces/zmk/zephyr/samples/philosophers/prj.conf'
+Configuration saved to '/workspaces/zmk/build/c3-philosophers/zephyr/.config'
+Kconfig header saved to '/workspaces/zmk/build/c3-philosophers/zephyr/include/generated/zephyr/autoconf.h'
+-- Found toolchain: espressif (/opt/espressif/tools)
+-- Found GnuLd: /opt/espressif/tools/riscv32-esp-elf/riscv32-esp-elf/bin/ld.bfd (found version "2.39.0")
+-- The C compiler identification is GNU 12.2.0
+-- The CXX compiler identification is GNU 12.2.0
+-- The ASM compiler identification is GNU
+-- Found assembler: /opt/espressif/tools/riscv32-esp-elf/bin/riscv32-esp-elf-gcc
+-- Espressif HAL path: /workspaces/zmk/modules/hal/espressif
+-- Use the esptool.py: /workspaces/zmk/modules/hal/espressif/tools/esptool_py/esptool.py
+-- Image partition /soc/flash-controller@60002000/flash@0/partitions/partition@0
+-- Using ccache: /usr/bin/ccache
+-- Looking for xtensa/config/core-isa.h
+-- Looking for xtensa/config/core-isa.h - not found
+-- Configuring done (8.1s)
+-- Generating done (0.7s)
+-- Build files have been written to: /workspaces/zmk/build/c3-philosophers
+-- west build: building application
+[1/1161] Preparing syscall dependency handling
+
+[12/1161] Generating include/generated/zephyr/version.h
+-- Zephyr version: 4.1.0 (/workspaces/zmk/zephyr), build: v4.1.0-37-g58a5874a446a
+[1161/1161] Linking C executable zephyr/zephyr.elf
+Memory region         Used Size  Region Size  %age Used
+           FLASH:      133060 B    4194048 B      3.17%
+     iram0_0_seg:       32112 B     306688 B     10.47%
+     dram0_0_seg:       61056 B     306688 B     19.91%
+     irom0_0_seg:       11702 B         4 MB      0.28%
+     drom0_0_seg:       67524 B         4 MB      1.61%
+    rtc_iram_seg:          0 GB         8 KB      0.00%
+        IDT_LIST:          0 GB         8 KB      0.00%
+Generating files from /workspaces/zmk/build/c3-philosophers/zephyr/zephyr.elf for board: esp32c3_devkitc
+esptool.py v4.8.1
+Creating esp32c3 image...
+Image has only RAM segments visible. ROM segments are hidden and SHA256 digest is not appended.
+Merged 10 ELF sections
+Successfully created esp32c3 image.
+
+Done. Next steps:
+  monitor:  west monitor -d build/c3-philosophers
+  reflash:  west flash   -d build/c3-philosophers
+
+Note on host machine:
+  Goto: /Users/ryan/Documents/CobanStationeryAssets/Firmware/src/zmk
+  ESP32 C3:
+    esptool --port /dev/tty.usbmodem834401 write-flash 0x0 build/c3-philosophers/zephyr/zephyr.bin
+  ESP32 S3:
+    esptool --port /dev/tty.usbmodem834401 write-flash 0x0 build/s3-philosophers/zephyr/zephyr.bin
+```
+
+# FLASHING
+
+On host machine:
+
+```log
+esptool --port /dev/tty.usbmodem834401 write-flash 0x0 build/c3-philosophers/zephyr/zephyr.bin
+esptool v5.4.0
+Connected to ESP32-C3 on /dev/tty.usbmodem834401:
+Chip type:          ESP32-C3 (QFN32) (revision v0.4)
+Features:           Wi-Fi, BT 5 (LE), Single Core, 160MHz, Embedded Flash 4MB (XMC)
+Crystal frequency:  40MHz
+USB mode:           USB-Serial/JTAG
+MAC:                ec:da:3b:bf:6a:30
+
+Stub flasher running.
+
+Configuring flash size...
+Flash will be erased from 0x00000000 to 0x00020fff...
+Wrote 133060 bytes (34219 compressed) at 0x00000000 in 0.8 seconds (1350.5 kbit/s).
+Hash of data verified.
+
+Hard resetting via RTS pin...
+```
+
+# MINITORING
+
+output from `screen /dev/cu.usbmodem834401 115200`:
+
+```log
+Philosopher 0 [P: 3]        STARVING
+Philosopher 1 [P: 2]    HOLDING ONE FORK
+Philosopher 2 [P: 1]   EATING  [  325 ms ]
+Philosopher 3 [P: 0]  THINKING [  425 ms ]
+Philosopher 4 [C:-1]  THINKING [  700 ms ]
+Philosopher 5 [C:-2]   EATING  [  625 ms ]
+```

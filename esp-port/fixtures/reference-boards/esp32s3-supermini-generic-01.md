@@ -71,3 +71,6 @@ with the board unpowered, or boot log).
   JTAG-source-select pin. Do not use it for the matrix fixture.
 - Antenna: some units ship with it soldered backwards — see intake
   checklist.
+- 2026-09-26: **this unit (01)** passed the flash/monitor bring-up (chip
+  rev v0.2, 4 MB XMC + 2 MB AP_3v3 PSRAM, native USB-Serial/JTAG, MAC
+  `90:da:72:75:9b:84` — see `../../test-results/00-s3-001-flash-monitor.md`).

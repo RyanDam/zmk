@@ -1,0 +1,25 @@
+/*
+ * Route the Zephyr console (and shell) to the ESP32's built-in USB Serial/JTAG
+ * controller (the CDC-ACM device on the native USB-C port) instead of UART0.
+ *
+ * Why: the devkitc board definitions set zephyr,console = &uart0 (C3: GPIO21,
+ * S3: GPIO43), but the SuperMini has no USB-UART bridge chip, so UART0 goes
+ * nowhere. The native USB port is the same one esptool uses for flashing, so
+ * with this overlay `west monitor` on that port shows console output with no
+ * extra hardware.
+ *
+ * The SERIAL_ESP32_USB driver enables automatically when the node is present.
+ * Note: the C3 devkitc board enables the node, but the S3 devkitc board
+ * explicitly disables it, so the overlay re-enables it for both.
+ */
+
+/ {
+    chosen {
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
+    };
+};
+
+&usb_serial {
+    status = "okay";
+};

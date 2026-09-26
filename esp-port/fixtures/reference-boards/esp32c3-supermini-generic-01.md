@@ -58,3 +58,6 @@ with the board unpowered, or boot log).
   range) — recorded for the compatibility matrix, no action needed.
 - Antenna: CrossAir CA-C03 ceramic, known-weak Wi-Fi range (layout issue).
   Note observed range quality here if it matters for a test.
+- 2026-09-26: **this unit (01)** passed the flash/monitor bring-up (chip
+  rev v0.4, 4 MB XMC, native USB-Serial/JTAG, MAC `ec:da:3b:bf:6a:30` — see
+  `../../test-results/00-c3-001-flash-monitor.md`).
