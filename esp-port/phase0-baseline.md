@@ -139,11 +139,19 @@ Recorded with `west list` from a `west update`-ed workspace on 2026-09-23.
 | Tool | Version |
 | --- | --- |
 | Zephyr SDK | 0.16.9 (`/opt/zephyr-sdk-0.16.9`, arm gcc 12.2.0) |
+| riscv32-esp-elf | 12.2.0_20230208 (`/opt/espressif/tools/riscv32-esp-elf`, ESP32-C3) |
+| xtensa-esp32s3-elf | 12.2.0_20230208 (`/opt/espressif/tools/xtensa-esp32s3-elf`, ESP32-S3) |
 | west | v1.5.0 |
 | Python | 3.12.3 |
 | CMake | 3.31.6 |
 | Ninja | 1.11.1 |
 | CI container | `docker.io/zmkfirmware/zmk-build-arm:4.1` |
+
+The two Espressif toolchains are **not** in the ZMK ARM dev image and were
+installed manually (Option A) — see `toolchain-esp32.md` for the exact,
+reproducible install steps, the version rationale, and the
+`ZEPHYR_TOOLCHAIN_VARIANT=espressif` / `ESPRESSIF_TOOLCHAIN_PATH` usage.
+Both are verified to build the `hello_world` sample (see that doc).
 
 ## Baseline build & test state
 
