@@ -1,0 +1,20 @@
+# Temporary compatibility shim for the kscan subsystem removed in Zephyr 4.2.
+# ZMK's kscan drivers (app/module/drivers/kscan) and their consumers still
+# select/use the legacy KSCAN symbols; this is removed together with the
+# matrix-input migration (backlog a01).
+
+menuconfig KSCAN
+	bool "Keyboard scan drivers (ZMK compatibility shim)"
+	select DEPRECATED
+	help
+	  Include Keyboard scan drivers in system config.
+
+if KSCAN
+
+config KSCAN_INIT_PRIORITY
+	int "Keyboard scan driver init priority"
+	default 90
+	help
+	  Keyboard scan device driver initialization priority.
+
+endif # KSCAN

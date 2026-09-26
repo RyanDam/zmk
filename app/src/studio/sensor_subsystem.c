@@ -22,6 +22,11 @@ ZMK_RPC_SUBSYSTEM(sensors)
 #define SENSOR_NOTIFICATION(type, ...) ZMK_RPC_NOTIFICATION(sensors, type, __VA_ARGS__)
 #define KEYMAP_NOTIFICATION(type, ...) ZMK_RPC_NOTIFICATION(keymap, type, __VA_ARGS__)
 
+// Only defined when the keymap has a zmk,keymap-sensors node (ZMK_KEYMAP_SENSORS)
+#ifndef CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS
+#define CONFIG_ZMK_KEYMAP_SENSORS_MAX_BINDINGS 0
+#endif
+
 struct sensor_layer_state {
     uint8_t sensor_idx;
     uint8_t layer_idx;

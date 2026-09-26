@@ -1,12 +1,16 @@
 manifest:
   remotes:
+    - name: local
+      url-base: file:///workspaces/zmk
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
+    - name: zmkfirmware
+      url-base: https://github.com/zmkfirmware
     - name: cobanfirmware
       url-base: https://github.com/RyanDam
   projects:
     - name: zephyr
-      remote: cobanfirmware
+      remote: local
       revision: v4.4.1+zmk-fixes
       clone-depth: 1
       import:
@@ -28,11 +32,12 @@ manifest:
           - edtt
           - trusted-firmware-m
     - name: lvgl
-      revision: 48e1ad1481fc39d2c27a96c6df151d75728417a9
+      revision: zmk-v4.4.1
       path: modules/lib/gui/lvgl
-      remote: cobanfirmware
+      remote: local
+      repo-path: modules/lib/gui/lvgl
     - name: zmk-studio-messages
-      revision: main
+      revision: 4e512abe042c4c4b6a1b4a5e7524058881ab11ad
       path: modules/msgs/zmk-studio-messages
       remote: cobanfirmware
       repo-path: zmk-studio-messages

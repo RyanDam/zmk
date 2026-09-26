@@ -1,0 +1,13 @@
+# Copyright (c) 2019, Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Common properties for keyboard matrix devices
+#
+# ZMK compatibility shim: this definition file was part of the kscan
+# subsystem removed from Zephyr in 4.2. Restored here (from Zephyr 4.1)
+# so the ZMK kscan bindings keep validating until the matrix-input
+# migration (backlog a01) removes the last kscan users.
+
+include: base.yaml
+
+bus: kscan

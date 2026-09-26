@@ -18,7 +18,7 @@ jobs:
   validate-metadata:
     runs-on: ubuntu-latest
     container:
-      image: docker.io/zmkfirmware/zmk-dev-arm:4.1
+      image: docker.io/zmkfirmware/zmk-dev-arm:4.4-branch
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies

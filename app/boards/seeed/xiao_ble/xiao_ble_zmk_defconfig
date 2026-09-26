@@ -11,6 +11,11 @@ CONFIG_GPIO=y
 CONFIG_ZMK_USB=y
 CONFIG_ZMK_BLE=y
 
+# Zephyr 4.4: the xiao_ble board defaults its CDC ACM serial backend to the
+# device_next USB stack, which conflicts with the legacy stack ZMK uses.
+# ZMK does not use a board serial console, so disable the backend.
+CONFIG_BOARD_SERIAL_BACKEND_CDC_ACM=n
+
 # Build UF2 by default, supported by the Adafruit nRF52 Bootloader
 CONFIG_BUILD_OUTPUT_UF2=y
 CONFIG_USE_DT_CODE_PARTITION=y
