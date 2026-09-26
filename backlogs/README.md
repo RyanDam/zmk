@@ -90,7 +90,7 @@ owner decision — revisit when the dependent phase starts:
 ### b — Build, deploy & config
 | File | Title | Severity | Effort | Status |
 |------|-------|----------|--------|--------|
-| [b01](b01-zephyr-4-4-1-baseline-upgrade.md) | Phase 1: Upgrade Zephyr baseline to 4.4.1 | High | L | TODO |
+| [b01](done/b01-zephyr-4-4-1-baseline-upgrade.md) | Phase 1: Upgrade Zephyr baseline to 4.4.1 | High | L | DONE |
 | [b02](b02-esp32c3-supermini-ble-board.md) | Phase 5: Add ESP32-C3 SuperMini BLE board variant | High | M | TODO |
 | [b03](b03-esp32s3-supermini-ble-board.md) | Phase 6: Add ESP32-S3 SuperMini BLE board variant | High | L | TODO |
 | [b04](b04-esp32s3-usb-hid-conditional.md) | Phase 8: ESP32-S3 SuperMini USB HID (conditional, USB-PHY gate) | Medium | L | TODO |

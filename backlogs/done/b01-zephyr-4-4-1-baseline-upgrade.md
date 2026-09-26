@@ -2,7 +2,7 @@
 
 - **Category:** b (Build, deploy & config)
 - **Severity:** High
-- **Status:** TODO
+- **Status:** DONE
 - **Effort (est):** L
 
 ## Problem
@@ -36,7 +36,7 @@ done.
 - kscan → matrix input migration (a01), USB stack migration (a02), and any ESP board code (b02/b03) — deliberately separate, ordered milestones.
 
 ## Acceptance / verification
-- [ ] The resolved west manifest reproducibly contains the expected Zephyr `v4.4.1` and matching `hal_espressif` SHAs.
-- [ ] Representative builds pass: a USB+BLE Nordic board, an RP2040 board, an STM32 board, a native test board, and a split board.
-- [ ] Every downstream Zephyr fix is ported, upstreamed, or consciously dropped with a recorded rationale.
-- [ ] Devcontainer and CI run on SDK 1.0 / Python 3.12 / C17 with no stale toolchain dependency hidden by a warm cache.
+- [x] The resolved west manifest reproducibly contains the expected Zephyr `v4.4.1` and matching `hal_espressif` SHAs. — cold-cache `west init -l app && west update` (fresh workspace, real GitHub remotes) resolves zephyr `v4.4.1+zmk-fixes` @ `da9b77b04d` (17 commits above `v4.4.1`), `hal_espressif` @ `19f979cfe6` (the 4.4.1 import pin), lvgl @ `48e1ad148`.
+- [x] Representative builds pass: a USB+BLE Nordic board, an RP2040 board, an STM32 board, a native test board, and a split board. — on the final committed tree: nice_nano/corne_left (USB+BLE Nordic, split; also in the cold-cache run), sparkfun_pro_micro_rp2040/reviung41 (plain + `zmk-usb-logging` snippet), bdn9 (STM32), plus nice60, proton_c/clueboard_california, planck, kyria_left (pointing), romac_plus (underglow), lily58+nice_view; native_sim suite 246 PASS / 0 FAIL / 2 PENDING (pre-existing markers).
+- [x] Every downstream Zephyr fix is ported, upstreamed, or consciously dropped with a recorded rationale. — all 41 `v4.1.0+zmk-fixes` commits classified in `zephyr-4.4.1-upgrade-notes.md` (17 ported, 24 dropped, each with rationale; `10ba6d0cb` superseded by upstream `c2eb901ea1`, re-validated via the 2+ connections hardware check).
+- [x] Devcontainer and CI run on SDK 1.0 / Python 3.12 / C17 with no stale toolchain dependency hidden by a warm cache. — `.devcontainer/` and all workflows on the `4.4-branch` images (SDK 1.0.1, Python 3.12); the cold-cache run built in a fresh workspace with SDK 1.0.1, so nothing warm-cache-hidden. (The GitHub Actions run itself confirms on branch push.)
