@@ -208,16 +208,15 @@ grep -c 'warning:' <coban-build>.log   # expect 0
 - `app/west.yml`: `zephyr` and `lvgl` projects now use the existing
   `cobanfirmware` remote (url-base `https://github.com/RyanDam`); default
   repo-path = project name.
-- Local state is push-ready; `git push --dry-run` against both forks succeeds
-  (new branch, no shallow-repo errors). The zephyr checkout's shallow boundary no
-  longer truncates the branch (17 commits above `v4.4.1`, verified with
-  `git rev-list --count v4.4.1..HEAD`); the lvgl branch is a single commit
-  `48e1ad148` on `v9.5.0`.
-- **User push commands (after review):**
-  ```sh
-  git -C zephyr push https://github.com/RyanDam/zephyr v4.4.1+zmk-fixes
-  git -C modules/lib/gui/lvgl push https://github.com/RyanDam/lvgl zmk-v4.4.1
-  ```
+- **Pushed and verified on the remotes:**
+  - `RyanDam/zephyr` `v4.4.1+zmk-fixes` @ `da9b77b04d` (17 commits above `v4.4.1`)
+  - `RyanDam/lvgl` `zmk-v4.4.1` @ `48e1ad148` (single commit on `v9.5.0`)
+  - `RyanDam/zmk-studio-messages` `main` @ `79e59e6` — the branch's studio WIP
+    landed here: touchpad protos (incl. frequency/joystick `SetFrequency` RPCs)
+    and the `touchpad.options` nanopb options (`max_count:11` bindings,
+    `max_size:32` layer name). Note: the options file is **required** for the
+    firmware build — without `max_size` on `Layer.name`, nanopb generates
+    `pb_callback_t` and `touchpad_subsystem.c` fails to compile.
 
 ## Validation status
 
@@ -233,8 +232,20 @@ grep -c 'warning:' <coban-build>.log   # expect 0
       these, so the combos fit there. Mitigation is branch-feature tuning (smaller
       `ZMK_DYNAMIC_MACROS_COUNT`/`MAX_STEPS`, per-board overrides), out of Phase 1
       scope — candidate for a separate backlog item.
-- [ ] native_sim test suite — running with `J=1` (see race note below)
-- [ ] cold-cache CI run
+- [x] native_sim test suite: **246 PASS / 0 FAIL / 2 PENDING** (248 total; the
+      2 PENDING are pre-existing `pending` markers: `studio/remove-layer/
+      remove-default-layer`, `modifiers/implicit/kp-mod1-dn-mod2-dn-mod1-up-mod2-up`).
+      Run sequentially (`J=1`) due to the parse_syscalls race below.
+- [x] 7 round-1 matrix builds re-verified on the final committed tree — all pass:
+      nice60, bdn9, proton_c/clueboard_california, planck, nice_nano/kyria_left
+      (pointing), nice_nano/romac_plus (underglow), nice_nano/lily58+nice_view.
+- [x] cold-cache CI run: fresh workspace (`west init -l app && west update &&
+      west zephyr-export`), every project fetched from the real GitHub remotes
+      (all three forks resolve). `nice_nano/corne_left`, `cobanpad16a` and
+      `cobanpad12b` all build. Cosmetic note: zephyr uses `clone-depth: 1`, so
+      cold builds embed the bare-hash version string (`OS build da9b77b04dd3`)
+      instead of `v4.4.1-17-gda9b77b04dd3` — `git describe` can't run in a
+      shallow clone. ~8 FLASH bytes, expected in CI.
 
 **Test-runner race (pre-existing, 4.1 and 4.4 alike):** `parse_syscalls.py`
 `os.walk`s the app source dir — which includes `app/build/tests/*` — then opens
