@@ -9,7 +9,7 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-const struct device *flash_dev = FIXED_PARTITION_DEVICE(storage_partition);
+const struct device *flash_dev = PARTITION_DEVICE(storage_partition);
 
 static int stm32_enforce_nboot_sel_init(void) {
     uint32_t opts = 0;

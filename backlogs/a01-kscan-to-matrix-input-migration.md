@@ -16,6 +16,9 @@ kscan consumers in physical-layout/sideband code, so any 4.4 build fails immedia
 - `app/src/physical_layouts.c` — still includes `kscan.h` and carries the legacy callback/lifecycle path, though it already accepts `zmk,matrix-input` and installs Input callbacks.
 - `app/src/kscan_sideband_behaviors.c`, `app/include/zmk/physical_layouts.h` (`struct zmk_physical_layout` retains `kscan`), `app/include/zmk/matrix.h` — legacy consumers.
 - `report.md:31-44` — kscan removal (commit `60a9a202`) and the kscan vs Input event-model differences.
+- `zephyr-4.4.1-upgrade-notes.md` — the temporary kscan compat shim enables the deprecated
+  `KSCAN` Kconfig symbol, emitting one "Deprecated symbol KSCAN is enabled" warning per
+  build; it disappears when the shim is removed.
 
 ## Why it matters
 - Hard build blocker on Zephyr 4.2+/4.4 and a prerequisite for the ESP port. Carrying a
@@ -39,3 +42,4 @@ kscan consumers in physical-layout/sideband code, so any 4.4 build fails immedia
 - [ ] Physical smoke tests pass on at least one board per driver family.
 - [ ] Every in-tree board/shield that uses an affected driver still builds.
 - [ ] A held key through USB and BLE, wake from idle, and matrix rollover behavior verified on hardware.
+- [ ] The "Deprecated symbol KSCAN is enabled" build warning is gone (see `zephyr-4.4.1-upgrade-notes.md`).

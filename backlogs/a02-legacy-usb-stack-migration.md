@@ -18,6 +18,12 @@ legacy stack.
 - `app/src/endpoints.c`, `app/src/activity.c`, `app/src/events/usb_conn_state_changed.c`, `app/src/studio/` — consumers of USB connection state, activity, and Studio UART/CDC.
 - `report.md:48-61` — legacy vs modern USB device stack comparison and affected ZMK core.
 - `implement_plan.md:166-203` — Phase 3 tasks and exit gate.
+- `zephyr-4.4.1-upgrade-notes.md` ("The remaining 99 warnings, in detail") — the 4.4.1
+  coban builds currently emit 96 warnings that exist solely because of the legacy stack:
+  77 `-Wdeprecated-declarations` function warnings, 19 `USB_TRANS_READ/WRITE/NO_ZLP`
+  `__DEPRECATED_MACRO` warnings (from Zephyr's own legacy stack files), and 2 "Deprecated
+  symbol USB_DEVICE_STACK/USB_DEVICE_DRIVER" Kconfig warnings. All vanish when the legacy
+  stack stops compiling.
 
 ## Why it matters
 - The S3 DWC2 path is a UDC-only model; keeping the legacy stack would make the new S3 USB
@@ -42,3 +48,4 @@ legacy stack.
 - [ ] Keyboard boot/report protocol switching, consumer and mouse reports, suspend/resume, unplug/replug, and reset-while-connected all pass.
 - [ ] Existing USB logging and Studio configurations work where supported.
 - [ ] Flash/RAM size comparison against the 4.1 baseline documented, with material regressions called out.
+- [ ] The 96 legacy-stack deprecation warnings are gone from the coban builds (see `zephyr-4.4.1-upgrade-notes.md`).

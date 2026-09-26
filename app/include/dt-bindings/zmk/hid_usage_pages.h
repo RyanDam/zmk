@@ -10,6 +10,12 @@
 
 #pragma once
 
+/* Note: HID_USAGE_SENSORS (0x20) is no longer defined here; Zephyr >= 4.4
+ * defines it in <zephyr/usb/class/hid.h>. This header must stay
+ * devicetree-safe (it is included from .dtsi files via
+ * dt-bindings/zmk/keys.h), so it must not include C headers.
+ */
+
 #define ZMK_HID_USAGE(page, id) ((page << 16) | id)
 #define ZMK_HID_USAGE_ID(usage) (usage & 0xFFFF)
 #define ZMK_HID_USAGE_PAGE(usage) ((usage >> 16) & 0xFF)
@@ -34,7 +40,7 @@
 #define HID_USAGE_PID (0x0F)            // PID
 #define HID_USAGE_EHT (0x12)            // Eye and Head Trackers
 #define HID_USAGE_AUXDISP (0x14)        // Auxiliary Display
-#define HID_USAGE_SENSORS (0x20)        // Sensors
+/* HID_USAGE_SENSORS (0x20): provided by <zephyr/usb/class/hid.h> */
 #define HID_USAGE_MEDICAL (0x40)        // Medical Instrument
 #define HID_USAGE_BRAILLE (0x41)        // Braille Display
 #define HID_USAGE_LIGHT (0x59)          // Lighting And Illumination

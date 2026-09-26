@@ -138,6 +138,56 @@ Restored in the ZMK tree:
   a `zmk,keymap-sensors` node. Added an `#ifdef` fallback (0) for keymaps without
   sensors — latent bug, surfaced by the studio matrix builds.
 
+### Build warning cleanup (coban pads: 320 → 99)
+
+The coban builds emitted 320 warnings on 4.4.1. Breakdown and resolution:
+
+- **HID usage macro redefinitions (220 warnings, 11 macros × 20 TUs):** Zephyr 4.4
+  added HID usage codes to `<zephyr/usb/class/hid.h>`, duplicating ZMK's
+  `dt-bindings/zmk/hid_usage.h` / `hid_usage_pages.h`. Two dead ends found along
+  the way: (a) `#ifndef` guards on ZMK's side are NOT sufficient — the warning
+  simply moves to Zephyr's header in TUs where ZMK's headers are included first;
+  (b) including Zephyr's `hid.h` from ZMK's dt-bindings headers breaks the
+  **devicetree** build — `app/dts/behaviors/*.dtsi` include
+  `dt-bindings/zmk/keys.h` → `hid_usage*.h`, and Zephyr's `hid.h` contains C
+  code (`enum hid_kbd_code`, …) that dtc cannot parse. Final fix:
+  - Removed the 10 duplicate `HID_USAGE_SENSORS*` definitions (values were
+    identical; nothing in ZMK's C code or the keymaps uses them) from
+    `hid_usage.h` / `hid_usage_pages.h`, with comments pointing to
+    `<zephyr/usb/class/hid.h>`. The dt-bindings headers stay pure-`#define`
+    (DTS-safe).
+  - `HID_USAGE16` was a *semantic* clash: ZMK's 2-arg report-descriptor item
+    macro vs Zephyr 4.4's 1-arg `HID_USAGE16(idx)`. Removed ZMK's
+    `HID_USAGE16`/`HID_USAGE16_SINGLE` and switched the single usage (report
+    descriptor in `zmk/hid.h`, consumer AC-Pan item) to Zephyr's
+    `HID_USAGE16(idx)` — identical descriptor bytes.
+- **Deprecated `FIXED_PARTITION_*` macros (2 warnings):** `reset_settings_nvs.c`
+  used deprecated `FIXED_PARTITION_ID` → `PARTITION_ID` (4.4 replacement); same
+  one-line fix in `boot/stm32_enforce_nboot_sel.c`
+  (`FIXED_PARTITION_DEVICE` → `PARTITION_DEVICE`).
+- **The remaining 99 warnings are all deprecation notices** from the legacy USB
+  device stack (`CONFIG_USB_DEVICE_STACK`) and the temporary kscan shim — none
+  are ZMK bugs, and all are scheduled to disappear (detailed below). They were
+  deliberately NOT suppressed: `-Wno-deprecated-declarations` would only silence
+  the function-deprecation class (the pragma-based ones cannot be filtered, per
+  Zephyr's own comment in `include/zephyr/toolchain/gcc.h`) and would mask real
+  deprecations in our own code.
+
+#### The remaining 99 warnings, in detail
+
+| Category | Count | Mechanism | Emitted from | Removed by |
+|----------|-------|-----------|--------------|------------|
+| Legacy USB **function** deprecations: `usb_write`, `usb_transfer*`, `usb_dc_ep_*`, `usb_hid_*`, `usb_enable`, `usb_cancel_transfer*`, `hid_int_ep_write`, … | 77 | `-Wdeprecated-declarations` on the legacy stack's API (deprecated in Zephyr 4.4 in favor of the `device_next` stack) | Mostly Zephyr's legacy stack: `subsys/usb/device/usb_device.c` (largest share), `usb_transfer.c`, `class/cdc_acm.c`, `usb_descriptor.c`, `class/hid/core.c`, `drivers/usb/device/usb_dc_nrfx.c`; plus ZMK's USB code: `app/src/usb_hid.c`, `app/src/usb.c` | **Phase 3 (a02)** — USB `device_next` migration |
+| `USB_TRANS_READ` / `USB_TRANS_WRITE` / `USB_TRANS_NO_ZLP` **macro** deprecations | 19 | Zephyr's `__DEPRECATED_MACRO` mechanism (`_Pragma("GCC warning ...")`); the deprecated aliases are defined in `zephyr/include/zephyr/usb/usb_device.h` (lines 376–378) | Zephyr's *own* legacy stack files: `class/cdc_acm.c` (8), `usb_descriptor.c` (5), `usb_transfer.c` (4), `class/hid/core.c` (2) — an upstream wart: the legacy stack uses its own deprecated aliases | **Phase 3 (a02)** — these files stop compiling once the legacy stack is gone |
+| "Deprecated symbol … is enabled" Kconfig warnings | 3 | kconfiglib warning for `--- deprecated` Kconfig symbols that are enabled | `USB_DEVICE_STACK` + `USB_DEVICE_DRIVER` (legacy stack) → **a02**; `KSCAN` (superseded by the input subsystem; enabled by our temporary compat shim, see above) → **a01** | **Phase 3 (a02) + a01** |
+
+Tally check: 77 + 19 + 3 = 99 (identical for cobanpad12b and cobanpad16a).
+
+**Re-verification command** (after a01/a02 land):
+```sh
+grep -c 'warning:' <coban-build>.log   # expect 0
+```
+
 ## Environment / CI
 
 - Zephyr SDK: 0.16.9 → **1.0.1** (minimum for 4.4).
