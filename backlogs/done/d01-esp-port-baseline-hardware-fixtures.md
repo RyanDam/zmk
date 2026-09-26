@@ -2,7 +2,7 @@
 
 - **Category:** d (Testing & CI)
 - **Severity:** Medium
-- **Status:** TODO
+- **Status:** DONE
 - **Effort (est):** M
 
 ## Problem
@@ -34,6 +34,21 @@ hardware identifier.
 
 ## Out of scope (for now)
 - Any firmware, manifest, or Zephyr pin changes — this milestone is fixtures and records only.
+
+> **Closed 2026-09-26 (owner decision):** Phase 0 closed with the exit gate
+> met (baseline archived, flash/monitor proven on unit 01 of both chips) and
+> the following items intentionally skipped — they remain open work for the
+> phases that need them:
+>
+> - **Matrix fixture:** pin map documented in
+>   `esp-port/fixtures/matrix-fixture.md`, but the physical fixture was not
+>   built. Needed before Phase 5/6 board bring-up testing.
+> - **Reference board intake:** photos, full chip-marking transcription,
+>   PCB revision, wiring continuity evidence, S3 eFuse `USB_PHY_SEL` dump,
+>   and unit 02 flash/monitor are still pending (unit 01 of each chip is
+>   recorded in `esp-port/test-results/`).
+> - **Power-measurement setup:** 3.3 V supply + current meter/power profiler
+>   not acquired. Needed before Phase 7 power qualification.
 
 ## Acceptance / verification
 - [x] Tracking branch exists with the recorded baseline (ZMK commit, west module revisions, patch list).

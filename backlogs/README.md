@@ -51,6 +51,19 @@ Note: for this backlog the items are also an ordered delivery sequence — follo
 phase numbers in `implement_plan.md` (Phase 0 → Phase 10) rather than the generic
 category order.
 
+## Phase 0 note (closed 2026-09-26)
+
+Phase 0 ([d01](done/d01-esp-port-baseline-hardware-fixtures.md)) is closed with the
+exit gate met: baseline builds/tests archived (`esp-port/baseline/`), test-results
+format in use (`esp-port/test-results/`), and flash/monitor proven on unit 01 of
+both chips (C3 + S3 SuperMini, records in `esp-port/test-results/`). Skipped by
+owner decision — revisit when the dependent phase starts:
+
+- physical **matrix fixture** (pin map documented, not built) → before Phase 5/6
+- full **reference board intake** (photos, marking transcription, PCB revision,
+  continuity evidence, S3 eFuse dump, unit 02 flash/monitor) → before Phase 5/6
+- **power-measurement setup** (3.3 V supply + current meter) → before Phase 7
+
 ## Index
 
 ### c — Correctness & reliability
@@ -70,7 +83,7 @@ category order.
 ### d — Testing & CI
 | File | Title | Severity | Effort | Status |
 |------|-------|----------|--------|--------|
-| [d01](d01-esp-port-baseline-hardware-fixtures.md) | Phase 0: Establish reproducible baseline and hardware fixtures | Medium | M | TODO |
+| [d01](done/d01-esp-port-baseline-hardware-fixtures.md) | Phase 0: Establish reproducible baseline and hardware fixtures | Medium | M | DONE |
 | [d02](d02-zephyr-upgrade-regression-gate.md) | Phase 4: Whole-project Zephyr upgrade regression gate | High | M | TODO |
 | [d03](d03-esp-ble-power-reliability-qualification.md) | Phase 7: ESP BLE reliability and power qualification | High | L | TODO |
 
