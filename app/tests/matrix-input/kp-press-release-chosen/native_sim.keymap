@@ -20,7 +20,10 @@
 
     chosen {
         /delete-property/ zmk,kscan;
-        zmk,matrix-input = <&mock_matrix_input>;
+        /* Unbound chosen properties must use the phandle shorthand
+         * (`= &node`, no <>) or edtlib won't type them as phandles and
+         * DT_CHOSEN_zmk_matrix_input will not be generated. */
+        zmk,matrix-input = &mock_matrix_input;
     };
 
     matrix_transform0: keymap_transform_0 {

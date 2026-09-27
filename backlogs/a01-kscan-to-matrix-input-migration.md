@@ -40,8 +40,20 @@ kscan consumers in physical-layout/sideband code, so any 4.4 build fails immedia
 - [x] No production ZMK driver depends on the removed kscan API. (All six drivers in
   `app/module/drivers/kscan/` are Input producers; the compat shim is removed; no
   `kscan.h`/`CONFIG_KSCAN`/`kscan_driver_api` references remain in production code.)
-- [ ] Native/unit tests pass for each driver family, including the three-event ordering and synchronization boundary.
+- [x] Native/unit tests pass for each driver family, including the three-event ordering and synchronization boundary.
+  (Full native_sim suite in sync mode: 246 PASS / 0 FAIL / 2 pre-existing PENDING;
+  plus the new `matrix-input/kp-press-release-chosen` regression test for the
+  chosen-fallback path. 5 temp_layer snapshots regenerated for sync-mode event
+  ordering — see `zephyr-4.4.1-upgrade-notes.md`.)
 - [ ] Physical smoke tests pass on at least one board per driver family.
-- [ ] Every in-tree board/shield that uses an affected driver still builds.
+  (cobanpad16a gpio-matrix verified on hardware: full event chain press→release→
+  HID keycode; cobanpad12b built, awaiting smoke test. Other driver families
+  have no hardware available on this branch.)
+- [x] Every in-tree board/shield that uses an affected driver still builds.
+  (cobanpad16a/12b, zodiark_left, snap_left, zmk_uno, bdn9 all build in sync
+  mode; ferris has a pre-existing RAM overflow from this branch's studio
+  features — ~620 B before a01, 636 B in sync mode; no "Deprecated symbol
+  KSCAN" warning anywhere.)
 - [ ] A held key through USB and BLE, wake from idle, and matrix rollover behavior verified on hardware.
-- [ ] The "Deprecated symbol KSCAN is enabled" build warning is gone (see `zephyr-4.4.1-upgrade-notes.md`).
+  (USB press/release verified on cobanpad16a; BLE/wake/rollover not yet exercised.)
+- [x] The "Deprecated symbol KSCAN is enabled" build warning is gone (see `zephyr-4.4.1-upgrade-notes.md`).

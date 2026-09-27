@@ -216,6 +216,17 @@ modes, selected by the `INPUT_MODE` Kconfig choice (default: thread mode):
    suite runs in the mode `app/prj.conf` sets (synchronous), which is what
    production uses — good — but the thread-mode path (a Zephyr mechanism, not
    ZMK code) is untested by ZMK CI.
+6. **Event ordering vs deferred work differs from thread mode.** A consumer
+   that defers processing to a work item (e.g. the temp-layer processor) runs
+   that work on sys_workq — the *same queue* the synchronous callback is
+   executing on — so the deferred work can only run after the current event
+   group is fully processed inline. Thread mode interleaves the input thread
+   and sys_workq differently. Observable effect: in the 5
+   `pointing/mouse-move/processors/temp_layer/*` tests, `layer_changed` (deferred)
+   is logged after the first `movement_set` (inline) instead of before. Same
+   event set, different order — those 5 snapshots were regenerated for
+   synchronous mode (a representative test was verified to still pass in
+   thread mode with the original snapshot).
 
 **Kconfig gotcha hit during the switch:** `ZMK_POINTING`
 (`app/src/pointing/Kconfig`) unconditionally did
@@ -381,6 +392,38 @@ grep -c 'warning:' <coban-build>.log   # expect 0
       cold builds embed the bare-hash version string (`OS build da9b77b04dd3`)
       instead of `v4.4.1-17-gda9b77b04dd3` — `git describe` can't run in a
       shallow clone. ~8 FLASH bytes, expected in CI.
+
+### a01 (kscan → Input) validation
+
+- [x] Full native_sim suite in **synchronous mode** (`CONFIG_INPUT_MODE_SYNCHRONOUS=y`):
+      **246 PASS / 0 FAIL / 2 PENDING** (248 native_sim tests; the 2 PENDING are
+      the same pre-existing `pending` markers as above), run sequentially
+      (`J=1`). Plus the new `matrix-input/kp-press-release-chosen` regression
+      test (layout with no `input`/`kscan` property, resolving the input device
+      via the `zmk,matrix-input` chosen) — PASS.
+      - The 5 `pointing/mouse-move/processors/temp_layer/*` snapshots were
+        regenerated for synchronous mode (event-ordering difference, see the
+        SYNCHRONOUS section above — same event set, `layer_changed` after the
+        first `movement_set`).
+      - Gotcha found by the new regression test: an **unbound** chosen property
+        must use the phandle shorthand (`zmk,matrix-input = &node;`, no `<>`) —
+        `<&node>` is stored as a raw cell for a property no binding declares,
+        `edtlib` rejects it in `chosen_nodes`, and `DT_CHOSEN_*` is never
+        generated. (This is why the original test had that line commented out.)
+- [x] Hardware: **cobanpad16a** (gpio-matrix, sync mode) — boot log shows PM
+      suspend → layout select (`input device: kscan0`) → PM resume → scan
+      started; a key press produces the full chain: `ABS X`/`ABS Y`/
+      `BTN_TOUCH`+sync → transform → keymap binding → HID keycode.
+      **cobanpad12b** built (uf2); ELF verified to contain the input callback.
+- [x] Sync-mode board rebuilds of the verification boards (all include the
+      `DT_INST_PHANDLE` typo fix): **zodiark_left, snap_left, zmk_uno, bdn9
+      pass**; **ferris fails with the pre-existing RAM overflow** (636 B —
+      ~620 B before a01 from this branch's studio features; sync mode adds only
+      ~16 B of input/PM statics, vs ~1.4 KB in thread mode, which measured
+      1988 B). No "Deprecated symbol KSCAN" warning in any build. The two coban
+      shields are built; 16a is flashed + working.
+      (Board targets: `bdn9/stm32f072xb/zmk`, `ferris/stm32f072xb/zmk` — the
+      boards live in `app/boards/`, vendor is not part of the target.)
 
 **Test-runner race (pre-existing, 4.1 and 4.4 alike):** `parse_syscalls.py`
 `os.walk`s the app source dir — which includes `app/build/tests/*` — then opens
