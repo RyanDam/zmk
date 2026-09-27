@@ -74,7 +74,7 @@ owner decision — revisit when the dependent phase starts:
 ### a — Architecture & maintainability
 | File | Title | Severity | Effort | Status |
 |------|-------|----------|--------|--------|
-| [a01](a01-kscan-to-matrix-input-migration.md) | Phase 2: Migrate legacy kscan to matrix input | High | L | TODO |
+| [a01](done/a01-kscan-to-matrix-input-migration.md) | Phase 2: Migrate legacy kscan to matrix input | High | L | DONE |
 | [a02](a02-legacy-usb-stack-migration.md) | Phase 3: Migrate legacy USB device/HID stack | High | L | TODO |
 | [a03](a03-esp-wireless-split-ble.md) | Phase 9a: ESP wireless split BLE (experimental) | Low | L | TODO |
 | [a04](a04-esp-battery-display-rgb-peripherals.md) | Phase 9b: ESP battery, display, RGB, sensors, pointing (experimental) | Low | M | TODO |
