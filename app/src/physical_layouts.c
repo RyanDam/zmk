@@ -78,7 +78,7 @@ BUILD_ASSERT(
  * no input callback, no PM resume - dead matrix).
  */
 #define LAYOUT_INPUT_NODE(n)                                                                       \
-    COND_CODE_1(DT_INST_NODE_HAS_PROP(n, input), (DT_INST_PHHANDLE(n, input)),                           \
+    COND_CODE_1(DT_INST_NODE_HAS_PROP(n, input), (DT_INST_PHANDLE(n, input)),                           \
                 (COND_CODE_1(DT_INST_NODE_HAS_PROP(n, kscan), (DT_INST_PHANDLE(n, kscan)),              \
                              (COND_CODE_1(DT_HAS_CHOSEN(zmk_matrix_input),                         \
                                           (DT_CHOSEN(zmk_matrix_input)),                            \
