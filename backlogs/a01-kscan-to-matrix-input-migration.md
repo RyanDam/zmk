@@ -37,7 +37,9 @@ kscan consumers in physical-layout/sideband code, so any 4.4 build fails immedia
 - USB stack migration (a02) and ESP board enablement (b02/b03).
 
 ## Acceptance / verification
-- [ ] No production ZMK driver depends on the removed kscan API.
+- [x] No production ZMK driver depends on the removed kscan API. (All six drivers in
+  `app/module/drivers/kscan/` are Input producers; the compat shim is removed; no
+  `kscan.h`/`CONFIG_KSCAN`/`kscan_driver_api` references remain in production code.)
 - [ ] Native/unit tests pass for each driver family, including the three-event ordering and synchronization boundary.
 - [ ] Physical smoke tests pass on at least one board per driver family.
 - [ ] Every in-tree board/shield that uses an affected driver still builds.

@@ -6,8 +6,9 @@
 
 #define DT_DRV_COMPAT zmk_kscan_gpio_demux
 
+#include "kscan_input.h"
+
 #include <zephyr/device.h>
-#include <zephyr/drivers/kscan.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -42,7 +43,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
     };                                                                                             \
                                                                                                    \
     struct kscan_gpio_data_##n {                                                                   \
-        kscan_callback_t callback;                                                                 \
         struct k_timer poll_timer;                                                                 \
         struct CHECK_DEBOUNCE_CFG(n, (k_work), (k_work_delayable)) work;                           \
         bool matrix_state[INST_MATRIX_INPUTS(n)][INST_MATRIX_OUTPUTS(n)];                          \
@@ -94,7 +94,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
                 if (pressed != data->matrix_state[r][c]) {                                         \
                     LOG_DBG("Sending event at %d,%d state %s", r, c, (pressed ? "on" : "off"));    \
                     data->matrix_state[r][c] = pressed;                                            \
-                    data->callback(dev, r, c, pressed);                                            \
+                    zmk_kscan_input_report(dev, r, c, pressed);                                    \
                 }                                                                                  \
             }                                                                                      \
         }                                                                                          \
@@ -113,33 +113,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
                                                                                                    \
     static struct kscan_gpio_data_##n kscan_gpio_data_##n = {};                                    \
                                                                                                    \
-    /* KSCAN API configure function */                                                             \
-    static int kscan_gpio_configure_##n(const struct device *dev, kscan_callback_t callback) {     \
-        LOG_DBG("KSCAN API configure");                                                            \
+    /* Start polling (no PM: nothing else will start us) */                                        \
+    static int kscan_gpio_start_##n(const struct device *dev) {                                    \
         struct kscan_gpio_data_##n *data = dev->data;                                              \
-        if (!callback) {                                                                           \
-            return -EINVAL;                                                                        \
-        }                                                                                          \
-        data->callback = callback;                                                                 \
-        LOG_DBG("Configured GPIO %d", n);                                                          \
-        return 0;                                                                                  \
-    };                                                                                             \
-                                                                                                   \
-    /* KSCAN API enable function */                                                                \
-    static int kscan_gpio_enable_##n(const struct device *dev) {                                   \
-        LOG_DBG("KSCAN API enable");                                                               \
-        struct kscan_gpio_data_##n *data = dev->data;                                              \
-        /* TODO: we might want a follow up to hook into the sleep state hooks in Zephyr, */        \
-        /* and disable this timer when we enter a sleep state */                                   \
         k_timer_start(&data->poll_timer, K_MSEC(POLL_INTERVAL(n)), K_MSEC(POLL_INTERVAL(n)));      \
-        return 0;                                                                                  \
-    };                                                                                             \
-                                                                                                   \
-    /* KSCAN API disable function */                                                               \
-    static int kscan_gpio_disable_##n(const struct device *dev) {                                  \
-        LOG_DBG("KSCAN API disable");                                                              \
-        struct kscan_gpio_data_##n *data = dev->data;                                              \
-        k_timer_stop(&data->poll_timer);                                                           \
         return 0;                                                                                  \
     };                                                                                             \
                                                                                                    \
@@ -188,14 +165,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
                                                                                                    \
         (CHECK_DEBOUNCE_CFG(n, (k_work_init), (k_work_init_delayable)))(                           \
             &data->work, kscan_gpio_work_handler_##n);                                             \
+                                                                                                   \
+        /* No PM: start polling autonomously */                                                    \
+        kscan_gpio_start_##n(dev);                                                                 \
         return 0;                                                                                  \
     }                                                                                              \
-                                                                                                   \
-    static const struct kscan_driver_api gpio_driver_api_##n = {                                   \
-        .config = kscan_gpio_configure_##n,                                                        \
-        .enable_callback = kscan_gpio_enable_##n,                                                  \
-        .disable_callback = kscan_gpio_disable_##n,                                                \
-    };                                                                                             \
                                                                                                    \
     static const struct kscan_gpio_config_##n kscan_gpio_config_##n = {                            \
         .rows = {DT_FOREACH_PROP_ELEM(DT_DRV_INST(n), input_gpios, _KSCAN_GPIO_CFG_INIT)},         \
@@ -203,7 +177,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
     };                                                                                             \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(n, kscan_gpio_init_##n, NULL, &kscan_gpio_data_##n,                      \
-                          &kscan_gpio_config_##n, POST_KERNEL, CONFIG_KSCAN_INIT_PRIORITY,         \
-                          &gpio_driver_api_##n);
+                          &kscan_gpio_config_##n, POST_KERNEL, CONFIG_ZMK_KSCAN_INIT_PRIORITY,     \
+                          NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_INST_INIT)

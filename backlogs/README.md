@@ -79,6 +79,7 @@ owner decision — revisit when the dependent phase starts:
 | [a03](a03-esp-wireless-split-ble.md) | Phase 9a: ESP wireless split BLE (experimental) | Low | L | TODO |
 | [a04](a04-esp-battery-display-rgb-peripherals.md) | Phase 9b: ESP battery, display, RGB, sensors, pointing (experimental) | Low | M | TODO |
 | [a05](a05-esp-mcuboot-secure-boot-ota.md) | Phase 9c: ESP MCUboot / secure boot / OTA | Low | L | TODO |
+| [a06](a06-rename-kscan-compat-names.md) | Rename zmk,kscan-* compat names to zmk,input-* | Low | M | TODO |
 
 ### d — Testing & CI
 | File | Title | Severity | Effort | Status |

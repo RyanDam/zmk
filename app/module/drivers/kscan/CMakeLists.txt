@@ -3,7 +3,7 @@
 
 # Zephyr's own drivers/kscan library was removed in Zephyr 4.2, so this
 # directory creates its own library instead of amending the Zephyr one.
-# Temporary: removed together with the matrix-input migration (backlog a01).
+# The drivers in here are Input API producers (matrix-input migration, a01).
 zephyr_library()
 
 zephyr_library_sources_ifdef(CONFIG_ZMK_KSCAN_GPIO_DRIVER kscan_gpio.c)

@@ -32,10 +32,8 @@ struct zmk_physical_layout {
     const char *display_name;
 
     zmk_matrix_transform_t matrix_transform;
-    const struct device *kscan;
-#if IS_ENABLED(CONFIG_INPUT)
+    /** Input device producing the matrix events (ABS X/Y + BTN_TOUCH) for this layout. */
     const struct device *input;
-#endif
 
     const struct zmk_key_physical_attrs *keys;
     size_t keys_len;

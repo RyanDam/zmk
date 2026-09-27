@@ -6,15 +6,13 @@
 
 #define DT_DRV_COMPAT zmk_kscan_composite
 
+#include "kscan_input.h"
+
 #include <zephyr/device.h>
 #include <zephyr/pm/device.h>
-#include <zephyr/drivers/kscan.h>
+#include <zephyr/input/input.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
-
-#define MATRIX_NODE_ID DT_DRV_INST(0)
-#define MATRIX_ROWS DT_PROP(MATRIX_NODE_ID, rows)
-#define MATRIX_COLS DT_PROP(MATRIX_NODE_ID, columns)
 
 struct kscan_composite_child_config {
     const struct device *child;
@@ -33,12 +31,46 @@ struct kscan_composite_config {
 };
 
 struct kscan_composite_data {
-    kscan_callback_t callback;
-
     const struct device *dev;
+    /** Row/column accumulated from the child's ABS events, consumed on BTN_TOUCH. */
+    uint32_t row;
+    uint32_t column;
 };
 
-static int kscan_composite_enable_callback(const struct device *dev) {
+static void kscan_composite_child_input_cb(struct input_event *evt, void *user_data) {
+    const struct device *dev = user_data;
+    struct kscan_composite_data *data = dev->data;
+
+    switch (evt->type) {
+    case INPUT_EV_ABS:
+        if (evt->code == INPUT_ABS_X) {
+            data->column = evt->value;
+        } else if (evt->code == INPUT_ABS_Y) {
+            data->row = evt->value;
+        }
+        break;
+    case INPUT_EV_KEY:
+        if (evt->code == INPUT_BTN_TOUCH) {
+            const struct kscan_composite_config *cfg = dev->config;
+
+            for (int c = 0; c < cfg->children_len; c++) {
+                const struct kscan_composite_child_config *child_cfg = &cfg->children[c];
+
+                if (child_cfg->child != evt->dev) {
+                    continue;
+                }
+
+                zmk_kscan_input_report(dev, data->row + child_cfg->row_offset,
+                                       data->column + child_cfg->column_offset, evt->value);
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+static int kscan_composite_resume_children(const struct device *dev) {
     const struct kscan_composite_config *cfg = dev->config;
 
     for (int i = 0; i < cfg->children_len; i++) {
@@ -58,14 +90,13 @@ static int kscan_composite_enable_callback(const struct device *dev) {
 #elif IS_ENABLED(CONFIG_PM_DEVICE)
         pm_device_action_run(child_cfg->child, PM_DEVICE_ACTION_RESUME);
 #endif // IS_ENABLED(CONFIG_PM_DEVICE)
-
-        kscan_enable_callback(child_cfg->child);
     }
     return 0;
 }
 
-static int kscan_composite_disable_callback(const struct device *dev) {
+static int kscan_composite_suspend_children(const struct device *dev) {
     const struct kscan_composite_config *cfg = dev->config;
+
     for (int i = 0; i < cfg->children_len; i++) {
         const struct kscan_composite_child_config *child_cfg = &cfg->children[i];
 
@@ -77,8 +108,6 @@ static int kscan_composite_disable_callback(const struct device *dev) {
         }
 #endif // IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME) || IS_ENABLED(CONFIG_PM_DEVICE)
 
-        kscan_disable_callback(child_cfg->child);
-
 #if IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME)
         if (!pm_device_runtime_is_enabled(dev) && pm_device_runtime_is_enabled(child_cfg->child)) {
             pm_device_runtime_put(child_cfg->child);
@@ -87,51 +116,6 @@ static int kscan_composite_disable_callback(const struct device *dev) {
         pm_device_action_run(child_cfg->child, PM_DEVICE_ACTION_SUSPEND);
 #endif // IS_ENABLED(CONFIG_PM_DEVICE)
     }
-    return 0;
-}
-
-#define KSCAN_COMP_INST_DEV(n) DEVICE_DT_GET(DT_DRV_INST(n)),
-
-static const struct device *all_instances[] = {DT_INST_FOREACH_STATUS_OKAY(KSCAN_COMP_INST_DEV)};
-
-static void kscan_composite_child_callback(const struct device *child_dev, uint32_t row,
-                                           uint32_t column, bool pressed) {
-    // TODO: Ideally we can get this passed into our callback!
-    for (int i = 0; i < ARRAY_SIZE(all_instances); i++) {
-
-        const struct device *dev = all_instances[i];
-        const struct kscan_composite_config *cfg = dev->config;
-        struct kscan_composite_data *data = dev->data;
-
-        for (int c = 0; c < cfg->children_len; c++) {
-            const struct kscan_composite_child_config *child_cfg = &cfg->children[c];
-
-            if (child_cfg->child != child_dev) {
-                continue;
-            }
-
-            data->callback(dev, row + child_cfg->row_offset, column + child_cfg->column_offset,
-                           pressed);
-        }
-    }
-}
-
-static int kscan_composite_configure(const struct device *dev, kscan_callback_t callback) {
-    const struct kscan_composite_config *cfg = dev->config;
-    struct kscan_composite_data *data = dev->data;
-
-    if (!callback) {
-        return -EINVAL;
-    }
-
-    for (int i = 0; i < cfg->children_len; i++) {
-        const struct kscan_composite_child_config *child_cfg = &cfg->children[i];
-
-        kscan_config(child_cfg->child, &kscan_composite_child_callback);
-    }
-
-    data->callback = callback;
-
     return 0;
 }
 
@@ -147,26 +131,36 @@ static int kscan_composite_init(const struct device *dev) {
     return 0;
 }
 
-static const struct kscan_driver_api mock_driver_api = {
-    .config = kscan_composite_configure,
-    .enable_callback = kscan_composite_enable_callback,
-    .disable_callback = kscan_composite_disable_callback,
-};
-
 #if IS_ENABLED(CONFIG_PM_DEVICE)
 
 static int kscan_composite_pm_action(const struct device *dev, enum pm_device_action action) {
     switch (action) {
     case PM_DEVICE_ACTION_SUSPEND:
-        return kscan_composite_disable_callback(dev);
+        return kscan_composite_suspend_children(dev);
     case PM_DEVICE_ACTION_RESUME:
-        return kscan_composite_enable_callback(dev);
+        return kscan_composite_resume_children(dev);
     default:
         return -ENOTSUP;
     }
 }
 
 #endif // IS_ENABLED(CONFIG_PM_DEVICE)
+
+/**
+ * Register a callback for one child's inner input device, forwarding to the parent
+ * composite. The section entry is defined directly (like INPUT_CALLBACK_DEFINE_NAMED)
+ * because that macro's name argument is in a ## context and would not expand a
+ * computed name; the child node ID is pasted instead.
+ */
+#define KSCAN_COMP_CHILD_CB(child_id)                                                              \
+    COND_CODE_1(DT_NODE_HAS_PROP(child_id, kscan),                                                 \
+                (static const STRUCT_SECTION_ITERABLE(input_callback,                              \
+                    _input_callback___zmk_kscan_comp_cb_##child_id) = {                            \
+                    .dev = DEVICE_DT_GET(DT_PHANDLE(child_id, kscan)),                             \
+                    .callback = kscan_composite_child_input_cb,                                    \
+                    .user_data = (void *)DEVICE_DT_GET(DT_PARENT(child_id)),                       \
+                };),                                                                               \
+                ())
 
 #define KSCAN_COMP_DEV(n)                                                                          \
     static const struct kscan_composite_child_config kscan_composite_children_##n[] = {            \
@@ -177,8 +171,9 @@ static int kscan_composite_pm_action(const struct device *dev, enum pm_device_ac
     };                                                                                             \
     static struct kscan_composite_data kscan_composite_data_##n;                                   \
     PM_DEVICE_DT_INST_DEFINE(n, kscan_composite_pm_action);                                        \
+    DT_INST_FOREACH_CHILD_SEP(n, KSCAN_COMP_CHILD_CB, (;));                                        \
     DEVICE_DT_INST_DEFINE(n, kscan_composite_init, PM_DEVICE_DT_INST_GET(n),                       \
                           &kscan_composite_data_##n, &kscan_composite_config_##n, POST_KERNEL,     \
-                          CONFIG_ZMK_KSCAN_COMPOSITE_INIT_PRIORITY, &mock_driver_api);
+                          CONFIG_ZMK_KSCAN_COMPOSITE_INIT_PRIORITY, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(KSCAN_COMP_DEV)

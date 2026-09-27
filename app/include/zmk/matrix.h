@@ -8,7 +8,9 @@
 
 #include <zephyr/devicetree.h>
 
-#define ZMK_MATRIX_NODE_ID DT_CHOSEN(zmk_kscan)
+#define ZMK_MATRIX_NODE_ID                                                                         \
+    COND_CODE_1(DT_HAS_CHOSEN(zmk_matrix_input), (DT_CHOSEN(zmk_matrix_input)),                    \
+                (DT_CHOSEN(zmk_kscan)))
 #define ZMK_MATRIX_HAS_TRANSFORM DT_HAS_CHOSEN(zmk_matrix_transform)
 
 #if DT_HAS_COMPAT_STATUS_OKAY(zmk_physical_layout)

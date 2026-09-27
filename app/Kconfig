@@ -516,12 +516,9 @@ config ZMK_PHYSICAL_LAYOUT_KEY_ROTATION
     bool "Support rotation of keys in physical layouts"
     default y
 
-rsource "Kconfig.kscan_compat"
-
 menuconfig ZMK_KSCAN
     bool "ZMK KScan Integration"
     default y
-    select KSCAN
 
 if ZMK_KSCAN
 
@@ -535,7 +532,7 @@ config ZMK_KSCAN_SIDEBAND_BEHAVIORS
     bool
     default y
     depends on DT_HAS_ZMK_KSCAN_SIDEBAND_BEHAVIORS_ENABLED
-    select KSCAN
+    select INPUT
 
 if ZMK_KSCAN_SIDEBAND_BEHAVIORS
 

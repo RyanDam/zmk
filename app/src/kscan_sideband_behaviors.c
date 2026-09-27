@@ -8,7 +8,7 @@
 
 #include <zephyr/device.h>
 #include <drivers/behavior.h>
-#include <zephyr/drivers/kscan.h>
+#include <zephyr/input/input.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
 
@@ -32,28 +32,10 @@ struct ksbb_config {
 };
 
 struct ksbb_data {
-    kscan_callback_t callback;
+    uint32_t row;
+    uint32_t column;
     bool enabled;
 };
-
-#define GET_KSBB_DEV(n) DEVICE_DT_GET(DT_DRV_INST(n)),
-
-// The kscan callback has no context with it, so we keep a static array of all possible
-// KSBBs to check when a kscan callback from the "wrapped" inner kscan fires.
-static const struct device *ksbbs[] = {DT_INST_FOREACH_STATUS_OKAY(GET_KSBB_DEV)};
-
-const struct device *find_ksbb_for_inner(const struct device *inner_dev) {
-    for (int i = 0; i < ARRAY_SIZE(ksbbs); i++) {
-        const struct device *ksbb = ksbbs[i];
-        const struct ksbb_config *cfg = ksbb->config;
-
-        if (cfg->kscan == inner_dev) {
-            return ksbb;
-        }
-    }
-
-    return NULL;
-}
 
 struct ksbb_entry *find_sideband_behavior(const struct device *dev, uint32_t row, uint32_t column) {
     const struct ksbb_config *cfg = dev->config;
@@ -69,36 +51,47 @@ struct ksbb_entry *find_sideband_behavior(const struct device *dev, uint32_t row
     return NULL;
 }
 
-void ksbb_inner_kscan_callback(const struct device *dev, uint32_t row, uint32_t column,
-                               bool pressed) {
-    const struct device *ksbb = find_ksbb_for_inner(dev);
-    if (ksbb) {
-        struct ksbb_data *data = ksbb->data;
+static void ksbb_inner_input_callback(struct input_event *evt, void *user_data) {
+    const struct device *ksbb = user_data;
+    struct ksbb_data *data = ksbb->data;
 
-        struct ksbb_entry *entry = find_sideband_behavior(ksbb, row, column);
+    switch (evt->type) {
+    case INPUT_EV_ABS:
+        if (evt->code == INPUT_ABS_X) {
+            data->column = evt->value;
+        } else if (evt->code == INPUT_ABS_Y) {
+            data->row = evt->value;
+        }
+        break;
+    case INPUT_EV_KEY:
+        if (evt->code != INPUT_BTN_TOUCH) {
+            return;
+        }
+
+        if (!data->enabled) {
+            return;
+        }
+
+        struct ksbb_entry *entry = find_sideband_behavior(ksbb, data->row, data->column);
         if (entry) {
             struct zmk_behavior_binding_event event = {.position = INT32_MAX,
                                                        .timestamp = k_uptime_get()};
 
-            if (pressed) {
+            if (evt->value) {
                 behavior_keymap_binding_pressed(&entry->binding, event);
             } else {
                 behavior_keymap_binding_released(&entry->binding, event);
             }
         }
 
-        if (data->enabled && data->callback) {
-            data->callback(ksbb, row, column, pressed);
-        }
+        // Forward the event so the outer consumer (e.g. physical layouts) sees it.
+        input_report_abs(ksbb, INPUT_ABS_X, data->column, false, K_NO_WAIT);
+        input_report_abs(ksbb, INPUT_ABS_Y, data->row, false, K_NO_WAIT);
+        input_report_key(ksbb, INPUT_BTN_TOUCH, evt->value, true, K_NO_WAIT);
+        break;
+    default:
+        break;
     }
-}
-
-static int ksbb_configure(const struct device *dev, kscan_callback_t callback) {
-    struct ksbb_data *data = dev->data;
-
-    data->callback = callback;
-
-    return 0;
 }
 
 static int ksbb_enable(const struct device *dev) {
@@ -117,9 +110,6 @@ static int ksbb_enable(const struct device *dev) {
     pm_device_action_run(config->kscan, PM_DEVICE_ACTION_RESUME);
 #endif // IS_ENABLED(CONFIG_PM_DEVICE)
 
-    kscan_config(config->kscan, &ksbb_inner_kscan_callback);
-    kscan_enable_callback(config->kscan);
-
     return 0;
 }
 
@@ -127,8 +117,6 @@ static int ksbb_disable(const struct device *dev) {
     struct ksbb_data *data = dev->data;
     const struct ksbb_config *config = dev->config;
     data->enabled = false;
-
-    kscan_disable_callback(config->kscan);
 
 #if IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME)
     if (!pm_device_runtime_is_enabled(dev) && pm_device_runtime_is_enabled(config->kscan)) {
@@ -164,7 +152,7 @@ static int ksbb_init(const struct device *dev) {
     const struct ksbb_config *config = dev->config;
 
     if (!device_is_ready(config->kscan)) {
-        LOG_ERR("kscan %s is not ready", config->kscan->name);
+        LOG_ERR("input device %s is not ready", config->kscan->name);
         return -ENODEV;
     }
 
@@ -172,16 +160,14 @@ static int ksbb_init(const struct device *dev) {
     if (!config->auto_enable) {
         pm_device_init_suspended(dev);
     }
+#else
+    // Without PM there is no consumer to start us; the inner input device
+    // emits autonomously, so the sideband is always active.
+    ksbb_enable(dev);
 #endif
 
     return 0;
 }
-
-static const struct kscan_driver_api ksbb_api = {
-    .config = ksbb_configure,
-    .enable_callback = ksbb_enable,
-    .disable_callback = ksbb_disable,
-};
 
 #define ENTRY(e)                                                                                   \
     {                                                                                              \
@@ -195,9 +181,7 @@ static const struct kscan_driver_api ksbb_api = {
                     const struct device *dev = DEVICE_DT_GET(DT_DRV_INST(n));                      \
                     COND_CODE_1(IS_ENABLED(CONFIG_PM_DEVICE),                                      \
                                 (ksbb_pm_action(dev, PM_DEVICE_ACTION_RESUME);),                   \
-                                (const struct ksbb_config *config = dev->config;                   \
-                                 kscan_config(config->kscan, &ksbb_inner_kscan_callback);          \
-                                 kscan_enable_callback(config->kscan);))                           \
+                                ())                                                                \
                     return 0;                                                                      \
                 } SYS_INIT(ksbb_auto_enable_##n, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);), \
                 ())                                                                                \
@@ -211,8 +195,15 @@ static const struct kscan_driver_api ksbb_api = {
     };                                                                                             \
     struct ksbb_data ksbb_data_##n = {};                                                           \
     PM_DEVICE_DT_INST_DEFINE(n, ksbb_pm_action);                                                   \
+    /* Defined directly (like INPUT_CALLBACK_DEFINE_NAMED) because that macro's name               \
+     * argument is in a ## context and would not expand a computed name. */                        \
+    static const STRUCT_SECTION_ITERABLE(input_callback, _input_callback___zmk_ksbb_cb_##n) = {    \
+        .dev = DEVICE_DT_GET(DT_INST_PHANDLE(n, kscan)),                                           \
+        .callback = ksbb_inner_input_callback,                                                     \
+        .user_data = (void *)DEVICE_DT_GET(DT_DRV_INST(n)),                                        \
+    };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, ksbb_init, PM_DEVICE_DT_INST_GET(n), &ksbb_data_##n,                  \
                           &ksbb_config_##n, POST_KERNEL,                                           \
-                          CONFIG_ZMK_KSCAN_SIDEBAND_BEHAVIORS_INIT_PRIORITY, &ksbb_api);
+                          CONFIG_ZMK_KSCAN_SIDEBAND_BEHAVIORS_INIT_PRIORITY, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(KSBB_INST)

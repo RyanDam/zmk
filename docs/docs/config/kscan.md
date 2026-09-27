@@ -17,7 +17,7 @@ Definition files:
 | Config                                 | Type | Description                                          | Default |
 | -------------------------------------- | ---- | ---------------------------------------------------- | ------- |
 | `CONFIG_ZMK_KSCAN_EVENT_QUEUE_SIZE`    | int  | Size of the event queue for kscan events             | 4       |
-| `CONFIG_ZMK_KSCAN_INIT_PRIORITY`       | int  | Keyboard scan device driver initialization priority  | 40      |
+| `CONFIG_ZMK_KSCAN_INIT_PRIORITY`       | int  | Keyboard scan device driver initialization priority  | 90      |
 | `CONFIG_ZMK_KSCAN_DEBOUNCE_PRESS_MS`   | int  | Global debounce time for key press in milliseconds   | -1      |
 | `CONFIG_ZMK_KSCAN_DEBOUNCE_RELEASE_MS` | int  | Global debounce time for key release in milliseconds | -1      |
 

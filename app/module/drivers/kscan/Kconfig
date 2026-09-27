@@ -8,11 +8,14 @@ DT_COMPAT_ZMK_KSCAN_GPIO_MATRIX := zmk,kscan-gpio-matrix
 DT_COMPAT_ZMK_KSCAN_GPIO_CHARLIEPLEX := zmk,kscan-gpio-charlieplex
 DT_COMPAT_ZMK_KSCAN_MOCK := zmk,kscan-mock
 
-if KSCAN
+config ZMK_KSCAN_INIT_PRIORITY
+    int "Init priority for the ZMK kscan (input) drivers"
+    default 90
 
 config ZMK_KSCAN_COMPOSITE_DRIVER
     bool
     default $(dt_compat_enabled,$(DT_COMPAT_ZMK_KSCAN_COMPOSITE))
+    select INPUT
 
 if ZMK_KSCAN_COMPOSITE_DRIVER
 
@@ -25,6 +28,7 @@ endif
 config ZMK_KSCAN_GPIO_DRIVER
     bool
     select GPIO
+    select INPUT
     select ZMK_DEBOUNCE
 
 config ZMK_KSCAN_GPIO_DEMUX
@@ -99,6 +103,7 @@ endif # ZMK_KSCAN_GPIO_CHARLIEPLEX
 config ZMK_KSCAN_MOCK_DRIVER
     bool
     default $(dt_compat_enabled,$(DT_COMPAT_ZMK_KSCAN_MOCK))
+    select INPUT
 
 if ZMK_KSCAN_GPIO_DRIVER
 
@@ -127,5 +132,3 @@ config ZMK_KSCAN_DEBOUNCE_RELEASE_MS
         debounce time for all key scan drivers to the chosen value.
 
 endif
-
-endif # KSCAN

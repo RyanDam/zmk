@@ -5,11 +5,11 @@
  */
 
 #include "kscan_gpio.h"
+#include "kscan_input.h"
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/kscan.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
@@ -59,7 +59,6 @@ struct kscan_direct_irq_callback {
 struct kscan_direct_data {
     const struct device *dev;
     struct kscan_gpio_list inputs;
-    kscan_callback_t callback;
     struct k_work_delayable work;
 #if USE_INTERRUPTS
     /** Array of length config->inputs.len */
@@ -204,7 +203,7 @@ static int kscan_direct_read(const struct device *dev) {
             const bool pressed = zmk_debounce_is_pressed(deb_state);
 
             LOG_DBG("Sending event at 0,%i state %s", gpio->index, pressed ? "on" : "off");
-            data->callback(dev, 0, gpio->index, pressed);
+            zmk_kscan_input_report(dev, 0, gpio->index, pressed);
             if (config->toggle_mode && pressed) {
                 kscan_inputs_set_flags(&data->inputs, &gpio->spec);
             }
@@ -229,17 +228,6 @@ static void kscan_direct_work_handler(struct k_work *work) {
     struct k_work_delayable *dwork = CONTAINER_OF(work, struct k_work_delayable, work);
     struct kscan_direct_data *data = CONTAINER_OF(dwork, struct kscan_direct_data, work);
     kscan_direct_read(data->dev);
-}
-
-static int kscan_direct_configure(const struct device *dev, kscan_callback_t callback) {
-    struct kscan_direct_data *data = dev->data;
-
-    if (!callback) {
-        return -EINVAL;
-    }
-
-    data->callback = callback;
-    return 0;
 }
 
 static int kscan_direct_enable(const struct device *dev) {
@@ -347,6 +335,8 @@ static int kscan_direct_init(const struct device *dev) {
 #else
 
     kscan_direct_init_inputs(dev);
+    // Without PM, there is no consumer to start us, so scan autonomously.
+    kscan_direct_enable(dev);
 
 #endif
 
@@ -369,12 +359,6 @@ static int kscan_direct_pm_action(const struct device *dev, enum pm_device_actio
 }
 
 #endif // IS_ENABLED(CONFIG_PM_DEVICE)
-
-static const struct kscan_driver_api kscan_direct_api = {
-    .config = kscan_direct_configure,
-    .enable_callback = kscan_direct_enable,
-    .disable_callback = kscan_direct_disable,
-};
 
 #define KSCAN_DIRECT_INIT(n)                                                                       \
     BUILD_ASSERT(INST_DEBOUNCE_PRESS_MS(n) <= DEBOUNCE_COUNTER_MAX,                                \
@@ -411,7 +395,7 @@ static const struct kscan_driver_api kscan_direct_api = {
     PM_DEVICE_DT_INST_DEFINE(n, kscan_direct_pm_action);                                           \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(n, &kscan_direct_init, PM_DEVICE_DT_INST_GET(n), &kscan_direct_data_##n, \
-                          &kscan_direct_config_##n, POST_KERNEL, CONFIG_KSCAN_INIT_PRIORITY,       \
-                          &kscan_direct_api);
+                          &kscan_direct_config_##n, POST_KERNEL, CONFIG_ZMK_KSCAN_INIT_PRIORITY,   \
+                          NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(KSCAN_DIRECT_INIT);

@@ -78,10 +78,10 @@
 |---|---|---|
 | `10ba6d0cb` | Bluetooth: Controller: Fix prepare pipeline overflow | The unbounded `-EBUSY` prepare deferral this fixed was reworked upstream in 4.4.1 by the "prepare deferred feature" (`c2eb901ea1`, 2025-07-11): `lll_conn_{central,peripheral}_is_abort_cb` now bound deferrals to `*_TRX_BUSY_ITERATION_MAX` (≤4) before returning `-ECANCELED`. Porting the ZMK change would disable the deferral mechanism upstream added for long coded-PHY events. **Action: re-validate ZMK split-central scenarios (2+ connections) in the Phase 4 regression gate; re-apply the fix if lockups recur.** |
 
-## kscan compatibility shim (temporary — removed by a01)
+## kscan compatibility shim (temporary — removed by a01, done)
 
 Zephyr 4.2 removed the kscan subsystem; ZMK's kscan drivers and consumers still use it.
-Restored in the ZMK tree:
+Phase 1 restored a temporary shim in the ZMK tree:
 
 - `app/module/include/zephyr/drivers/kscan.h` — 4.1 header with the syscall layer
   (`__subsystem`/`__syscall`/`z_impl_*`/generated `syscalls/kscan.h`) removed; plain
@@ -93,6 +93,141 @@ Restored in the ZMK tree:
 - `app/module/drivers/kscan/CMakeLists.txt` — `zephyr_library_amend()` →
   `zephyr_library()`: the amend target (Zephyr's own `drivers/kscan` library) no
   longer exists in 4.4.
+
+**a01 (Phase 2) removed the shim and migrated the subsystem to the Input API:**
+
+- All seven `app/module/drivers/kscan/` drivers (matrix, direct, charlieplex, demux,
+  composite, mock) are now Input API producers: they emit
+  `INPUT_EV_ABS` X (column) / Y (row) + `INPUT_EV_KEY` `INPUT_BTN_TOUCH` + sync via
+  `zmk_kscan_input_report()` (new shared header `kscan_input.h`). The kscan
+  configure/enable/disable driver API is gone; drivers start scanning autonomously
+  (PM resume, or init when PM is off). The ZMK software debounce is preserved.
+- `app/src/kscan_sideband_behaviors.c` and the composite driver are Input-event
+  wrappers: they register `INPUT_CALLBACK_DEFINE` on the inner device(s) and
+  re-emit (offset, for composite) on their own device.
+- `app/src/physical_layouts.c`: the kscan callback path is deleted; the Input path
+  is the sole path. Per-layout device resolution: `input` property → legacy `kscan`
+  property → `zmk,matrix-input` chosen → `zmk,kscan` chosen.
+- **DT compat names are intentionally unchanged** (`zmk,kscan-*`, `zmk,kscan`
+  chosen, `kscan` property) so existing board/shield devicetrees (incl. the
+  zmk-config coban pads) keep building. A future rename to `zmk,input-*` is tracked
+  in the backlog (see `backlogs/`).
+- Kconfig: the `KSCAN` symbol and its `select`s are gone (the "Deprecated symbol
+  KSCAN is enabled" warning is removed); the drivers now `select INPUT` instead,
+  and `ZMK_KSCAN_INIT_PRIORITY` (default 90) replaces `KSCAN_INIT_PRIORITY`.
+- Input event processing mode: `app/prj.conf` sets
+  `CONFIG_INPUT_MODE_SYNCHRONOUS=y` instead of Zephyr's default thread mode —
+  rationale and trade-offs in [Input event processing mode](#input-event-processing-mode-synchronous) below.
+- Deleted: `app/Kconfig.kscan_compat`, `app/module/include/zephyr/drivers/kscan.h`.
+- Zephyr 4.4 macro gotcha hit during the port: `COND_CODE_1`/`UTIL_AND` flags must
+  be literal 0/1 tokens (token-pasted), and **both branches must be parenthesized**
+  (the else-branch is debracketed via `__DEBRACKET`); bare `DT_CHOSEN(...)` branches
+  silently mis-route or fail with `__DEBRACKET` undeclared. Node IDs are tokens,
+  not integers — `node_id >= 0` comparisons don't work; use `DT_NODE_EXISTS` /
+  property-length booleans.
+- Two more macro gotchas hit during the double-check: (1) `INPUT_CALLBACK_DEFINE_NAMED`'s
+  `name` argument is in a `##` context (`_input_callback__##name`), so a computed name
+  like `_CONCAT(_cb_, n)` is spliced **unexpanded** (`_input_callback___CONCAT` plus
+  leftover tokens) — define the `STRUCT_SECTION_ITERABLE(input_callback, ...)` entry
+  directly and paste the instance/node token at the call site instead. (2) A `/* */`
+  comment inside a multi-line `#define` body must end **every** line with `\`; otherwise
+  the directive terminates at the first comment line and the rest of the body silently
+  lands at file scope (where instance-parameter flags evaluate to 0 and `COND_CODE_1`
+  drops the branch without error). (3) **A missing-property length is a poison token,
+  not 0.** `DT_INST_PROP_LEN(inst, prop)` for a property the node does *not* have
+  expands to an **undefined identifier** (e.g. `DT_N_S_<node>_P_<prop>_LEN`), not to
+  `0`. That is fine as a bare `COND_CODE_1` flag (non-literal -> else branch), but it is
+  *fatal* inside `UTIL_OR`/`UTIL_AND`: `UTIL_BOOL(<undefined>)` is `1`, so
+  `UTIL_OR(<undefined>, x)` returns the undefined token itself and the whole expression
+  becomes non-literal, making a downstream `COND_CODE_1` silently take its else branch.
+  This bit `LAYOUT_HAS_INPUT_DEV()` in `physical_layouts.c`: layouts that resolve their
+  input device via the `zmk,kscan`/`zmk,matrix-input` *chosen* (no explicit
+  `input`/`kscan` property on the layout node - e.g. cobanpad16a/12b, ferris) silently
+  lost both the `.input` field **and** the registered input callback, so the matrix
+  driver was never PM-resumed and never scanned (dead keyboard, no log output). The
+  existing native_sim matrix test did not catch it because its layout node sets an
+  explicit `input = <&mock>` property (a defined length). Fix: test property presence
+  with `DT_INST_NODE_HAS_PROP(inst, prop)` (a clean literal 0/1) instead of
+  `DT_INST_PROP_LEN` wherever the result feeds a `UTIL_OR`/`UTIL_AND`/`COND_CODE_1`
+  chain.
+
+### Input event processing mode (SYNCHRONOUS)
+
+Zephyr's input subsystem (`zephyr/subsys/input/input.c`) has two event-dispatch
+modes, selected by the `INPUT_MODE` Kconfig choice (default: thread mode):
+
+- **Thread mode** (`CONFIG_INPUT_MODE_THREAD`): `input_report()` does
+  `k_msgq_put()` into a global message queue (`CONFIG_INPUT_QUEUE_MAX_MSGS`,
+  default 16 × 12 B) and a dedicated thread (`K_THREAD_DEFINE`, default
+  priority 0, `CONFIG_INPUT_THREAD_STACK_SIZE` default 1024 B) dequeues events
+  and invokes the registered callbacks.
+- **Synchronous mode** (`CONFIG_INPUT_MODE_SYNCHRONOUS`): `input_report()`
+  calls `input_process()` inline — the callbacks run immediately, in the
+  caller's context. For ZMK that is the kscan driver's scan work handler
+  (system workqueue); the drivers' IRQ handlers only schedule work, they never
+  report events directly.
+
+`app/prj.conf` sets `CONFIG_INPUT_MODE_SYNCHRONOUS=y` for all ZMK builds.
+
+**Why synchronous (advantages):**
+
+1. **Behavioral equivalence with the removed kscan path.** Legacy kscan
+   callbacks always ran synchronously in the driver's scan context; there was
+   no queue or thread in between. Synchronous mode is the faithful port — same
+   context, same ordering, same timing — which is a01's core requirement
+   ("preserve keyboard behavior").
+2. **~1.4 KB less RAM on every board.** Thread mode allocates the input thread
+   stack (1024 B) + event msgq (192 B) + thread bookkeeping. On 16 KB-RAM
+   boards (ferris, bdn9) that is ~9 % of RAM: it would deepen this branch's
+   pre-existing ferris RAM overflow from ~0.6 KB to ~2 KB. On 256 KB nRF52840
+   boards it is negligible, but it is still a pure tax with no functional gain.
+3. **No event loss.** ZMK drivers report with `K_NO_WAIT`; in thread mode a
+   full queue **drops the event** (a `LOG_WRN` is the only trace). A key
+   change is a 3-event group (ABS X, ABS Y, BTN_TOUCH+sync), so an N-key
+   rollover burst can fill the 16-message queue if the input thread is delayed
+   — dropping one event of a group desynchronizes the row/col state.
+   Synchronous mode has no queue, so nothing can be dropped.
+4. **No scheduler races.** The thread indirection is exactly what caused two
+   test failures during the port (the mock's `exit(0)` racing the input
+   thread; consumer work queued behind the exit work on sys_workq). Synchronous
+   dispatch removes that whole class: the consumer's work is queued before the
+   driver moves on.
+5. **Deterministic, lower latency** — no scheduling hop per event group.
+
+**Costs (disadvantages):**
+
+1. **Callbacks run in the driver's context and must stay fast and
+   non-blocking.** No sleeps, no blocking APIs — otherwise the scan loop
+   (debounce timing, scan period) stalls. ZMK's callbacks are safe: the
+   physical-layouts callback does `k_msgq_put` + `k_work_submit` (both
+   non-blocking, ISR-safe); composite/sideband re-report via `input_report()`
+   on the parent device, which in synchronous mode recurses inline — the chain
+   is a DAG (child → parent → layout), no cycles.
+2. **Callback time is added to the scan cycle.** Negligible for ZMK's
+   consumers (microseconds), but it is a constraint on any *future* consumer
+   of these input devices.
+3. **Latent ISR constraint.** If a driver ever reports from an ISR, callbacks
+   run in ISR context and must be ISR-safe. No ZMK kscan driver does this
+   today (IRQs only schedule work), but it is a rule to keep.
+4. **Diverges from the Zephyr default.** A reader of `.config` sees a
+   non-default choice; this section is the justification. Zephyr's own input
+   drivers (longpress/keymap/double-tap, not used by ZMK) support both modes.
+5. **Thread mode is no longer exercised by the test suite.** The native_sim
+   suite runs in the mode `app/prj.conf` sets (synchronous), which is what
+   production uses — good — but the thread-mode path (a Zephyr mechanism, not
+   ZMK code) is untested by ZMK CI.
+
+**Kconfig gotcha hit during the switch:** `ZMK_POINTING`
+(`app/src/pointing/Kconfig`) unconditionally did
+`select INPUT_THREAD_PRIORITY_OVERRIDE`, but that symbol only exists inside
+`if INPUT_MODE_THREAD`. In synchronous mode the select targets a symbol whose
+direct dependencies are unsatisfied, and Zephyr's `kconfig.py` turns any such
+warning into a hard error (`error: Aborting due to Kconfig warnings`) — so
+every board with `CONFIG_ZMK_POINTING=y` (e.g. the coban shields) failed to
+configure. Fixed with `select INPUT_THREAD_PRIORITY_OVERRIDE if
+INPUT_MODE_THREAD` (the override is meaningless without an input thread
+anyway). Rule to keep: any `select` of a mode-conditional Zephyr input symbol
+must carry the same condition.
 
 ## ZMK tree migration changes (4.2 + 4.3 + 4.4 guides)
 

@@ -6,10 +6,11 @@
 
 #include <zmk/debounce.h>
 
+#include "kscan_input.h"
+
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/kscan.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
@@ -55,7 +56,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 struct kscan_charlieplex_data {
     const struct device *dev;
-    kscan_callback_t callback;
     struct k_work_delayable work;
     int64_t scan_time; /* Timestamp of the current or scheduled scan. */
     struct gpio_callback irq_callback;
@@ -287,7 +287,7 @@ static int kscan_charlieplex_read(const struct device *dev) {
                 const bool pressed = zmk_debounce_is_pressed(state);
 
                 LOG_DBG("Sending event at %i,%i state %s", row, col, pressed ? "on" : "off");
-                data->callback(dev, row, col, pressed);
+                zmk_kscan_input_report(dev, row, col, pressed);
             }
             continue_scan = continue_scan || zmk_debounce_is_active(state);
         }
@@ -317,16 +317,6 @@ static void kscan_charlieplex_work_handler(struct k_work *work) {
     struct k_work_delayable *dwork = CONTAINER_OF(work, struct k_work_delayable, work);
     struct kscan_charlieplex_data *data = CONTAINER_OF(dwork, struct kscan_charlieplex_data, work);
     kscan_charlieplex_read(data->dev);
-}
-
-static int kscan_charlieplex_configure(const struct device *dev, const kscan_callback_t callback) {
-    if (!callback) {
-        return -EINVAL;
-    }
-
-    struct kscan_charlieplex_data *data = dev->data;
-    data->callback = callback;
-    return 0;
 }
 
 static int kscan_charlieplex_enable(const struct device *dev) {
@@ -425,16 +415,12 @@ static int kscan_charlieplex_init(const struct device *dev) {
 
 #else
     kscan_charlieplex_setup_pins(dev);
+    // Without PM, there is no consumer to start us, so scan autonomously.
+    kscan_charlieplex_enable(dev);
 #endif
 
     return 0;
 }
-
-static const struct kscan_driver_api kscan_charlieplex_api = {
-    .config = kscan_charlieplex_configure,
-    .enable_callback = kscan_charlieplex_enable,
-    .disable_callback = kscan_charlieplex_disable,
-};
 
 #define KSCAN_CHARLIEPLEX_INIT(n)                                                                  \
     BUILD_ASSERT(INST_DEBOUNCE_PRESS_MS(n) <= DEBOUNCE_COUNTER_MAX,                                \
@@ -465,6 +451,6 @@ static const struct kscan_driver_api kscan_charlieplex_api = {
                                                                                                    \
     DEVICE_DT_INST_DEFINE(n, &kscan_charlieplex_init, PM_DEVICE_DT_INST_GET(n),                    \
                           &kscan_charlieplex_data_##n, &kscan_charlieplex_config_##n, POST_KERNEL, \
-                          CONFIG_KSCAN_INIT_PRIORITY, &kscan_charlieplex_api);
+                          CONFIG_ZMK_KSCAN_INIT_PRIORITY, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(KSCAN_CHARLIEPLEX_INIT);

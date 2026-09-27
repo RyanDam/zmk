@@ -5,11 +5,11 @@
  */
 
 #include "kscan_gpio.h"
+#include "kscan_input.h"
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/kscan.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -70,7 +70,6 @@ struct kscan_matrix_irq_callback {
 struct kscan_matrix_data {
     const struct device *dev;
     struct kscan_gpio_list inputs;
-    kscan_callback_t callback;
     struct k_work_delayable work;
 #if USE_INTERRUPTS
     /** Array of length config->inputs.len */
@@ -271,7 +270,7 @@ static int kscan_matrix_read(const struct device *dev) {
                 const bool pressed = zmk_debounce_is_pressed(state);
 
                 LOG_DBG("Sending event at %i,%i state %s", r, c, pressed ? "on" : "off");
-                data->callback(dev, r, c, pressed);
+                zmk_kscan_input_report(dev, r, c, pressed);
             }
 
             continue_scan = continue_scan || zmk_debounce_is_active(state);
@@ -296,22 +295,12 @@ static void kscan_matrix_work_handler(struct k_work *work) {
     kscan_matrix_read(data->dev);
 }
 
-static int kscan_matrix_configure(const struct device *dev, const kscan_callback_t callback) {
-    struct kscan_matrix_data *data = dev->data;
-
-    if (!callback) {
-        return -EINVAL;
-    }
-
-    data->callback = callback;
-    return 0;
-}
-
 static int kscan_matrix_enable(const struct device *dev) {
     struct kscan_matrix_data *data = dev->data;
 
     data->scan_time = k_uptime_get();
 
+    LOG_DBG("matrix %s: scan started", dev->name);
     // Read will automatically start interrupts/polling once done.
     return kscan_matrix_read(dev);
 }
@@ -459,9 +448,13 @@ static int kscan_matrix_init(const struct device *dev) {
 #if IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME)
     pm_device_runtime_enable(dev);
 #endif
+    LOG_INF("matrix %s init: PM suspended, waiting for a consumer to resume it", dev->name);
 
 #else
     kscan_matrix_setup_pins(dev);
+    // Without PM, there is no consumer to start us, so scan autonomously.
+    kscan_matrix_enable(dev);
+    LOG_INF("matrix %s init: scanning autonomously (no PM)", dev->name);
 #endif
 
     return 0;
@@ -472,11 +465,13 @@ static int kscan_matrix_init(const struct device *dev) {
 static int kscan_matrix_pm_action(const struct device *dev, enum pm_device_action action) {
     switch (action) {
     case PM_DEVICE_ACTION_SUSPEND:
+        LOG_DBG("matrix %s: PM suspend", dev->name);
         kscan_matrix_disconnect_inputs(dev);
         kscan_matrix_disconnect_outputs(dev);
 
         return kscan_matrix_disable(dev);
     case PM_DEVICE_ACTION_RESUME:
+        LOG_DBG("matrix %s: PM resume", dev->name);
         kscan_matrix_setup_pins(dev);
         return kscan_matrix_enable(dev);
     default:
@@ -485,12 +480,6 @@ static int kscan_matrix_pm_action(const struct device *dev, enum pm_device_actio
 }
 
 #endif // IS_ENABLED(CONFIG_PM_DEVICE)
-
-static const struct kscan_driver_api kscan_matrix_api = {
-    .config = kscan_matrix_configure,
-    .enable_callback = kscan_matrix_enable,
-    .disable_callback = kscan_matrix_disable,
-};
 
 #define KSCAN_MATRIX_INIT(n)                                                                       \
     BUILD_ASSERT(INST_DEBOUNCE_PRESS_MS(n) <= DEBOUNCE_COUNTER_MAX,                                \
@@ -533,7 +522,7 @@ static const struct kscan_driver_api kscan_matrix_api = {
     PM_DEVICE_DT_INST_DEFINE(n, kscan_matrix_pm_action);                                           \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(n, &kscan_matrix_init, PM_DEVICE_DT_INST_GET(n), &kscan_matrix_data_##n, \
-                          &kscan_matrix_config_##n, POST_KERNEL, CONFIG_KSCAN_INIT_PRIORITY,       \
-                          &kscan_matrix_api);
+                          &kscan_matrix_config_##n, POST_KERNEL, CONFIG_ZMK_KSCAN_INIT_PRIORITY,   \
+                          NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(KSCAN_MATRIX_INIT);

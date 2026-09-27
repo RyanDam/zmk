@@ -11,7 +11,9 @@ config ZMK_POINTING
     bool "Pointing Device Support"
     default y if ZMK_MOUSE
     select INPUT
-    select INPUT_THREAD_PRIORITY_OVERRIDE
+    # Only meaningful in thread mode; the symbol does not exist in synchronous
+    # mode and an unconditional select is a fatal Kconfig warning.
+    select INPUT_THREAD_PRIORITY_OVERRIDE if INPUT_MODE_THREAD
 
 if ZMK_POINTING
 
