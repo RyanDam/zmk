@@ -248,8 +248,9 @@ must carry the same condition.
 - **BT host (4.4):** `BT_LE_ADV_OPT_USE_NAME` / `BT_LE_ADV_OPT_FORCE_NAME_IN_AD`
   removed upstream (`fbd7acec25`). `app/src/ble.c` now puts the device name
   explicitly in the advertising data (`BT_DATA_NAME_COMPLETE`), flags first.
-- **Deprecated legacy USB stack:** still functional in 4.4.1 (`DEPRECATED`); ZMK
-  keeps selecting `USB_DEVICE_STACK` — migration to `device_next` is Phase 3 (a02).
+- **Deprecated legacy USB stack:** still present in 4.4.1 (`DEPRECATED`); ZMK
+  migrated off it to `device_next` in Phase 3 (a02) — see the a02 validation
+  section below.
 
 ### Build-matrix migration fixes (found by the 18-build core-coverage matrix)
 
@@ -333,6 +334,14 @@ Tally check: 77 + 19 + 3 = 99 (identical for cobanpad12b and cobanpad16a).
 ```sh
 grep -c 'warning:' <coban-build>.log   # expect 0
 ```
+
+**Result (a01 + a02 landed):** `grep -c 'warning:'` on pristine cobanpad16a and
+cobanpad12b builds returns **0** — all 98 legacy-stack warnings are gone. (One
+transient new warning appeared during a02: the `device_next` CDC ACM class emits
+an intentional `#warning "USBD_CDC_ACM_LOG_LEVEL forced to LOG_LEVEL_NONE"` when
+its log level is not OFF and the console is CDC ACM — ZMK now defaults
+`USBD_CDC_ACM_LOG_LEVEL_CHOICE` to OFF in `ZMK_USB_LOGGING` builds, which is the
+same state the class forces at runtime anyway.)
 
 ## Environment / CI
 
@@ -424,6 +433,142 @@ grep -c 'warning:' <coban-build>.log   # expect 0
       shields are built; 16a is flashed + working.
       (Board targets: `bdn9/stm32f072xb/zmk`, `ferris/stm32f072xb/zmk` — the
       boards live in `app/boards/`, vendor is not part of the target.)
+
+### a02 (legacy USB stack → `device_next`) validation
+
+Design (details in `backlogs/a02-legacy-usb-stack-migration.md`):
+
+- `app/src/usb.c` owns one explicit `usbd_context`
+  (`USBD_DEVICE_DEFINE(zmk_usbd, …, zephyr_udc0)`) with FS+HS configurations,
+  lang/mfr/product/serial descriptors, `usbd_msg_register_cb()` lifecycle
+  (VBUS/RESET/CONFIGURATION/SUSPEND/RESUME/ERROR), class registration
+  (`hid_0` when `ZMK_USB`, all `cdc_acm_*` instances) before
+  `usbd_init()`/`usbd_enable()` at `ZMK_USB_INIT_PRIORITY` (96).
+- `app/src/usb_hid.c` uses the native `hid_device_ops` (report get/set,
+  boot/report protocol, `input_report_done` semaphore, 30 ms take — legacy
+  parity). Reports are copied into a `USB_BUF_ALIGN`-aligned staging buffer
+  before `hid_device_submit_report()` (ZMK report structs are packed,
+  alignment 1; the new stack asserts buffer alignment).
+- The HID class instance node (`zmk_usb_hid: hid`,
+  `compatible = "zephyr,hid-device"`) is defined at the **root** in
+  `app/app.overlay` (auto-applied): only 18/53 in-tree board DTS files carry
+  the `zephyr_udc0` alias, and the class driver has no on-bus/parent
+  requirement (it is bound to the context at runtime via
+  `usbd_register_class()`). DT values are static (the DTS preprocessor has no
+  Kconfig access): `in-report-size = <64>` (FS max), `in-polling-period-us =
+  <1000>`. Boot protocol stays opt-in: `protocol-code` is deliberately
+  **not** set in app.overlay — the binding treats its absence as `"none"`
+  (`DT_INST_ENUM_IDX_OR(..., 0)`), and defining it there would override
+  board/shield overlays (applied earlier in the DTS concatenation). A board
+  overlay sets `protocol-code = "keyboard"` for `ZMK_USB_BOOT` to take
+  effect. `USB_HID_POLL_INTERVAL_MS` is applied at runtime via
+  `hid_device_set_in_polling()`.
+- Zephyr auto-detects `app.overlay` **only when `DTC_OVERLAY_FILE` is
+  unset** (`configuration_files.cmake`); a user `-DDTC_OVERLAY_FILE=...`
+  would silently drop the HID node (hard Kconfig error: `USBD_HID_SUPPORT`
+  y-selected with unsatisfied DT dependency). `app/boards/
+  post_boards_shields.cmake` now prepends `app/app.overlay` to the CMake
+  cache value of `DTC_OVERLAY_FILE` when it is set, so user overlays layer
+  on top of the ZMK HID node. (Must be a `set(... CACHE ... FORCE)`:
+  `zephyr_get()` reads the cache with priority over normal variables, and
+  normal variables don't survive the `include()` scope.)
+- New internal `ZMK_USB_DEVICE` (default y if `ZMK_USB || ZMK_USB_LOGGING`)
+  guards `usb.c`/`usb_conn_state_changed.c` and all former
+  `CONFIG_USB_DEVICE_STACK` preprocessor guards (7 widget/source files).
+  `zmk_usb_get_status()` returns a ZMK-owned enum (`zmk_usb_status`) instead
+  of the legacy `usb_dc_status_code`.
+- Kconfig: `ZMK_USB` selects `USB_DEVICE_STACK_NEXT` + `USBD_HID_SUPPORT` +
+  `USBD_HID_SET_POLLING_PERIOD`; `ZMK_USB_LOGGING` selects
+  `USB_DEVICE_STACK_NEXT` + `USBD_CDC_ACM_CLASS`; new `ZMK_USB_REMOTE_WAKEUP`
+  (default n) replaces `USB_DEVICE_REMOTE_WAKEUP` (config-descriptor
+  `USB_SCD_REMOTE_WAKEUP`); descriptor symbols keep their names
+  (`USB_DEVICE_VID/PID/MANUFACTURER/PRODUCT`). Removed legacy symbols:
+  `select USB`, `USB_DEVICE_INITIALIZE_AT_BOOT`, `USB_NUMOF_EP_WRITE_RETRIES`,
+  `USB_UART_CONSOLE`, `imply USB` (ZMK_SLEEP), the trailing
+  `USB_DEVICE_STACK default y if HAS_HW_NRF_USBD`, the dead
+  `USB_CDC_ACM_LOG_LEVEL_CHOICE`/`USB_DRIVER_LOG_LEVEL_CHOICE` choices and
+  `USB_CDC_ACM_RINGBUF_SIZE` (legacy-only symbols; the new CDC ACM class has
+  no ringbuf-size knob). Report-size range guards keep HID reports ≤ 64 B
+  (`ZMK_HID_KEYBOARD_REPORT_SIZE` 1–62, `ZMK_HID_CONSUMER_REPORT_SIZE` 1–63,
+  1–31 with full usages).
+- 15 board `Kconfig.defconfig` files: removed dead `if USB` /
+  `if USB_DEVICE_STACK` blocks (legacy `USB_NRFX`/`USB_DEVICE_STACK`
+  defaults); `nrf52840dongle` defconfig: `USB_DEVICE_REMOTE_WAKEUP=n` →
+  `ZMK_USB_REMOTE_WAKEUP=n`; `ferris` defconfig: dropped
+  `USB_SELF_POWERED=n` (legacy-only; the new stack's config descriptor is
+  bus-powered by default, same behavior).
+
+Build matrix (all pristine, Zephyr 4.4.1, this tree):
+
+| Build | Result | FLASH | RAM | Warnings |
+|---|---|---|---|---|
+| nice_nano + cobanpad16a (studio-rpc-usb-uart + zmk-usb-logging) | ✅ | 320496 B | 108396 B | **0** |
+| nice_nano + cobanpad12b (same snippets) | ✅ | 297652 B | 106076 B | **0** |
+| sparkfun_pro_micro_rp2040 + reviung41 (zmk-usb-logging) — RP2040 | ✅ | 79628 B | 30608 B | 4 pre-existing unused-function |
+| bdn9//zmk (STM32F072, USB HID) | ✅ | 48840 B | 13848 B | 4 pre-existing unused-function |
+| xiao_ble + hummingbird (BLE-only, no USB; ZMK USB code excluded) | ✅ | 65952 B | 22576 B | 4 pre-existing unused-function |
+| nice_nano + cobanpad16a, `CONFIG_ZMK_USB=n` (logging-only: CDC, no HID) | ✅ | 311840 B | 104876 B | **0** |
+| nice_nano + cobanpad16a, `CONFIG_ZMK_USB_BOOT=y` + `protocol-code = "keyboard"` overlay (boot protocol opt-in) | ✅ | 320764 B | 108404 B | **0** |
+
+- Flash/RAM delta vs the pre-migration 4.4.1 baseline (cobanpad16a, legacy
+  stack): **FLASH 310168 → 320496 B (+10328 B, +3.3 %)**,
+  **RAM 109236 → 108396 B (−840 B)**. The new stack's explicit context,
+  message slab and per-class buffers cost ~10 KB of flash; RAM actually
+  shrinks (the legacy stack's static endpoint/URB tables were larger).
+- Gotcha found only by the `ZMK_USB_BOOT=y` build (never compiled in the
+  default matrix): `hid_protocol` was declared *after* `get_keyboard_report()`
+  used it — a forward reference that is invisible when `ZMK_USB_BOOT=n`
+  (both the use and the declaration compile out). Moved the boot-protocol
+  block above the report getters in `usb_hid.c`.
+- **Studio-over-CDC RX dies after enumeration churn (device_next CDC ACM
+  suspend/resume gap).** Symptom: USB HID works, but ZMK Studio connects to
+  the CDC-ACM serial port and then times out waiting for a response; the
+  device never logs an RX. Root cause: the `device_next` CDC ACM class
+  (`subsys/usb/device_next/class/usbd_cdc_acm.c`) enqueues its bulk-OUT RX
+  buffer only from the `rx_fifo` work, which bails out while
+  `CDC_ACM_CLASS_SUSPENDED` is set; and `usbd_cdc_acm_resumed()` only clears
+  that flag — re-arming RX on resume is an unimplemented `TODO` in the
+  driver. During the nRF52840 enumeration churn (multiple
+  reset/suspend/resume cycles) the RPC transport's `rx_start()` can run while
+  the device is still suspended, so the RX buffer is never enqueued and the
+  transport silently stops receiving after the device resumes. HID is
+  unaffected (TX-only — no RX buffer). Workaround (ZMK side, since the
+  driver is west-managed): `app/src/studio/uart_rpc_transport.c` now
+  subscribes to `zmk_usb_conn_state_changed` and re-arms RX
+  (`uart_irq_rx_enable`, idempotent) on every `ZMK_USB_CONN_HID` transition
+  (configure + resume). Ordering is safe: the usbd core clears the class
+  `SUSPENDED` flag (`usbd_class_bcast_event`) *before* publishing
+  `USBD_MSG_RESUME`, and the ZMK event is delivered deferred via `k_work`.
+  Upstream fix would be to submit the `rx_fifo` work from
+  `usbd_cdc_acm_resumed()`.
+- `bdn9//zmk` **with** the studio-rpc-usb-uart snippet (CI's `stm32-studio`)
+  overflows the F072's 16 KB RAM by ~37 KB with the new stack — and by
+  ~34 KB with the legacy stack on the same 4.4.1 tree: **pre-existing on
+  this branch** (the branch's studio dynamic-macro bss, see the core-coverage
+  note above), not a Phase 3 regression. Plain bdn9 (USB HID only) fits:
+  13848 B / 16 KB.
+- No legacy-stack symbols remain in the app tree: `USB_DEVICE_STACK`
+  (non-NEXT), `USB_DEVICE_HID`, `USB_UART_CONSOLE`, `USB_HID_BOOT_PROTOCOL`,
+  `usb_dc_*` APIs, `<zephyr/usb/usb_device.h>` and
+  `<zephyr/usb/class/usb_hid.h>` includes are all gone (one exception:
+  `app/boards/moergo/glove80/usb_serial_number.c` still includes
+  `usb_device.h` — see note below).
+
+**Hardware validation (user, on cobanpad16a/12b):** enumeration on
+Linux/macOS/Windows, boot↔report protocol switching, consumer + mouse
+reports, suspend/resume + remote wakeup, unplug/replug,
+reset-while-connected, USB logging and Studio over CDC — checklist pending
+at review time.
+
+**glove80 serial number (follow-up, not blocking):**
+`app/boards/moergo/glove80/usb_serial_number.c` builds the serial-number
+string from the nRF52840 hwinfo ID using the legacy
+`usb_update_sn_string_descriptor()` hook. The `device_next` stack takes the
+serial number from `USBD_DESC_SERIAL_NUMBER_DEFINE` (hwinfo-backed via
+`USBD_HWINFO_DEVID_LENGTH`) — ZMK's `usb.c` already uses that — so the
+glove80 template-based SN is inert on the new stack. Porting it (or dropping
+the file) is a small follow-up; the board still builds and enumerates with
+the hwinfo serial.
 
 **Test-runner race (pre-existing, 4.1 and 4.4 alike):** `parse_syscalls.py`
 `os.walk`s the app source dir — which includes `app/build/tests/*` — then opens

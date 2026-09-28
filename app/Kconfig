@@ -22,18 +22,22 @@ config ZMK_KEYBOARD_NAME
     string "Keyboard Name"
 
 config USB_DEVICE_PRODUCT
+    string "USB Product"
     default ZMK_KEYBOARD_NAME
 
 config BT_DEVICE_NAME
     default ZMK_KEYBOARD_NAME
 
 config USB_DEVICE_VID
+    hex "USB Vendor ID"
     default 0x1D50
 
 config USB_DEVICE_PID
+    hex "USB Product ID"
     default 0x615E
 
 config USB_DEVICE_MANUFACTURER
+    string "USB Manufacturer"
     default "ZMK Project"
 
 config BT_DIS_PNP_VID
@@ -92,11 +96,18 @@ if ZMK_HID_REPORT_TYPE_HKRO
 
 config ZMK_HID_KEYBOARD_REPORT_SIZE
     int "# Keyboard Keys Reportable"
+    # The USB HID IN endpoint is limited to 64 bytes; the keyboard report is
+    # 2 bytes of header plus one byte per reported key.
+    range 1 62
 
 endif # ZMK_HID_REPORT_TYPE_HKRO
 
 config ZMK_HID_CONSUMER_REPORT_SIZE
     int "# Consumer Keys Reportable"
+    # The USB HID IN endpoint is limited to 64 bytes; the consumer report is
+    # 1 byte of header plus 1 (basic) or 2 (full) bytes per reported key.
+    range 1 63
+    range 1 31 if ZMK_HID_CONSUMER_REPORT_USAGES_FULL
 
 choice ZMK_HID_CONSUMER_REPORT_USAGES
     prompt "HID Report Type"
@@ -134,27 +145,33 @@ menu "Output Types"
 config ZMK_USB
     bool "USB"
     depends on (!ZMK_SPLIT || (ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL))
-    select USB
-    select USB_DEVICE_STACK
-    select USB_DEVICE_HID
+    select USB_DEVICE_STACK_NEXT
+    select USBD_HID_SUPPORT
+    select USBD_HID_SET_POLLING_PERIOD
 
 config ZMK_USB_BOOT
     bool "USB Boot Protocol Support"
     depends on ZMK_USB
-    select USB_HID_BOOT_PROTOCOL
+    help
+      Enables USB boot protocol support. Note that the host will only use the
+      boot protocol if the device advertises it: the zmk_usb_hid devicetree
+      node (see app/app.overlay) must have protocol-code = "keyboard" set via
+      a board overlay for this option to take effect.
 
-config USB_DEVICE_INITIALIZE_AT_BOOT
-    default n
+config ZMK_USB_REMOTE_WAKEUP
+    bool "USB Remote Wakeup"
+    depends on ZMK_USB
 
 if ZMK_USB
-
-config USB_NUMOF_EP_WRITE_RETRIES
-    default 10
 
 config USB_HID_POLL_INTERVAL_MS
     default 1
 
 endif # ZMK_USB
+
+config ZMK_USB_DEVICE
+    bool
+    default y if ZMK_USB || ZMK_USB_LOGGING
 
 menuconfig ZMK_BLE
     bool "BLE (HID over GATT)"
@@ -341,7 +358,7 @@ config ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
 
 config ZMK_RGB_UNDERGLOW_AUTO_OFF_USB
     bool "Turn off RGB underglow when USB is disconnected"
-    depends on USB_DEVICE_STACK
+    depends on ZMK_USB
 
 endif # ZMK_RGB_UNDERGLOW
 
@@ -406,7 +423,6 @@ config ZMK_SLEEP
     depends on HAS_POWEROFF
     select POWEROFF
     select ZMK_PM_DEVICE_SUSPEND_RESUME
-    imply USB
 
 if ZMK_SLEEP
 
@@ -490,7 +506,7 @@ rsource "src/boot/Kconfig"
 
 menu "Initialization Priorities"
 
-if USB_DEVICE_STACK
+if ZMK_USB_DEVICE
 
 config ZMK_USB_INIT_PRIORITY
     int "USB Init Priority"
@@ -500,7 +516,7 @@ config ZMK_USB_HID_INIT_PRIORITY
     int "USB HID Init Priority"
     default 95
 
-endif # USB
+endif # ZMK_USB_DEVICE
 
 if ZMK_BLE || ZMK_SPLIT_BLE
 
@@ -559,30 +575,22 @@ endif
 config ZMK_USB_LOGGING
     bool "Enable USB CDC ACM logging to help debug"
     select LOG
-    select USB
-    select USB_DEVICE_STACK
-    select USB_CDC_ACM
+    select USB_DEVICE_STACK_NEXT
+    select USBD_CDC_ACM_CLASS
     select SERIAL
     select CONSOLE
     select UART_INTERRUPT_DRIVEN
     select UART_LINE_CTRL
     select UART_CONSOLE
-    select USB_UART_CONSOLE
 
 if ZMK_USB_LOGGING
 
-choice USB_CDC_ACM_LOG_LEVEL_CHOICE
-    default USB_CDC_ACM_LOG_LEVEL_OFF
+# Keep the CDC ACM class's own log level off by default: the class is the
+# logging console, so class logging would recurse into the console it feeds.
+# (The class forces the level to OFF at runtime anyway, with a #warning.)
+choice USBD_CDC_ACM_LOG_LEVEL_CHOICE
+    default USBD_CDC_ACM_LOG_LEVEL_OFF
 endchoice
-
-choice USB_DRIVER_LOG_LEVEL_CHOICE
-    default USB_DRIVER_LOG_LEVEL_OFF
-endchoice
-
-# We do this to avoid log loop where logging to USB generates more log messages.
-
-config USB_CDC_ACM_RINGBUF_SIZE
-    default 1024
 
 config LOG_PROCESS_THREAD_STARTUP_DELAY_MS
     default 1000
@@ -674,9 +682,6 @@ config KERNEL_BIN_NAME
 
 config REBOOT
     default y
-
-config USB_DEVICE_STACK
-    default y if HAS_HW_NRF_USBD
 
 config FPU
     default CPU_HAS_FPU

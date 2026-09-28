@@ -98,3 +98,13 @@ endif()
 if (NOT KEYMAP_FILE)
     message(WARNING "Failed to locate keymap file!")
 endif()
+
+# The ZMK USB HID class instance (app/app.overlay) is auto-detected by Zephyr
+# only when DTC_OVERLAY_FILE is unset. When the user sets DTC_OVERLAY_FILE,
+# prepend app.overlay (in the CMake cache, which zephyr_get() reads with
+# priority) so the user's overlay still layers on top of the ZMK HID node
+# definition.
+if (DEFINED DTC_OVERLAY_FILE)
+    set(DTC_OVERLAY_FILE "${APPLICATION_SOURCE_DIR}/app.overlay;${DTC_OVERLAY_FILE}"
+        CACHE STRING "Devicetree overlays (app.overlay prepended by ZMK)" FORCE)
+endif()

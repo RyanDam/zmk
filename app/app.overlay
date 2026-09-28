@@ -1,0 +1,31 @@
+/*
+ * Copyright (c) 2020 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
+ * ZMK USB HID class instance for the Zephyr USB device stack (device_next).
+ *
+ * The class instance is linked to the usbd_context at runtime via
+ * usbd_register_class(), so the node does not need to be a child of the
+ * USB device controller (UDC) node. Defining it at the root keeps it
+ * independent of per-board UDC node naming.
+ *
+ * The node is present in all builds; the class driver is only compiled when
+ * the USB device stack is enabled.
+ *
+ * Boards enabling USB boot protocol support (CONFIG_ZMK_USB_BOOT) set
+ * protocol-code = "keyboard" on this node via a board overlay. The
+ * protocol-code property is intentionally NOT set here: the binding treats
+ * its absence as "none" (no boot interface), and defining it in this overlay
+ * would override board/shield overlays, which are applied earlier.
+ */
+
+/ {
+    zmk_usb_hid: hid {
+        compatible = "zephyr,hid-device";
+        in-report-size = <64>;
+        in-polling-period-us = <1000>;
+    };
+};

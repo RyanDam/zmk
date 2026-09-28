@@ -14,5 +14,6 @@
 &zephyr_udc0 {
     snippet_zmk_usb_logging_uart: snippet_zmk_usb_logging_uart {
         compatible = "zephyr,cdc-acm-uart";
+        label = "ZMK Logging";
     };
 };

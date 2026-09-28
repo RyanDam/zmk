@@ -6,9 +6,6 @@
 
 #pragma once
 
-#include <zephyr/usb/usb_device.h>
-#include <zephyr/usb/class/usb_hid.h>
-
 #include <zmk/keys.h>
 #include <zmk/hid.h>
 
@@ -18,8 +15,17 @@ enum zmk_usb_conn_state {
     ZMK_USB_CONN_HID,
 };
 
-enum usb_dc_status_code zmk_usb_get_status(void);
+enum zmk_usb_status {
+    ZMK_USB_STATUS_DISCONNECTED,
+    ZMK_USB_STATUS_POWERED,
+    ZMK_USB_STATUS_CONFIGURED,
+    ZMK_USB_STATUS_SUSPENDED,
+    ZMK_USB_STATUS_ERROR,
+};
+
+enum zmk_usb_status zmk_usb_get_status(void);
 enum zmk_usb_conn_state zmk_usb_get_conn_state(void);
+int zmk_usb_wakeup_request(void);
 
 static inline bool zmk_usb_is_powered(void) {
     return zmk_usb_get_conn_state() != ZMK_USB_CONN_NONE;

@@ -6,14 +6,4 @@ config ZMK_KEYBOARD_NAME
 
 if BOARD_BT75
 
-if USB
-
-config USB_NRFX
-    default y
-
-config USB_DEVICE_STACK
-    default y
-
-endif # USB
-
 endif # BOARD_BT75

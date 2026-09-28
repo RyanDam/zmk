@@ -119,11 +119,19 @@ RING_BUF_DECLARE(rpc_tx_buf, CONFIG_ZMK_STUDIO_RPC_TX_BUF_SIZE);
 
 struct ring_buf *zmk_rpc_get_tx_buf(void) { return &rpc_tx_buf; }
 
+/* How long to wait for the TX ring to drain when it is full (transport
+ * back-pressure, e.g. the USB bus is suspended). Bounded so a stalled
+ * transport drops the message instead of spinning forever while holding
+ * rpc_transport_mutex, which would deadlock both the RPC thread and the
+ * event thread. */
+#define RPC_TX_BUF_DRAIN_TIMEOUT_MS 500
+
 static bool rpc_tx_buffer_write(pb_ostream_t *stream, const uint8_t *buf, size_t count) {
     void *user_data = stream->state;
     size_t written = 0;
 
     bool escape_byte_already_written = false;
+    int64_t wait_start = k_uptime_get();
     do {
         uint32_t write_idx = 0;
 
@@ -131,6 +139,12 @@ static bool rpc_tx_buffer_write(pb_ostream_t *stream, const uint8_t *buf, size_t
         uint32_t claim_len = ring_buf_put_claim(&rpc_tx_buf, &write_buf, count - written);
 
         if (claim_len == 0) {
+            if (k_uptime_delta(&wait_start) > RPC_TX_BUF_DRAIN_TIMEOUT_MS) {
+                LOG_ERR("RPC TX buffer did not drain in %d ms, dropping message",
+                        RPC_TX_BUF_DRAIN_TIMEOUT_MS);
+                return false;
+            }
+            k_sleep(K_MSEC(1));
             continue;
         }
 
@@ -180,6 +194,7 @@ static int send_response(const zmk_studio_Response *resp) {
     k_mutex_lock(&rpc_transport_mutex, K_FOREVER);
 
     if (!selected_transport) {
+        LOG_WRN("send_response: no transport selected, dropping response");
         goto exit;
     }
 
@@ -199,6 +214,11 @@ static int send_response(const zmk_studio_Response *resp) {
 #if !IS_ENABLED(CONFIG_NANOPB_NO_ERRMSG)
         LOG_ERR("Failed to encode the message %s", stream.errmsg);
 #endif // !IS_ENABLED(CONFIG_NANOPB_NO_ERRMSG)
+        /* Still terminate the framing so the receiver can resynchronize
+         * after the truncated message. */
+        framing_byte = FRAMING_EOF;
+        ring_buf_put(&rpc_tx_buf, &framing_byte, 1);
+        selected_transport->tx_notify(&rpc_tx_buf, 1, true, user_data);
         return -EINVAL;
     }
 
@@ -206,6 +226,9 @@ static int send_response(const zmk_studio_Response *resp) {
     ring_buf_put(&rpc_tx_buf, &framing_byte, 1);
 
     selected_transport->tx_notify(&rpc_tx_buf, 1, true, user_data);
+
+    LOG_INF("send_response: response sent (type=%d), tx_buf remaining=%u", resp->which_type,
+            ring_buf_size_get(&rpc_tx_buf));
 
 exit:
     k_mutex_unlock(&rpc_transport_mutex);
@@ -224,6 +247,7 @@ static void rpc_main(void) {
         rpc_framing_state = FRAMING_STATE_IDLE;
 
         if (status) {
+            LOG_INF("RPC request decoded: subsystem=%d", req.which_subsystem);
             zmk_studio_Response resp = handle_request(&req);
 
             int err = send_response(&resp);
@@ -272,7 +296,9 @@ static void refresh_selected_transport(void) {
     }
 
     if (!selected_transport) {
-        LOG_WRN("Failed to select a transport!");
+        LOG_WRN("Failed to select a transport! (endpoint transport=%d)", transport);
+    } else {
+        LOG_INF("RPC transport selected for endpoint transport=%d", transport);
     }
 
 exit_refresh:

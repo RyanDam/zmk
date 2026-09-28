@@ -2,7 +2,7 @@
 
 - **Category:** a (Architecture & maintainability)
 - **Severity:** High
-- **Status:** TODO
+- **Status:** IN_PROGRESS (implementation + build validation done; hardware validation pending)
 - **Effort (est):** L
 
 ## Problem
@@ -43,9 +43,22 @@ legacy stack.
 - Enabling the S3 DWC2 controller on the SuperMini (b04) — that is gated separately on the USB-PHY/eFuse decision.
 
 ## Acceptance / verification
-- [ ] Legacy USB stack symbols/APIs no longer underpin supported ZMK USB HID.
+- [x] Legacy USB stack symbols/APIs no longer underpin supported ZMK USB HID.
+      (Sweep: no `USB_DEVICE_STACK` (non-NEXT), `USB_DEVICE_HID`,
+      `USB_UART_CONSOLE`, `USB_HID_BOOT_PROTOCOL`, `usb_dc_*` APIs, or
+      legacy `usb_device.h`/`class/usb_hid.h` includes left in the app tree —
+      except `app/boards/moergo/glove80/usb_serial_number.c`, whose
+      template-based serial number is inert on the new stack; see the
+      upgrade-notes a02 section for the follow-up note.)
 - [ ] USB enumeration and report delivery verified on Linux, macOS, and Windows.
 - [ ] Keyboard boot/report protocol switching, consumer and mouse reports, suspend/resume, unplug/replug, and reset-while-connected all pass.
 - [ ] Existing USB logging and Studio configurations work where supported.
-- [ ] Flash/RAM size comparison against the 4.1 baseline documented, with material regressions called out.
-- [ ] The 96 legacy-stack deprecation warnings are gone from the coban builds (see `zephyr-4.4.1-upgrade-notes.md`).
+      (Build-verified: both snippets compile and register their CDC ACM
+      instances on the new stack; hardware check pending.)
+- [x] Flash/RAM size comparison against the pre-migration baseline documented,
+      with material regressions called out. (cobanpad16a, 4.4.1 legacy-stack
+      baseline: FLASH 310168 → 320496 B (+10328 B / +3.3 %), RAM 109236 →
+      108396 B (−840 B). Full matrix in `zephyr-4.4.1-upgrade-notes.md`.)
+- [x] The 96 legacy-stack deprecation warnings are gone from the coban builds
+      (see `zephyr-4.4.1-upgrade-notes.md`). (Verified: pristine cobanpad16a
+      and cobanpad12b builds emit **0** `warning:` lines.)

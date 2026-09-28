@@ -280,7 +280,7 @@ ZMK_SUBSCRIPTION(led_output_listener, zmk_ble_active_profile_changed);
 // The zmk_usb_conn_state_changed event is only implemented when the USB
 // device stack is enabled (see src/events/usb_conn_state_changed.c), so the
 // listener must be compiled out on targets without it.
-#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+#if IS_ENABLED(CONFIG_ZMK_USB_DEVICE)
 
 static void indicate_usb_connected(void) {
     struct blink_item blink = {.duration_ms = 500,
@@ -306,7 +306,7 @@ static int led_usb_conn_listener_cb(const zmk_event_t *eh) {
 ZMK_LISTENER(led_usb_conn_listener, led_usb_conn_listener_cb);
 ZMK_SUBSCRIPTION(led_usb_conn_listener, zmk_usb_conn_state_changed);
 
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif /* IS_ENABLED(CONFIG_ZMK_USB_DEVICE) */
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
 
