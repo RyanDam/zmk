@@ -2,7 +2,7 @@
 
 - **Category:** a (Architecture & maintainability)
 - **Severity:** High
-- **Status:** IN_PROGRESS (implementation + build validation done; hardware validation pending)
+- **Status:** TODO
 - **Effort (est):** L
 
 ## Problem
@@ -62,3 +62,128 @@ legacy stack.
 - [x] The 96 legacy-stack deprecation warnings are gone from the coban builds
       (see `zephyr-4.4.1-upgrade-notes.md`). (Verified: pristine cobanpad16a
       and cobanpad12b builds emit **0** `warning:` lines.)
+
+## Status report — 2026-09-28 (work parked on `feat/usb-device-next`)
+
+The Phase 3 work was moved off `feat/esp32` to the dedicated branch
+`feat/usb-device-next` as a single amended commit `a81ee1fa` "Remove legacy
+USB stack" (original `464ded6a` content with the unverified Studio fixes
+amended in); `feat/esp32` was reset to `origin/feat/esp32` ("Close phase 2").
+
+### Done
+- Full legacy → `device_next` USB migration (`464ded6a`): explicit
+  `usbd_context` on `zephyr_udc0`, descriptor/config/class registration,
+  `usbd_msg_register_cb()` lifecycle, HID report submission, boot protocol,
+  suspend/resume, remote wakeup, connection-state event propagation.
+- Build-verified on cobanpad16a/cobanpad12b: 0 deprecation warnings;
+  flash/RAM delta documented (acceptance items 1, 5, 6).
+- Zephyr fork fixes (`/workspaces/zmk/zephyr`, branch `v4.4.1+zmk-fixes`,
+  still UNCOMMITTED — `app/west.yml` pin not updated):
+  - `usbd_cdc_acm.c`: ZLP buffer flag for MPS-multiple last chunk
+    (upstream #82151); `usbd_cdc_acm_resumed()` re-triggers pending TX;
+    `usbd_cdc_acm_suspended()` + suspended TX path issue a remote wakeup
+    when TX data is pending (implements the driver FIXME).
+  - `udc_nrf.c`: temporary INF per-endpoint TX enqueue/complete diagnostics
+    (skips console ep 0x85 to avoid a log feedback loop) — strip before final.
+- App-side safety nets (amended into `a81ee1fa` on `feat/usb-device-next`):
+  - `rpc_tx_buffer_write()`: bounded 500 ms drain wait instead of infinite
+    spin (fixes deadlock of `studio_rpc_thread` + zmk event thread when the
+    TX ring is full).
+  - `send_response()`: emits the EOF framing byte even on encode failure.
+  - `uart_rpc_transport.c`: RX re-arm listener on `ZMK_USB_CONN_HID` (RX
+    side of the same CDC-ACM re-trigger bug).
+  - `studio-rpc-usb-uart.conf`: `CONFIG_ZMK_USB_REMOTE_WAKEUP=y`.
+  - Temporary `LOG_INF` diagnostics in `rpc.c` / `uart_rpc_transport.c` —
+    strip before final.
+
+### Not done
+- Acceptance item 2: enumeration/report delivery on Linux, macOS, Windows.
+- Acceptance item 3: boot protocol switching, consumer/mouse reports,
+  suspend/resume, unplug/replug, reset-while-connected.
+- Acceptance item 4: Studio over USB CDC-ACM — **blocked** (below).
+- Zephyr fork fixes uncommitted; `app/west.yml` pin not updated.
+- Temporary diagnostics not yet stripped (app + fork).
+
+### Current issue: Studio RPC over USB CDC-ACM times out
+Symptom: Studio's request is decoded on-device and the response is
+generated, but Studio times out; the response bytes only reach the host
+after unrelated activity (a touchpad touch), ~20–40 s later, consistently.
+
+Established with UDC-level diagnostics (INF, per-endpoint):
+- Endpoint map (usbd auto-assignment in registration order): `0x81` HID IN;
+  `0x82`/`0x83`/`0x01` = CDC-ACM instance 0 (notification IN / bulk IN /
+  bulk OUT) = **Studio RPC**; `0x84`/`0x85`/`0x02` = instance 1 = console.
+- RPC bulk IN (`0x83`) transfers **complete promptly (~150 µs)** right after
+  the request is decoded → the host's USB stack IS reading the endpoint and
+  the bytes reach the host kernel. The device TX path (app ring → CDC-ACM
+  ring → UDC → wire) is healthy.
+- No SUSPEND/RESUME events after boot → the suspend/resume + remote-wakeup
+  fixes are not the (sole) cause.
+- Conclusion: the fault lies between "host kernel has the bytes" and "Studio
+  processes them" — either (a) byte-stream corruption / malformed framing,
+  or (b) host/Studio-side handling.
+
+Client-side findings (`zmk-studio-ts-client`):
+- `src/transport/serial.ts:7` opens the port at `baudRate: 12500` (virtual
+  for CDC-ACM; should be inert).
+- `src/framing.ts` decoder is all-or-nothing: any byte ≠ `0xAB` in the IDLE
+  state, or a `0xAB` mid-frame, calls `controller.error()` and kills the
+  whole readable stream until reconnect — one stray or partial frame kills
+  the session.
+- `src/index.ts:103` `call_rpc` has no read timeout; `tee()` backpressure
+  can stall the source if the notification branch is not consumed.
+
+Ruled out: endpoint shortage, net-buf pool exhaustion, UDC XFER-event loss,
+stuck `TX_FIFO_BUSY` (self-heals on completion), host-side ZLP holding,
+device suspend (no SUSPEND events), CDC-ACM class TX stall (UDC completes
+promptly).
+
+### Potential ways forward
+1. **Raw byte capture on the host (decisive, ~2 min).** With Studio
+   disconnected: `timeout 20 cat /dev/ttyACM<n> > /tmp/rpc_raw.bin` (the RPC
+   port, not "ZMK Logging"), generate traffic (keys/touchpad), then `xxd`.
+   Clean `ab … ad` frames → host/Studio-side fault (check Studio's browser
+   console for decoder errors, verify the attached port, `tee()`
+   backpressure). Garbled bytes or a missing `ad` → device framing
+   corruption; fix the `rpc.c` ring/escape path (incl. the
+   `claim_len == 1` escape edge case at `rpc.c:162-169`).
+2. **Host-side investigation.** Check Studio's browser console for
+   "Expected SoF to start decoding" / "Unexpected SoF mid-frame"; verify
+   Studio is attached to "ZMK Studio RPC", not "ZMK Logging".
+3. **A/B against the legacy stack (low prior).** Both stacks exist in this
+   Zephyr; a `CONFIG_USB_DEVICE_STACK` build would confirm whether the
+   symptom is stack-specific. Low prior because framing is produced by the
+   app, not the stack.
+4. **Cleanup before final.** Strip temporary diagnostics (app `rpc.c`,
+   `uart_rpc_transport.c`; fork `udc_nrf.c`, leftover `LOG_INF`s in
+   `usbd_cdc_acm.c`), commit the fork fixes and bump the `app/west.yml`
+   pin, re-verify with `bash app/build_coban.sh`.
+
+### Diagnostic notes (for whoever picks this up)
+- **Build/flash for hardware validation:** `bash app/build_coban.sh` (repo
+  root) → `/workspaces/zmk-config/zmk-16a.uf2`. The last flashed build
+  (2026-09-28 14:16) still contains the temporary per-endpoint UDC TX
+  diagnostics (`TX enqueue/complete ep 0xNN` lines; console ep 0x85 skipped).
+- **CDC-ACM class logs can never be enabled while the console is CDC-ACM** —
+  the recursion guard at `usbd_cdc_acm.c:26-35` forces `LOG_LEVEL_NONE` for
+  the class. Put driver-side diagnostics in `udc_nrf.c` (INF) or the app
+  layer instead.
+- **Any UDC TX diagnostic must skip the console endpoint (0x85)** — logging
+  the console's own TX creates a log feedback loop that floods and garbles
+  the console (observed 2026-09-28).
+- **Console output is garbled/delayed, but its timestamps are reliable**
+  (captured at the call site in `z_log_msg_commit`); prefer short INF lines
+  and don't trust line integrity during bursts.
+- **The "flush on touch" clue, sharpened:** the UDC completes the response
+  transfer at request time (~150 µs), yet Studio only acts on the bytes
+  after a touchpad touch. If the raw capture confirms prompt arrival on the
+  host, the prime suspect is the client's read loop stalling until UI
+  activity (mouse movement re-driving the page), not the device.
+- **Client under test:** `@zmkfirmware/zmk-studio-ts-client` v0.0.18
+  (commit `fc53f31`), reference checkout at
+  `/workspaces/ref/zmk-studio-ts-client`.
+- **Pre-existing, unrelated boot errors — don't chase:** `adc_nrfx_saadc:
+  Cannot configure channel 0: -22`, `vddh_init: VDDHDIV5 setup returned
+  -22`, battery device "not ready", `settings: set-value failure` (present
+  before the migration; verify against the pre-migration baseline if in
+  doubt).
