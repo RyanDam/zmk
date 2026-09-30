@@ -122,6 +122,133 @@ Established with UDC-level diagnostics (INF, per-endpoint):
 - Conclusion: the fault lies between "host kernel has the bytes" and "Studio
   processes them" — either (a) byte-stream corruption / malformed framing,
   or (b) host/Studio-side handling.
+- **A/B confirmed (2026-09-28):** the `feat/esp32` build (legacy stack,
+  `4d9f2a9b`, original app code) works normally with Studio on pad16a → the
+  regression is specific to the `device_next` migration (USB descriptors,
+  CDC-ACM class control handling, or ZLP/transfer semantics), not the app
+  framing or the host/Studio.
+- **Studio client capture (2026-09-29, `tmp/studio_log.log`):** with the
+  instrumented client, the **first** RPC after connect (behaviors list)
+  round-trips in ~9 ms through every pipeline layer (ENCODER → DECODER
+  chunk/frame → DECODED → RESPONSE branch → call_rpc). The **second** RPC
+  (another behaviors call, the next "load device info" step) gets **no
+  bytes back at all** — no `DECODER chunk`, no decoder error — until the
+  app's own 5 s timeout fires. Key discovery: the app's transport label is
+  `usb-uart` and the timeout stack trace is `usb-uart-transport.ts` — a
+  custom transport **inside the Studio app**, not the library's Web Serial
+  transport (the `RAW TX/RX` hooks never fired). That app transport is the
+  only uninstrumented layer. `TRANSPORT TX/RX` logging was added at the
+  transport boundary in `create_rpc_connection` (commit `66dc235` on
+  `diag/new-usb`) to cover whatever transport the app provides.
+- **Second capture (2026-09-29, `tmp/studio_log2.log`), with
+  `TRANSPORT TX/RX` active:** the failure is **intermittent and
+  stateful** — this time even the *first* request (behaviors) got no
+  response. `TRANSPORT TX` confirms the library handed the framed bytes
+  (SOF / payload / EOF) to the app's transport; **`TRANSPORT RX` is
+  completely empty** — no responses, no notifications, across three
+  retried requests over ~25 s. So the stall is either (a) app transport
+  TX → device (requests never arrive) or (b) device → app transport RX
+  (responses never delivered). The device console (UDC per-endpoint
+  diagnostics + `rpc.c` INF) is the fork in the road: no `RPC request
+  decoded` → (a); decoded + `TX enqueue/complete ep 0x83` but no
+  `TRANSPORT RX` → (b). Note: the device was not rebooted between the two
+  runs — only the browser reconnected (Vite HMR page load) — so the
+  device may enter a run with stale state left by the previous session
+  (stuck `TX_FIFO_BUSY`, lost bulk-OUT re-arm, net_buf leak).
+- **Raw host test — DECISIVE (2026-09-29).** Host is a **Mac**; the ZMK
+  CDC-ACM ports are `/dev/{cu,tty}.usbmodem834402` (RPC) and
+  `…834404` (console). `tmp/raw_rpc_test.py` opens the RPC port directly
+  (bypassing Chrome/Web Serial), sends Studio's exact first request
+  (`ab 22 02 08 01 ad`), and the device **answered with the correct
+  66-byte response**. ⇒ The device + macOS `cdc_acm` stack are **healthy**;
+  the Studio timeout is a **Chrome / Web Serial / app-transport** problem,
+  NOT the firmware. This re-frames the A/B result: the legacy build
+  "working" in Studio is not because the device_next *device* is broken —
+  the difference must surface specifically through Chrome (port selection,
+  the app transport's read/write loop, or a descriptor/control-request
+  difference Chrome is sensitive to). Remaining suspects, in order:
+  (A) the app connects to the **wrong port** (esp. after an HMR reload —
+  testable with `lsof | grep usbmodem` while Studio is connected: RPC is
+  `…834402`); (B) a bug in the app's `usb-uart-transport.ts` read/write
+  loop (source needed — local to the user's Mac, not on GitHub);
+  (C) a Chrome Web Serial quirk vs a device_next descriptor/control
+  difference (descriptor diff as fallback).
+
+### Root cause identified — 2026-09-29 (device RX re-arm ratchet)
+
+App source reviewed (Studio checkout cloned to `/workspaces/ref/Connect`):
+`frontend/src/app/protocols/usb-uart-transport.ts` is **clean** — it opens
+the port (`baudRate: 115200`), pipes `port.readable/writable` straight into
+`create_rpc_connection`, and wraps `call_rpc` in a 5 s timeout that cannot
+cancel the in-flight read (its own comment says so; the 10 s diagnostic
+read timeout in the instrumented client releases the mutex). `lsof`
+confirmed Studio holds the correct port (`…834402` = RPC). The client-side
+`tee()` backpressure theory was **empirically ruled out** (Node 20 repro:
+an unread tee branch does not stall the source — 50/50 chunks flowed).
+
+**The fault is in the device_next CDC-ACM RX re-arm path
+(`zephyr/subsys/usb/device_next/class/usbd_cdc_acm.c`):**
+- `cdc_acm_rx_fifo_handler()` is a **one-shot** re-arm of the bulk-OUT
+  endpoint. **Every bail path returns without rescheduling**: not-enabled/
+  suspended (line 729), RX-ring throttle (735), `RX_FIFO_BUSY` already set
+  (740), and — the killers — `cdc_acm_buf_alloc()` returning NULL (746,
+  **silent**) and `usbd_ep_enqueue()` failing (754).
+- The alloc/enqueue failures leave `CDC_ACM_RX_FIFO_BUSY` **set** (it is
+  set by `test_and_set` at line 740 *before* the alloc; only the
+  ep_request callback clears it, on lines 288/312 — i.e. only when an
+  actual transfer completes). Grep-verified: no other code touches the bit.
+  ⇒ a failed re-arm = **permanent RX death until a full reboot**.
+  `usbd_cdc_acm_disable/enable` (replug) does not clear it, so even a
+  re-plug does not recover — only power-cycle does.
+- The suspended-bail self-heals only via a later trigger: RESUME →
+  `usbd_core` → class `resumed` + `USBD_MSG_RESUME` → `usb_msg_cb`
+  (`app/src/usb.c`) → `zmk_usb_conn_state_changed(HID)` →
+  `uart_rpc_listener` (`uart_rpc_transport.c`) → `cdc_acm_irq_rx_enable` —
+  but that call is **gated on `!RX_FIFO_BUSY`** (line 792), so a stuck bit
+  blocks every recovery attempt. `usbd_cdc_acm_resumed()` itself has an
+  explicit TODO: it re-triggers TX but **not RX** (line 715).
+- The USB bus suspends ~3 ms after idle, so suspend/resume cycles (and the
+  suspend-bail window) occur constantly during Studio use.
+
+Consistency with all evidence: run 1 (request #0 OK, then RX dies on a
+failed re-arm), run 2 (no reboot — stuck BUSY bit blocks the constant
+resume-triggered recovery ⇒ total silence), raw test (works after the
+device recovered — **open question: was it power-cycled, not just
+re-plugged?**), legacy firmware (old driver re-arms differently ⇒ works).
+
+**Fix — IMPLEMENTED in the zephyr fork (uncommitted, pending review;
+build-verified 2026-09-29 via `bash app/build_coban.sh`: 570/570, 0
+warnings, FLASH 321708 B / RAM 108444 B, `zmk-16a.uf2` written):**
+1. `cdc_acm_rx_fifo_handler()`: on alloc failure → `LOG_ERR` + clear
+   `RX_FIFO_BUSY` (next trigger re-arms); on enqueue failure → also clear
+   `RX_FIFO_BUSY` (was missing, unlike the TX path). The alloc failure is
+   also visible via the pre-existing `udc_ep_buf_alloc` LOG_ERR in
+   `udc_common.c` ("Failed to allocate net_buf 64, ep 0x01") — that module
+   is NOT silenced by the CDC-ACM console recursion guard
+   (`CONFIG_UDC_DRIVER_LOG_LEVEL=INF`), whereas the class module is forced
+   to `LOG_LEVEL_NONE` while the console is CDC-ACM.
+2. `usbd_cdc_acm_resumed()`: re-arm RX (resolves the line-715 TODO) — if
+   `IRQ_RX_ENABLED && !RX_FIFO_BUSY`, submit `rx_fifo_work`. Makes the
+   class self-sufficient on resume instead of relying on the app listener.
+3. Keep the app-level `uart_rpc_listener` (harmless, idempotent).
+4. `udc_nrf.c` temporary diagnostics extended: `RX enqueue ep 0xNN` (bulk-
+   OUT re-arm heartbeat — 0x01 RPC, 0x02 console; when it stops for 0x01
+   the device RX is dead) and `RX complete ep 0xNN` (a host→device
+   transfer landed). No feedback loop: log output goes to console TX 0x85,
+   which is still skipped.
+
+**Verification plan:** `tmp/stress_rpc_test.py` (created) hammers the RPC
+port with N framed requests, each gap > 3 ms (forces a suspend/resume
+cycle per request). 0 failures over N ⇒ RX survives; first failure at k
+with all later requests silent ⇒ ratchet reproduced — capture the device
+console around k and look for `Failed to allocate net_buf` / `Failed to
+enqueue net_buf` / `not enabled or suspended` / `RX buffer to small`.
+With the fixed build, the console shows an `RX enqueue ep 0x01` /
+`RX complete ep 0x01` heartbeat per request — the heartbeat stopping means
+RX died; the resume re-arm (fix #2) should restart it.
+Sequence: (optionally) stress the current firmware to reproduce, then
+flash the fixed build and re-stress (expect 0 failures), then a final
+Studio session.
 
 Client-side findings (`zmk-studio-ts-client`):
 - `src/transport/serial.ts:7` opens the port at `baudRate: 12500` (virtual
@@ -130,30 +257,35 @@ Client-side findings (`zmk-studio-ts-client`):
   state, or a `0xAB` mid-frame, calls `controller.error()` and kills the
   whole readable stream until reconnect — one stray or partial frame kills
   the session.
-- `src/index.ts:103` `call_rpc` has no read timeout; `tee()` backpressure
-  can stall the source if the notification branch is not consumed.
+- `src/index.ts:103` `call_rpc` has no read timeout (the 10 s diagnostic
+  timeout in `diag/new-usb` releases the mutex — verified working in
+  run 2: three retried requests each got a fresh `TRANSPORT TX`).
+- `tee()` backpressure: **ruled out empirically** (Node 20: an unread tee
+  branch does not stall the source; it only accumulates).
 
-Ruled out: endpoint shortage, net-buf pool exhaustion, UDC XFER-event loss,
-stuck `TX_FIFO_BUSY` (self-heals on completion), host-side ZLP holding,
-device suspend (no SUSPEND events), CDC-ACM class TX stall (UDC completes
-promptly).
+Ruled out: endpoint shortage, UDC XFER-event loss, stuck `TX_FIFO_BUSY`
+(self-heals on completion), host-side ZLP holding, CDC-ACM class TX stall
+(UDC completes promptly), wrong-port selection (lsof), app transport
+read/write loop (source reviewed), client `tee()` stall (Node repro).
+Net-buf pool exhaustion is **no longer ruled out** — it is the silent
+alloc-failure path of the RX re-arm (16×1024 shared `udc_ep_pool`;
+steady-state hold ~6–8 buffers, so a leak or a reconfigure-window enqueue
+failure are the candidate triggers; the console capture will show which).
 
-### Potential ways forward
-1. **Raw byte capture on the host (decisive, ~2 min).** With Studio
-   disconnected: `timeout 20 cat /dev/ttyACM<n> > /tmp/rpc_raw.bin` (the RPC
-   port, not "ZMK Logging"), generate traffic (keys/touchpad), then `xxd`.
-   Clean `ab … ad` frames → host/Studio-side fault (check Studio's browser
-   console for decoder errors, verify the attached port, `tee()`
-   backpressure). Garbled bytes or a missing `ad` → device framing
-   corruption; fix the `rpc.c` ring/escape path (incl. the
-   `claim_len == 1` escape edge case at `rpc.c:162-169`).
-2. **Host-side investigation.** Check Studio's browser console for
-   "Expected SoF to start decoding" / "Unexpected SoF mid-frame"; verify
-   Studio is attached to "ZMK Studio RPC", not "ZMK Logging".
-3. **A/B against the legacy stack (low prior).** Both stacks exist in this
-   Zephyr; a `CONFIG_USB_DEVICE_STACK` build would confirm whether the
-   symptom is stack-specific. Low prior because framing is produced by the
-   app, not the stack.
+### Potential ways forward (updated 2026-09-29)
+1. **Reproduce with `tmp/stress_rpc_test.py`** (Studio closed): hammer the
+   RPC port with N requests, each gap > 3 ms (one suspend/resume cycle per
+   request). If the ratchet reproduces, capture the device console around
+   the first failure — the bail log lines (`Failed to allocate net_buf` /
+   `Failed to enqueue net_buf` / `not enabled or suspended` / `RX buffer
+   to small`) identify the exact trigger path.
+2. **Implement the RX re-arm fix** in the zephyr fork `usbd_cdc_acm.c`
+   (see "Fix plan" above): clear `RX_FIFO_BUSY` on alloc/enqueue failure +
+   log the silent alloc failure; re-arm RX in `usbd_cdc_acm_resumed()`
+   (resolve the line-715 TODO). Uncommitted, for review.
+3. **Verify:** flash the fixed build (`bash app/build_coban.sh`), re-run
+   the stress test (expect 0 failures over N ≥ 500), then a full Studio
+   session (the original symptom should be gone).
 4. **Cleanup before final.** Strip temporary diagnostics (app `rpc.c`,
    `uart_rpc_transport.c`; fork `udc_nrf.c`, leftover `LOG_INF`s in
    `usbd_cdc_acm.c`), commit the fork fixes and bump the `app/west.yml`
@@ -182,6 +314,18 @@ promptly).
 - **Client under test:** `@zmkfirmware/zmk-studio-ts-client` v0.0.18
   (commit `fc53f31`), reference checkout at
   `/workspaces/ref/zmk-studio-ts-client`.
+- **Client instrumentation (2026-09-28, uncommitted):** the reference
+  client is instrumented for the timeout investigation — new `src/diag.ts`
+  plus `diag()` calls in `framing.ts`, `index.ts`,
+  `transport/serial.ts`. All lines are prefixed `[zmk-rpc]` with a
+  relative timestamp (filter the browser console on `[zmk-rpc]`). Log
+  layers, in pipeline order: `RAW TX` (browser → OS) → `RAW RX` (OS →
+  browser) → `DECODER chunk` → `DECODER frame` / `DECODER ERROR` →
+  `DECODED` (tee pulled the frame) → `RESPONSE/NOTIFICATION branch:
+  consumed` (the app read it) → `call_rpc` write/read/`TIMEOUT`. A 10 s
+  diagnostic read timeout was added to `call_rpc` (it releases the RPC
+  mutex so testing can continue; remove for production). Build with
+  `npm run build` (lib/ is up to date).
 - **Pre-existing, unrelated boot errors — don't chase:** `adc_nrfx_saadc:
   Cannot configure channel 0: -22`, `vddh_init: VDDHDIV5 setup returned
   -22`, battery device "not ready", `settings: set-value failure` (present

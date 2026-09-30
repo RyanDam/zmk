@@ -26,7 +26,7 @@ static void tx_notify(struct ring_buf *tx_ring_buf, size_t written, bool msg_don
                       void *user_data) {
     if (msg_done || (ring_buf_size_get(tx_ring_buf) > (ring_buf_capacity_get(tx_ring_buf) / 2))) {
 #if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
-        LOG_DBG("UART RPC transport: tx_notify -> uart_irq_tx_enable (msg_done=%d, tx_buf=%u)",
+        LOG_INF("DIAG tx_notify msg_done=%d txbuf=%u -> irq_tx_enable",
                 msg_done, ring_buf_size_get(tx_ring_buf));
         uart_irq_tx_enable(uart_dev);
 #else
@@ -102,11 +102,19 @@ ZMK_RPC_TRANSPORT(uart, ZMK_TRANSPORT_USB, start_rx, stop_rx, NULL, tx_notify);
  * data to the message queue.
  */
 static void serial_cb(const struct device *dev, void *user_data) {
-    if (!uart_irq_update(uart_dev)) {
+    int updated = uart_irq_update(uart_dev);
+    if (!updated) {
+        LOG_INF("DIAG serial_cb irq_update=0 (return)");
         return;
     }
 
-    if (uart_irq_rx_ready(uart_dev)) {
+    int rx_ready = uart_irq_rx_ready(uart_dev);
+    int tx_ready = uart_irq_tx_ready(uart_dev);
+    uint32_t rpc_tx_pending = ring_buf_size_get(zmk_rpc_get_tx_buf());
+    LOG_INF("DIAG serial_cb up=%d rx_ready=%d tx_ready=%d rpc_tx_pending=%u",
+            updated, rx_ready, tx_ready, rpc_tx_pending);
+
+    if (rx_ready) {
         /* read until FIFO empty */
         uint32_t last_read = 0, len = 0, total_read = 0;
         struct ring_buf *buf = zmk_rpc_get_rx_buf();
@@ -130,7 +138,7 @@ static void serial_cb(const struct device *dev, void *user_data) {
         zmk_rpc_rx_notify();
     }
 
-    if (uart_irq_tx_ready(uart_dev)) {
+    if (tx_ready) {
         struct ring_buf *tx_buf = zmk_rpc_get_tx_buf();
         uint32_t len;
         uint32_t total_sent = 0;
@@ -148,7 +156,7 @@ static void serial_cb(const struct device *dev, void *user_data) {
             ring_buf_get_finish(tx_buf, MAX(sent, 0));
         }
 
-        LOG_DBG("UART RPC transport: TX %u byte(s) on %s", total_sent, uart_dev->name);
+        LOG_INF("DIAG serial_cb TX %u byte(s) via fifo_fill", total_sent);
     }
 }
 
