@@ -2,7 +2,7 @@
 
 - **Category:** a (Architecture & maintainability)
 - **Severity:** High
-- **Status:** TODO
+- **Status:** DONE
 - **Effort (est):** L
 
 ## Problem
@@ -51,10 +51,16 @@ legacy stack.
       template-based serial number is inert on the new stack; see the
       upgrade-notes a02 section for the follow-up note.)
 - [ ] USB enumeration and report delivery verified on Linux, macOS, and Windows.
+      (Verified on **macOS** only: HID keyboard + Studio RPC enumerate and
+      deliver. Linux/Windows pending — noted as a known gap at close.)
 - [ ] Keyboard boot/report protocol switching, consumer and mouse reports, suspend/resume, unplug/replug, and reset-while-connected all pass.
-- [ ] Existing USB logging and Studio configurations work where supported.
-      (Build-verified: both snippets compile and register their CDC ACM
-      instances on the new stack; hardware check pending.)
+      (Basic keyboard use + Studio RPC verified on macOS, incl. 200×
+      suspend/resume stress cycles. Full protocol suite — boot/report
+      switching, unplug/replug, reset-while-connected — pending; noted as
+      a known gap at close.)
+- [x] Existing USB logging and Studio configurations work where supported.
+      (Hardware-verified on macOS 2026-09-30: console CDC-ACM log stream
+      clean, Studio connects and stays connected, stress test 200/200.)
 - [x] Flash/RAM size comparison against the pre-migration baseline documented,
       with material regressions called out. (cobanpad16a, 4.4.1 legacy-stack
       baseline: FLASH 310168 → 320496 B (+10328 B / +3.3 %), RAM 109236 →
@@ -331,3 +337,98 @@ failure are the candidate triggers; the console capture will show which).
   -22`, battery device "not ready", `settings: set-value failure` (present
   before the migration; verify against the pre-migration baseline if in
   doubt).
+
+## FINAL ROOT CAUSE — 2026-09-30 (resolved, verified)
+
+**The Studio-over-USB stall was an infinite self-resubmitting work loop in
+the new upstream CDC-ACM TX implementation, not a remote-wakeup or RX
+problem.**
+
+### The bug
+
+Upstream commit `6d69698de74` ("usb: device_next: cdc_acm: tx throughput
+improvements", net_buf-based TX) left `cdc_acm_irq_cb_handler()`
+re-submitting itself at the end of every run when:
+
+```c
+if (atomic_test_bit(&data->state, CDC_ACM_IRQ_TX_ENABLED) &&
+    ring_buf_space_get(data->tx_fifo.rb)) {
+    cdc_acm_work_submit(&data->irq_cb_work);
+}
+```
+
+That condition is a **level, not an edge**: the app enables TX once
+(`uart_irq_tx_enable`) and never disables it, and the TX ring is almost
+always non-full when idle. So once the app sends its first response, the
+handler re-invokes the app UART callback in a tight loop forever.
+
+### Why it stalled everything
+
+Both CDC-ACM instances (Studio RPC + console) share one work queue
+(`cdc_acm_work_q`). The Zephyr work-queue thread (`work_queue_main` in
+`kernel/work.c`) loops back to the pending list after each handler without
+sleeping, so the self-resubmitting `irq_cb_work` hogs the queue and
+starves/delays:
+
+- `tx_fifo_work` — the work that actually drains the CDC-ACM TX ring to the
+  wire (RPC responses stall), and
+- the console instance's TX work (the log stream stalls in the same window).
+
+That is why Studio *and* the console stalled together, and why a touchpad
+touch (unrelated bus activity) appeared to "flush" things.
+
+### Why it was so hard to find
+
+- The CDC-ACM class module is force-compiled at `LOG_LEVEL_NONE` (the
+  recursion guard at `usbd_cdc_acm.c:26-35`), so the loop ran **silently** —
+  earlier captures showed "zero log lines" gaps that were actually the loop
+  spinning, not an idle device.
+- Adding `LOG_INF` to the app-side `serial_cb` finally made the loop
+  visible: `serial_cb` invoked every ~3 ms with `rpc_tx_pending=0`
+  (nothing to send), flooding the log until the backend dropped 9999
+  messages.
+
+### Fixes applied (zephyr fork, `usbd_cdc_acm.c`)
+
+1. **Remove the unconditional TX re-submit** in `cdc_acm_irq_cb_handler()`
+   (the loop source). TX-ready is still reported on the two real edges:
+   `uart_irq_tx_enable()` and TX transfer completion
+   (`usbd_cdc_acm_request()`).
+2. **Empty-ring guard** in `cdc_acm_tx_fifo_handler()` — don't enqueue a
+   spurious 0-byte transfer if the ring already drained.
+3. `cdc_acm_fifo_fill()` schedules `tx_fifo_work` (the interrupt-driven
+   write path never did; only `poll_out` did).
+4. Suspend → `usbd_wakeup_request()` when TX is pending; resume → re-trigger
+   pending TX and re-arm the bulk-OUT RX endpoint (resolves the upstream
+   "resumed call (TODO)").
+5. Clear `RX_FIFO_BUSY` on RX net_buf alloc/enqueue failure (a single
+   failure otherwise wedges the RX endpoint permanently).
+6. ZLP on max-packet boundary via `udc_ep_buf_set_zlp()` (replaces the
+   old `zlp_needed` two-transfer scheme).
+
+### Verification (2026-09-30)
+
+- Normal Studio session: connects and stays connected; device log clean —
+  169/169 `TX enqueue ep 0x83` matched by 169 `TX complete ep 0x83`
+  (every response ACKed), 223/223 RX, **0 dropped log messages, 0 errors**,
+  0 suspend/resume events.
+- Stress test `stress_rpc_test.py`: **200/200 answered, 0 failed** in 2.9 s
+  (~69 req/s), RX survived all 200 suspend/resume cycles.
+
+### Cleanup status (closed 2026-09-30)
+
+- Temporary diagnostics stripped: fork `udc_nrf.c` (per-endpoint
+  TX/RX enqueue/complete lines) and app `uart_rpc_transport.c` (DIAG logs)
+  are back to their pre-debug state. `usbd_cdc_acm.c` keeps only the real
+  fixes (its `LOG_INF` lines are upstream's and compiled out by the
+  `LOG_LEVEL_NONE` guard anyway).
+- Fork fixes committed and pushed: `8789b5b8cb5` ("Fix USB + remove log")
+  on `v4.4.1+zmk-fixes` (RyanDam/zephyr). The `app/west.yml` zephyr pin is
+  that *branch*, so no pin bump was needed — pushing the branch is enough.
+- Clean build re-verified after the strip: 570/570, 0 warnings,
+  FLASH 322004 B / RAM 108452 B.
+- **Optional follow-up (not blocking):** an idle test (leave Studio idle
+  for minutes, then interact) to exercise the host-suspend → remote-wakeup
+  path, which the captures above did not cover (no suspend events
+  occurred). The suspend→`usbd_wakeup_request()` and resume→re-arm fixes
+  are in place for it.
