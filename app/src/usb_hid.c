@@ -179,7 +179,9 @@ static int set_report_cb(const struct device *dev, const uint8_t type, const uin
     }
 }
 
-static void in_done_cb(const struct device *dev, const uint8_t *const report) { k_sem_give(&hid_sem); }
+static void in_done_cb(const struct device *dev, const uint8_t *const report) {
+    k_sem_give(&hid_sem);
+}
 
 static const struct hid_device_ops ops = {
 #if IS_ENABLED(CONFIG_ZMK_USB_BOOT)

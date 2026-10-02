@@ -27,9 +27,11 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
     }
 #endif
 
+#if INDICATOR_CENTRAL_ONLY
     if (cfg->indicate_layer) {
         indicate_layer();
     }
+#endif
 
     return ZMK_BEHAVIOR_OPAQUE;
 }
@@ -53,8 +55,8 @@ static const struct behavior_driver_api behavior_indicator_driver_api = {
         .indicate_battery = DT_INST_PROP(n, indicate_battery),                                     \
         .indicate_layer = DT_INST_PROP(n, indicate_layer),                                         \
     };                                                                                             \
-    BEHAVIOR_DT_INST_DEFINE(n, behavior_indicator_init, NULL, NULL, &behavior_indicator_config_##n,  \
-                            POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,                      \
-                            &behavior_indicator_driver_api);
+    BEHAVIOR_DT_INST_DEFINE(n, behavior_indicator_init, NULL, NULL,                                \
+                            &behavior_indicator_config_##n, POST_KERNEL,                           \
+                            CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_indicator_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(IND_INST)

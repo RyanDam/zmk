@@ -31,18 +31,18 @@ struct mpr121_electrode_coord {
 };
 
 static const struct mpr121_electrode_coord mpr121_electrode_coord[MPR121_NUM_ELECTRODES] = {
-    { -1.0f, 0.0f },    /* e0  row0 */
-    { -1.0f, 0.2f },    /* e1  row1 */
-    { -1.0f, 0.4f },    /* e2  row2 */
-    { 0.9167f, -1.0f }, /* e3  col5 */
-    { 0.75f, -1.0f },   /* e4  col4 */
-    { 0.5833f, -1.0f }, /* e5  col3 */
-    { -1.0f, 1.0f },    /* e6  row5 */
-    { -1.0f, 0.8f },    /* e7  row4 */
-    { -1.0f, 0.6f },    /* e8  row3 */
-    { 0.4167f, -1.0f }, /* e9  col2 */
-    { 0.25f, -1.0f },   /* e10 col1 */
-    { 0.0833f, -1.0f }, /* e11 col0 */
+    {-1.0f, 0.0f},    /* e0  row0 */
+    {-1.0f, 0.2f},    /* e1  row1 */
+    {-1.0f, 0.4f},    /* e2  row2 */
+    {0.9167f, -1.0f}, /* e3  col5 */
+    {0.75f, -1.0f},   /* e4  col4 */
+    {0.5833f, -1.0f}, /* e5  col3 */
+    {-1.0f, 1.0f},    /* e6  row5 */
+    {-1.0f, 0.8f},    /* e7  row4 */
+    {-1.0f, 0.6f},    /* e8  row3 */
+    {0.4167f, -1.0f}, /* e9  col2 */
+    {0.25f, -1.0f},   /* e10 col1 */
+    {0.0833f, -1.0f}, /* e11 col0 */
 };
 
 static int mpr121_i2c_write(const struct device *dev, uint8_t reg, uint8_t val) {
@@ -198,13 +198,15 @@ static struct mpr121_grid_pos mpr121_calc_position_weighted(const struct device 
         if (cx >= 0.0f) {
             sum_wx += weight * cx;
             total_wx += weight;
-            // LOG_INF("Touchpad WEIGHT X %f base %f filter %f weight %f", (double)cx, (double)baseline[e],
+            // LOG_INF("Touchpad WEIGHT X %f base %f filter %f weight %f", (double)cx,
+            // (double)baseline[e],
             //         (double)filtered[e], (double)weight);
         }
         if (cy >= 0.0f) {
             sum_wy += weight * cy;
             total_wy += weight;
-            // LOG_INF("Touchpad WEIGHT Y %f base %f filter %f weight %f", (double)cy, (double)baseline[e],
+            // LOG_INF("Touchpad WEIGHT Y %f base %f filter %f weight %f", (double)cy,
+            // (double)baseline[e],
             //         (double)filtered[e], (double)weight);
         }
     }

@@ -171,8 +171,7 @@ static int ksbb_init(const struct device *dev) {
 
 #define ENTRY(e)                                                                                   \
     {                                                                                              \
-        .row = DT_PROP(e, row),                                                                    \
-        .column = DT_PROP(e, column),                                                              \
+        .row = DT_PROP(e, row), .column = DT_PROP(e, column),                                      \
         .binding = ZMK_KEYMAP_EXTRACT_BINDING(0, e),                                               \
     }
 
@@ -180,8 +179,7 @@ static int ksbb_init(const struct device *dev) {
     COND_CODE_1(DT_INST_PROP_OR(n, auto_enable, false), (static int ksbb_auto_enable_##n(void) {   \
                     const struct device *dev = DEVICE_DT_GET(DT_DRV_INST(n));                      \
                     COND_CODE_1(IS_ENABLED(CONFIG_PM_DEVICE),                                      \
-                                (ksbb_pm_action(dev, PM_DEVICE_ACTION_RESUME);),                   \
-                                ())                                                                \
+                                (ksbb_pm_action(dev, PM_DEVICE_ACTION_RESUME);), ())               \
                     return 0;                                                                      \
                 } SYS_INIT(ksbb_auto_enable_##n, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);), \
                 ())                                                                                \

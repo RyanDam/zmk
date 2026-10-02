@@ -29,9 +29,7 @@ struct kscan_mock_data {
     const struct device *dev;
 };
 
-static void kscan_mock_exit_handler(struct k_work *work) {
-    exit(0);
-}
+static void kscan_mock_exit_handler(struct k_work *work) { exit(0); }
 
 #define MOCK_INST_INIT(n)                                                                          \
     struct kscan_mock_config_##n {                                                                 \
@@ -63,7 +61,8 @@ static void kscan_mock_exit_handler(struct k_work *work) {
         uint32_t ev = cfg->events[data->event_index];                                              \
         LOG_DBG("ev %u row %d column %d state %d\n", ev, ZMK_MOCK_ROW(ev), ZMK_MOCK_COL(ev),       \
                 ZMK_MOCK_IS_PRESS(ev));                                                            \
-        zmk_kscan_input_report(data->dev, ZMK_MOCK_ROW(ev), ZMK_MOCK_COL(ev), ZMK_MOCK_IS_PRESS(ev)); \
+        zmk_kscan_input_report(data->dev, ZMK_MOCK_ROW(ev), ZMK_MOCK_COL(ev),                      \
+                               ZMK_MOCK_IS_PRESS(ev));                                             \
         kscan_mock_schedule_next_event_##n(data->dev);                                             \
         data->event_index++;                                                                       \
     }                                                                                              \

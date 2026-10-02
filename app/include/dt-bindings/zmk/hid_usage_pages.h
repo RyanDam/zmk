@@ -24,22 +24,22 @@
 #define USAGE_KEYPAD (0x07)   // WARNING: DEPRECATED (DO NOT USE)
 #define USAGE_CONSUMER (0x0C) // WARNING: DEPRECATED (DO NOT USE)
 
-#define HID_USAGE_GD (0x01)             // Generic Desktop
-#define HID_USAGE_SIM (0x02)            // Simulation Controls
-#define HID_USAGE_VR (0x03)             // VR Controls
-#define HID_USAGE_SPORT (0x04)          // Sport Controls
-#define HID_USAGE_GAME (0x05)           // Game Controls
-#define HID_USAGE_GDV (0x06)            // Generic Device Controls
-#define HID_USAGE_KEY (0x07)            // Keyboard/Keypad
-#define HID_USAGE_LED (0x08)            // LED
-#define HID_USAGE_BUTTON (0x09)         // Button
-#define HID_USAGE_TELEPHONY (0x0B)      // Telephony Device
-#define HID_USAGE_CONSUMER (0x0C)       // Consumer
-#define HID_USAGE_DIGITIZERS (0x0D)     // Digitizers
-#define HID_USAGE_HAPTICS (0x0E)        // Haptics
-#define HID_USAGE_PID (0x0F)            // PID
-#define HID_USAGE_EHT (0x12)            // Eye and Head Trackers
-#define HID_USAGE_AUXDISP (0x14)        // Auxiliary Display
+#define HID_USAGE_GD (0x01)         // Generic Desktop
+#define HID_USAGE_SIM (0x02)        // Simulation Controls
+#define HID_USAGE_VR (0x03)         // VR Controls
+#define HID_USAGE_SPORT (0x04)      // Sport Controls
+#define HID_USAGE_GAME (0x05)       // Game Controls
+#define HID_USAGE_GDV (0x06)        // Generic Device Controls
+#define HID_USAGE_KEY (0x07)        // Keyboard/Keypad
+#define HID_USAGE_LED (0x08)        // LED
+#define HID_USAGE_BUTTON (0x09)     // Button
+#define HID_USAGE_TELEPHONY (0x0B)  // Telephony Device
+#define HID_USAGE_CONSUMER (0x0C)   // Consumer
+#define HID_USAGE_DIGITIZERS (0x0D) // Digitizers
+#define HID_USAGE_HAPTICS (0x0E)    // Haptics
+#define HID_USAGE_PID (0x0F)        // PID
+#define HID_USAGE_EHT (0x12)        // Eye and Head Trackers
+#define HID_USAGE_AUXDISP (0x14)    // Auxiliary Display
 /* HID_USAGE_SENSORS (0x20): provided by <zephyr/usb/class/hid.h> */
 #define HID_USAGE_MEDICAL (0x40)        // Medical Instrument
 #define HID_USAGE_BRAILLE (0x41)        // Braille Display

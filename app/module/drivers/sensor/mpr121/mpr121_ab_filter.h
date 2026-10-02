@@ -19,8 +19,7 @@ static inline float ab_beta_from_alpha(float alpha) {
     return 2.0f * (2.0f - alpha) - 2.0f * sqrtf(1.0f - alpha);
 }
 
-static inline void
-ab_filter_init(struct mpr121_ab_filter *f, float seed_x, float seed_y) {
+static inline void ab_filter_init(struct mpr121_ab_filter *f, float seed_x, float seed_y) {
     f->x = seed_x;
     f->y = seed_y;
     f->vx = 0.0f;
@@ -28,10 +27,7 @@ ab_filter_init(struct mpr121_ab_filter *f, float seed_x, float seed_y) {
     f->initialised = true;
 }
 
-static inline void
-ab_filter_reset(struct mpr121_ab_filter *f) {
-    f->initialised = false;
-}
+static inline void ab_filter_reset(struct mpr121_ab_filter *f) { f->initialised = false; }
 
 static inline float ab_alpha_from_tau(float tau_ms, float dt_ms) {
     if (tau_ms <= 0.0f) {
@@ -40,9 +36,8 @@ static inline float ab_alpha_from_tau(float tau_ms, float dt_ms) {
     return 1.0f - expf(-dt_ms / tau_ms);
 }
 
-static inline void
-ab_filter_update(struct mpr121_ab_filter *f, float meas_x, float meas_y,
-                 float tau_ms, float dt_ms) {
+static inline void ab_filter_update(struct mpr121_ab_filter *f, float meas_x, float meas_y,
+                                    float tau_ms, float dt_ms) {
     if (!f->initialised) {
         ab_filter_init(f, meas_x, meas_y);
         return;

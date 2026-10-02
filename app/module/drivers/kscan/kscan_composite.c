@@ -154,12 +154,13 @@ static int kscan_composite_pm_action(const struct device *dev, enum pm_device_ac
  */
 #define KSCAN_COMP_CHILD_CB(child_id)                                                              \
     COND_CODE_1(DT_NODE_HAS_PROP(child_id, kscan),                                                 \
-                (static const STRUCT_SECTION_ITERABLE(input_callback,                              \
-                    _input_callback___zmk_kscan_comp_cb_##child_id) = {                            \
-                    .dev = DEVICE_DT_GET(DT_PHANDLE(child_id, kscan)),                             \
-                    .callback = kscan_composite_child_input_cb,                                    \
-                    .user_data = (void *)DEVICE_DT_GET(DT_PARENT(child_id)),                       \
-                };),                                                                               \
+                (static const STRUCT_SECTION_ITERABLE(                                             \
+                     input_callback, _input_callback___zmk_kscan_comp_cb_##child_id) =             \
+                     {                                                                             \
+                         .dev = DEVICE_DT_GET(DT_PHANDLE(child_id, kscan)),                        \
+                         .callback = kscan_composite_child_input_cb,                               \
+                         .user_data = (void *)DEVICE_DT_GET(DT_PARENT(child_id)),                  \
+                     };),                                                                          \
                 ())
 
 #define KSCAN_COMP_DEV(n)                                                                          \

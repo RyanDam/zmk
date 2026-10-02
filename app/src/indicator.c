@@ -70,6 +70,15 @@ static const uint8_t led_idx[] = {
 
 #endif
 
+/* The indicator thread and message queue only exist when the board actually
+ * has indicator LED hardware (WS2812 strip or GPIO LEDs). On boards without
+ * them the indicate_* functions are no-ops and consume no RAM. */
+#if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
+#define INDICATOR_HAS_LED_HW 1
+#else
+#define INDICATOR_HAS_LED_HW INDICATOR_LED_GPIO_ACTIVE
+#endif
+
 static const uint8_t COLOR_BLACK = 0;
 static const uint8_t COLOR_IND_1 = 1 << 0;
 static const uint8_t COLOR_IND_2 = 1 << 1;
@@ -190,7 +199,19 @@ struct blink_item {
 
 static bool initialized = false;
 
+#if INDICATOR_HAS_LED_HW
+
 K_MSGQ_DEFINE(led_msgq, sizeof(struct blink_item), 16, 1);
+
+static void indicator_post(struct blink_item *blink) { k_msgq_put(&led_msgq, blink, K_NO_WAIT); }
+
+#else
+
+static void indicator_post(struct blink_item *blink) { ARG_UNUSED(blink); }
+
+#endif /* INDICATOR_HAS_LED_HW */
+
+#if INDICATOR_HAS_LED_HW
 
 static void update_leds(struct blink_item *blink, bool on) {
 #if IS_ENABLED(CONFIG_COBAN_INDICATOR_USE_LED_STRIP)
@@ -225,7 +246,9 @@ static void update_leds(struct blink_item *blink, bool on) {
 #endif
 }
 
-#if IS_ENABLED(CONFIG_ZMK_BLE)
+#endif /* INDICATOR_HAS_LED_HW */
+
+#if IS_ENABLED(CONFIG_ZMK_BLE) && INDICATOR_CENTRAL_ONLY
 
 void indicate_connectivity(void) {
     struct blink_item blink = {
@@ -262,7 +285,7 @@ void indicate_connectivity(void) {
         blink.duration_ms = 500;
     }
 
-    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+    indicator_post(&blink);
 }
 
 static int led_output_listener_cb(const zmk_event_t *eh) {
@@ -288,7 +311,7 @@ static void indicate_usb_connected(void) {
                                .blink_time = 1,
                                .color = COLOR_WHITE,
                                .type = COLOR_TYPE_BLE};
-    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+    indicator_post(&blink);
 }
 
 static enum zmk_usb_conn_state prev_usb_conn_state = ZMK_USB_CONN_NONE;
@@ -332,7 +355,7 @@ void indicate_battery(void) {
         blink.color = COLOR_IND_1 | COLOR_IND_2;
     }
 
-    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+    indicator_post(&blink);
 }
 
 static int led_battery_listener_cb(const zmk_event_t *eh) {
@@ -346,7 +369,7 @@ static int led_battery_listener_cb(const zmk_event_t *eh) {
                                    .color = COLOR_WHITE,
                                    .blink_time = 5,
                                    .sleep_ms = 500};
-        k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+        indicator_post(&blink);
     }
     return 0;
 }
@@ -355,12 +378,16 @@ ZMK_LISTENER(led_battery_listener, led_battery_listener_cb);
 ZMK_SUBSCRIPTION(led_battery_listener, zmk_battery_state_changed);
 #endif
 
+/* Layer state is a central-side concept (the keymap lives on the central
+ * half), so the layer indicator is compiled out on peripherals. */
+#if INDICATOR_CENTRAL_ONLY
+
 void indicate_layer(void) {
     uint8_t index = zmk_keymap_highest_layer_active();
     struct blink_item blink = {.duration_ms = 500, .sleep_ms = 100, .type = COLOR_TYPE_LAYER};
     LOG_LAYER(index, index);
     blink.color = color_idx[index + 1];
-    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+    indicator_post(&blink);
 }
 
 static int led_layer_listener_cb(const zmk_event_t *eh) {
@@ -378,6 +405,8 @@ static int led_layer_listener_cb(const zmk_event_t *eh) {
 ZMK_LISTENER(led_layer_listener, led_layer_listener_cb);
 ZMK_SUBSCRIPTION(led_layer_listener, zmk_layer_state_changed);
 
+#endif /* INDICATOR_CENTRAL_ONLY */
+
 #if IS_ENABLED(CONFIG_MPR121)
 
 void indicate_touchpad_irq(bool active) {
@@ -387,7 +416,7 @@ void indicate_touchpad_irq(bool active) {
                                .color = COLOR_WHITE,
                                .type =
                                    active ? COLOR_TYPE_TP_IRQ_ACTIVE : COLOR_TYPE_TP_IRQ_INACTIVE};
-    k_msgq_put(&led_msgq, &blink, K_NO_WAIT);
+    indicator_post(&blink);
 }
 
 static int led_tp_irq_active_listener_cb(const zmk_event_t *eh) {
@@ -413,6 +442,8 @@ ZMK_LISTENER(led_tp_irq_inactive_listener, led_tp_irq_inactive_listener_cb);
 ZMK_SUBSCRIPTION(led_tp_irq_inactive_listener, zmk_mpr121_touch_end_event);
 
 #endif
+
+#if INDICATOR_HAS_LED_HW
 
 #define BLINK_STATE_IDLE 0
 #define BLINK_STATE_ON 1
@@ -477,7 +508,7 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
     }
 }
 
-K_THREAD_DEFINE(led_process_tid, 1024, led_process_thread, NULL, NULL, NULL,
+K_THREAD_DEFINE(led_process_tid, 512, led_process_thread, NULL, NULL, NULL,
                 K_LOWEST_APPLICATION_THREAD_PRIO, 0, 100);
 
 extern void led_init_thread(void *d0, void *d1, void *d2) {
@@ -513,7 +544,7 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
     // LOG_INF("Using direct GPIO LEDs");
 #endif
 
-#if IS_ENABLED(CONFIG_ZMK_BLE)
+#if IS_ENABLED(CONFIG_ZMK_BLE) && INDICATOR_CENTRAL_ONLY
     // LOG_INF("Indicating initial connectivity status");
     indicate_connectivity();
 #endif
@@ -522,5 +553,7 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
     // LOG_INF("led_init_thread: initialized = true");
 }
 
-K_THREAD_DEFINE(led_init_tid, 1024, led_init_thread, NULL, NULL, NULL,
+K_THREAD_DEFINE(led_init_tid, 512, led_init_thread, NULL, NULL, NULL,
                 K_LOWEST_APPLICATION_THREAD_PRIO, 0, 200);
+
+#endif /* INDICATOR_HAS_LED_HW */

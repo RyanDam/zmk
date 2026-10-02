@@ -31,8 +31,8 @@ support is layered on top.
 - ESP board work (b02/b03) — starts only after this gate passes.
 
 ## Acceptance / verification
-- [ ] Full CI (all build targets, tests, DT/metadata validation, formatting, static checks) is green on 4.4.1.
-- [ ] Board-by-board migration failure list exists and is resolved or explicitly quarantined with rationale.
+- [x] Full CI (all build targets, tests, DT/metadata validation, formatting, static checks) is green on 4.4.1. (2026-10-02: tests 247/0/2, matrix 1083/1083, metadata/formatting/static checks pass — see `.audit/phase4/gate-report.md`)
+- [x] Board-by-board migration failure list exists and is resolved or explicitly quarantined with rationale. (2026-10-02: 8 failure classes, all fixed or user-approved quarantine — see `.audit/phase4/gate-report.md` §2)
 - [ ] Physical smoke tests pass for all representative combinations listed above.
 - [ ] Settings persistence across upgrade/downgrade validated and any required reset documented.
 - [ ] RAM/flash/stack deltas reviewed for constrained boards.

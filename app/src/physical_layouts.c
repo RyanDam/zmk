@@ -78,18 +78,18 @@ BUILD_ASSERT(
  * no input callback, no PM resume - dead matrix).
  */
 #define LAYOUT_INPUT_NODE(n)                                                                       \
-    COND_CODE_1(DT_INST_NODE_HAS_PROP(n, input), (DT_INST_PHANDLE(n, input)),                           \
-                (COND_CODE_1(DT_INST_NODE_HAS_PROP(n, kscan), (DT_INST_PHANDLE(n, kscan)),              \
-                             (COND_CODE_1(DT_HAS_CHOSEN(zmk_matrix_input),                         \
-                                          (DT_CHOSEN(zmk_matrix_input)),                            \
-                                          (DT_CHOSEN(zmk_kscan)))))))
+    COND_CODE_1(                                                                                   \
+        DT_INST_NODE_HAS_PROP(n, input), (DT_INST_PHANDLE(n, input)),                              \
+        (COND_CODE_1(DT_INST_NODE_HAS_PROP(n, kscan), (DT_INST_PHANDLE(n, kscan)),                 \
+                     (COND_CODE_1(DT_HAS_CHOSEN(zmk_matrix_input), (DT_CHOSEN(zmk_matrix_input)),  \
+                                  (DT_CHOSEN(zmk_kscan)))))))
 
 #define LAYOUT_INPUT_DEV(n) DEVICE_DT_GET(LAYOUT_INPUT_NODE(n))
 
 /** 1 if the layout instance resolves to an input device, 0 otherwise. */
 #define LAYOUT_HAS_INPUT_DEV(n)                                                                    \
-    UTIL_OR(DT_INST_NODE_HAS_PROP(n, input),                                                            \
-            UTIL_OR(DT_INST_NODE_HAS_PROP(n, kscan),                                                    \
+    UTIL_OR(DT_INST_NODE_HAS_PROP(n, input),                                                       \
+            UTIL_OR(DT_INST_NODE_HAS_PROP(n, kscan),                                               \
                     UTIL_OR(DT_HAS_CHOSEN(zmk_matrix_input), DT_HAS_CHOSEN(zmk_kscan))))
 
 /* The per-layout input callback section entry is defined directly (rather than via
@@ -111,13 +111,14 @@ BUILD_ASSERT(
         .keys_len = DT_INST_PROP_LEN_OR(n, keys, 0),                                               \
         COND_CODE_1(LAYOUT_HAS_INPUT_DEV(n), (.input = LAYOUT_INPUT_DEV(n)), ())};                 \
     COND_CODE_1(UTIL_AND(MATRIX_INPUT_SUPPORT, LAYOUT_HAS_INPUT_DEV(n)),                           \
-        (static const STRUCT_SECTION_ITERABLE(input_callback,                                     \
-            _input_callback___zmk_physical_layout_input_cb_##n) = {                                \
-            .dev = LAYOUT_INPUT_DEV(n),                                                            \
-            .callback = zmk_physical_layout_input_event_cb,                                        \
-            .user_data = (void *)&(_CONCAT(_zmk_physical_layout_, DT_DRV_INST(n))),                \
-        };),                                                                                       \
-        ())
+                (static const STRUCT_SECTION_ITERABLE(                                             \
+                     input_callback, _input_callback___zmk_physical_layout_input_cb_##n) =         \
+                     {                                                                             \
+                         .dev = LAYOUT_INPUT_DEV(n),                                               \
+                         .callback = zmk_physical_layout_input_event_cb,                           \
+                         .user_data = (void *)&(_CONCAT(_zmk_physical_layout_, DT_DRV_INST(n))),   \
+                     };),                                                                          \
+                ())
 
 DT_INST_FOREACH_STATUS_OKAY(ZMK_LAYOUT_INST)
 
@@ -182,14 +183,15 @@ static const struct zmk_physical_layout _CONCAT(_zmk_physical_layout_, chosen) =
     COND_CODE_1(UTIL_OR(DT_HAS_CHOSEN(zmk_matrix_input), DT_HAS_CHOSEN(zmk_kscan)),
                 (.input = DEVICE_DT_GET(COND_CODE_1(DT_HAS_CHOSEN(zmk_matrix_input),
                                                     (DT_CHOSEN(zmk_matrix_input)),
-                                                    (DT_CHOSEN(zmk_kscan))))), ())};
+                                                    (DT_CHOSEN(zmk_kscan))))),
+                ())};
 
 COND_CODE_1(UTIL_OR(DT_HAS_CHOSEN(zmk_matrix_input), DT_HAS_CHOSEN(zmk_kscan)),
             (INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(COND_CODE_1(DT_HAS_CHOSEN(zmk_matrix_input),
-                                                            (DT_CHOSEN(zmk_matrix_input)),
-                                                            (DT_CHOSEN(zmk_kscan)))),
-                                  zmk_physical_layout_input_event_cb,
-                                  (void *)&(_CONCAT(_zmk_physical_layout_, chosen)));),
+                                                             (DT_CHOSEN(zmk_matrix_input)),
+                                                             (DT_CHOSEN(zmk_kscan)))),
+                                   zmk_physical_layout_input_event_cb,
+                                   (void *)&(_CONCAT(_zmk_physical_layout_, chosen)));),
             ())
 
 static const struct zmk_physical_layout *const layouts[] = {

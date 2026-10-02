@@ -19,6 +19,14 @@ CONFIG_ZMK_KSCAN_MATRIX_POLLING=y
 # Needed to reduce this to size that will fit on F072
 CONFIG_HEAP_MEM_POOL_SIZE=1024
 
+# The Zephyr 4.4 USB device stack and thread-stack noinit placement leave
+# little headroom in the F072's 16KB SRAM. Sized to match bdn9 (the other
+# 16KB ZMK board that fits) with modest reductions elsewhere.
+CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=1536
+CONFIG_ISR_STACK_SIZE=1024
+CONFIG_USBD_THREAD_STACK_SIZE=768
+CONFIG_MAIN_STACK_SIZE=768
+
 # clock configuration
 CONFIG_CLOCK_CONTROL=y
 

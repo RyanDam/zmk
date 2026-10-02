@@ -31,7 +31,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #if DT_NODE_EXISTS(DT_N_NODELABEL_zephyr_udc0)
 #define ZMK_USB_UDC_DEV DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0))
 #else
-#error "ZMK USB requires the USB controller node to be aliased as zephyr_udc0 in the board devicetree"
+#error                                                                                             \
+    "ZMK USB requires the USB controller node to be aliased as zephyr_udc0 in the board devicetree"
 #endif
 
 USBD_DEVICE_DEFINE(zmk_usbd, ZMK_USB_UDC_DEV, CONFIG_USB_DEVICE_VID, CONFIG_USB_DEVICE_PID);
@@ -98,9 +99,7 @@ bool zmk_usb_is_hid_ready(void) {
     return usb_configured && zmk_usb_get_conn_state() == ZMK_USB_CONN_HID;
 }
 
-int zmk_usb_wakeup_request(void) {
-    return usbd_wakeup_request(&zmk_usbd);
-}
+int zmk_usb_wakeup_request(void) { return usbd_wakeup_request(&zmk_usbd); }
 
 static void usb_msg_cb(struct usbd_context *const ctx, const struct usbd_msg *const msg) {
     bool state_changed = false;

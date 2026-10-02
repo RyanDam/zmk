@@ -6,7 +6,7 @@
 /dts-v1/;
 
 #include <raspberrypi/rpi_pico/rp2040.dtsi>
-#include <arm/raspberrypi/rp2040-boot-mode-retention.dtsi>
+#include <vendor/raspberrypi/rp2040-boot-mode-retention.dtsi>
 
 #include <dt-bindings/zmk/matrix_transform.h>
 

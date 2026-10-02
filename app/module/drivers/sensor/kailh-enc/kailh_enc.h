@@ -48,7 +48,7 @@ struct kailh_enc_data {
 #ifdef CONFIG_KAILH_ENC_TRIGGER
 
 int kailh_enc_trigger_set(const struct device *dev, const struct sensor_trigger *trig,
-                     sensor_trigger_handler_t handler);
+                          sensor_trigger_handler_t handler);
 
 int kailh_enc_init_interrupt(const struct device *dev);
 #endif

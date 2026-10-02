@@ -1519,422 +1519,422 @@
 
 /* Page 0x20: Sensors */
 #define HID_USAGE_SENSORS_UNDEFINED (0x00)
-#define HID_USAGE_SENSORS_SENSOR (0x01)                                                // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC (0x10)                                             // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_HUMAN_PRESENCE (0x11)                              // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_HUMAN_PROXIMITY (0x12)                             // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_HUMAN_TOUCH (0x13)                                 // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_BLOOD_PRESSURE (0x14)                              // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_BODY_TEMPERATURE (0x15)                            // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_HEART_RATE (0x16)                                  // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_HEART_RATE_VARIABILITY (0x17)                      // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_PERIPHERAL_OXYGEN_SATURATION (0x18)                // CA, CP
-#define HID_USAGE_SENSORS_BIOMETRIC_RESPIRATORY_RATE (0x19)                            // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL (0x20)                                            // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_CAPACITANCE (0x21)                                // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_CURRENT (0x22)                                    // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_POWER (0x23)                                      // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_INDUCTANCE (0x24)                                 // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_RESISTANCE (0x25)                                 // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_VOLTAGE (0x26)                                    // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_POTENTIOMETER (0x27)                              // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_FREQUENCY (0x28)                                  // CA, CP
-#define HID_USAGE_SENSORS_ELECTRICAL_PERIOD (0x29)                                     // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL (0x30)                                         // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_ATMOSPHERIC_PRESSURE (0x31)                    // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_HUMIDITY (0x32)                                // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_TEMPERATURE (0x33)                             // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_WIND_DIRECTION (0x34)                          // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_WIND_SPEED (0x35)                              // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_AIR_QUALITY (0x36)                             // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_HEAT_INDEX (0x37)                              // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_SURFACE_TEMPERATURE (0x38)                     // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_VOLATILE_ORGANIC_COMPOUNDS (0x39)              // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_OBJECT_PRESENCE (0x3A)                         // CA, CP
-#define HID_USAGE_SENSORS_ENVIRONMENTAL_OBJECT_PROXIMITY (0x3B)                        // CA, CP
-#define HID_USAGE_SENSORS_LIGHT (0x40)                                                 // CA, CP
-#define HID_USAGE_SENSORS_LIGHT_AMBIENT_LIGHT (0x41)                                   // CA, CP
-#define HID_USAGE_SENSORS_LIGHT_CONSUMER_INFRARED (0x42)                               // CA, CP
-#define HID_USAGE_SENSORS_LIGHT_INFRARED_LIGHT (0x43)                                  // CA, CP
-#define HID_USAGE_SENSORS_LIGHT_VISIBLE_LIGHT (0x44)                                   // CA, CP
-#define HID_USAGE_SENSORS_LIGHT_ULTRAVIOLET_LIGHT (0x45)                               // CA, CP
-#define HID_USAGE_SENSORS_LOCATION (0x50)                                              // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_BROADCAST (0x51)                                    // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_DEAD_RECKONING (0x52)                               // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_GPS_GLOBAL_POSITIONING_SYSTEM (0x53)                // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_LOOKUP (0x54)                                       // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_OTHER (0x55)                                        // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_STATIC (0x56)                                       // CA, CP
-#define HID_USAGE_SENSORS_LOCATION_TRIANGULATION (0x57)                                // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL (0x60)                                            // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_BOOLEAN_SWITCH (0x61)                             // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_BOOLEAN_SWITCH_ARRAY (0x62)                       // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_MULTIVALUE_SWITCH (0x63)                          // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_FORCE (0x64)                                      // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_PRESSURE (0x65)                                   // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_STRAIN (0x66)                                     // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_WEIGHT (0x67)                                     // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_HAPTIC_VIBRATOR (0x68)                            // CA, CP
-#define HID_USAGE_SENSORS_MECHANICAL_HALL_EFFECT_SWITCH (0x69)                         // CA, CP
-#define HID_USAGE_SENSORS_MOTION (0x70)                                                // CA, CP
-#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER_1D (0x71)                               // CA, CP
-#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER_2D (0x72)                               // CA, CP
-#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER_3D (0x73)                               // CA, CP
-#define HID_USAGE_SENSORS_MOTION_GYROMETER_1D (0x74)                                   // CA, CP
-#define HID_USAGE_SENSORS_MOTION_GYROMETER_2D (0x75)                                   // CA, CP
-#define HID_USAGE_SENSORS_MOTION_GYROMETER_3D (0x76)                                   // CA, CP
-#define HID_USAGE_SENSORS_MOTION_MOTION_DETECTOR (0x77)                                // CA, CP
-#define HID_USAGE_SENSORS_MOTION_SPEEDOMETER (0x78)                                    // CA, CP
-#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER (0x79)                                  // CA, CP
-#define HID_USAGE_SENSORS_MOTION_GYROMETER (0x7A)                                      // CA, CP
-#define HID_USAGE_SENSORS_MOTION_GRAVITY_VECTOR (0x7B)                                 // CA, CP
-#define HID_USAGE_SENSORS_MOTION_LINEAR_ACCELEROMETER (0x7C)                           // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION (0x80)                                           // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_COMPASS_1D (0x81)                                // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_COMPASS_2D (0x82)                                // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_COMPASS_3D (0x83)                                // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER_1D (0x84)                           // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER_2D (0x85)                           // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER_3D (0x86)                           // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE_1D (0x87)                               // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE_2D (0x88)                               // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE_3D (0x89)                               // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_DEVICE_ORIENTATION (0x8A)                        // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_COMPASS (0x8B)                                   // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER (0x8C)                              // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE (0x8D)                                  // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_RELATIVE_ORIENTATION (0x8E)                      // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_SIMPLE_ORIENTATION (0x8F)                        // CA, CP
-#define HID_USAGE_SENSORS_SCANNER (0x90)                                               // CA, CP
-#define HID_USAGE_SENSORS_SCANNER_BARCODE (0x91)                                       // CA, CP
-#define HID_USAGE_SENSORS_SCANNER_RFID (0x92)                                          // CA, CP
-#define HID_USAGE_SENSORS_SCANNER_NFC (0x93)                                           // CA, CP
-#define HID_USAGE_SENSORS_TIME (0xA0)                                                  // CA, CP
-#define HID_USAGE_SENSORS_TIME_ALARM_TIMER (0xA1)                                      // CA, CP
-#define HID_USAGE_SENSORS_TIME_REAL_TIME_CLOCK (0xA2)                                  // CA, CP
-#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY (0xB0)                                     // CA, CP
-#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_ACTIVITY_DETECTION (0xB1)                  // CA, CP
-#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_DEVICE_POSITION (0xB2)                     // CA, CP
-#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_PEDOMETER (0xB3)                           // CA, CP
-#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_STEP_DETECTION (0xB4)                      // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_EXTENDED (0xC0)                                  // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_EXTENDED_GEOMAGNETIC_ORIENTATION (0xC1)          // CA, CP
-#define HID_USAGE_SENSORS_ORIENTATION_EXTENDED_MAGNETOMETER (0xC2)                     // CA, CP
-#define HID_USAGE_SENSORS_GESTURE (0xD0)                                               // CA, CP
-#define HID_USAGE_SENSORS_GESTURE_CHASSIS_FLIP_GESTURE (0xD1)                          // CA, CP
-#define HID_USAGE_SENSORS_GESTURE_HINGE_FOLD_GESTURE (0xD2)                            // CA, CP
-#define HID_USAGE_SENSORS_OTHER (0xE0)                                                 // CA, CP
-#define HID_USAGE_SENSORS_OTHER_CUSTOM (0xE1)                                          // CA, CP
-#define HID_USAGE_SENSORS_OTHER_GENERIC (0xE2)                                         // CA, CP
-#define HID_USAGE_SENSORS_OTHER_GENERIC_ENUMERATOR (0xE3)                              // CA, CP
-#define HID_USAGE_SENSORS_OTHER_HINGE_ANGLE (0xE4)                                     // CA, CP
-#define HID_USAGE_SENSORS_EVENT (0x200)                                                // DV
+#define HID_USAGE_SENSORS_SENSOR (0x01)                                       // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC (0x10)                                    // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_HUMAN_PRESENCE (0x11)                     // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_HUMAN_PROXIMITY (0x12)                    // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_HUMAN_TOUCH (0x13)                        // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_BLOOD_PRESSURE (0x14)                     // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_BODY_TEMPERATURE (0x15)                   // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_HEART_RATE (0x16)                         // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_HEART_RATE_VARIABILITY (0x17)             // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_PERIPHERAL_OXYGEN_SATURATION (0x18)       // CA, CP
+#define HID_USAGE_SENSORS_BIOMETRIC_RESPIRATORY_RATE (0x19)                   // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL (0x20)                                   // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_CAPACITANCE (0x21)                       // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_CURRENT (0x22)                           // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_POWER (0x23)                             // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_INDUCTANCE (0x24)                        // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_RESISTANCE (0x25)                        // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_VOLTAGE (0x26)                           // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_POTENTIOMETER (0x27)                     // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_FREQUENCY (0x28)                         // CA, CP
+#define HID_USAGE_SENSORS_ELECTRICAL_PERIOD (0x29)                            // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL (0x30)                                // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_ATMOSPHERIC_PRESSURE (0x31)           // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_HUMIDITY (0x32)                       // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_TEMPERATURE (0x33)                    // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_WIND_DIRECTION (0x34)                 // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_WIND_SPEED (0x35)                     // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_AIR_QUALITY (0x36)                    // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_HEAT_INDEX (0x37)                     // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_SURFACE_TEMPERATURE (0x38)            // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_VOLATILE_ORGANIC_COMPOUNDS (0x39)     // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_OBJECT_PRESENCE (0x3A)                // CA, CP
+#define HID_USAGE_SENSORS_ENVIRONMENTAL_OBJECT_PROXIMITY (0x3B)               // CA, CP
+#define HID_USAGE_SENSORS_LIGHT (0x40)                                        // CA, CP
+#define HID_USAGE_SENSORS_LIGHT_AMBIENT_LIGHT (0x41)                          // CA, CP
+#define HID_USAGE_SENSORS_LIGHT_CONSUMER_INFRARED (0x42)                      // CA, CP
+#define HID_USAGE_SENSORS_LIGHT_INFRARED_LIGHT (0x43)                         // CA, CP
+#define HID_USAGE_SENSORS_LIGHT_VISIBLE_LIGHT (0x44)                          // CA, CP
+#define HID_USAGE_SENSORS_LIGHT_ULTRAVIOLET_LIGHT (0x45)                      // CA, CP
+#define HID_USAGE_SENSORS_LOCATION (0x50)                                     // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_BROADCAST (0x51)                           // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_DEAD_RECKONING (0x52)                      // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_GPS_GLOBAL_POSITIONING_SYSTEM (0x53)       // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_LOOKUP (0x54)                              // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_OTHER (0x55)                               // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_STATIC (0x56)                              // CA, CP
+#define HID_USAGE_SENSORS_LOCATION_TRIANGULATION (0x57)                       // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL (0x60)                                   // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_BOOLEAN_SWITCH (0x61)                    // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_BOOLEAN_SWITCH_ARRAY (0x62)              // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_MULTIVALUE_SWITCH (0x63)                 // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_FORCE (0x64)                             // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_PRESSURE (0x65)                          // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_STRAIN (0x66)                            // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_WEIGHT (0x67)                            // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_HAPTIC_VIBRATOR (0x68)                   // CA, CP
+#define HID_USAGE_SENSORS_MECHANICAL_HALL_EFFECT_SWITCH (0x69)                // CA, CP
+#define HID_USAGE_SENSORS_MOTION (0x70)                                       // CA, CP
+#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER_1D (0x71)                      // CA, CP
+#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER_2D (0x72)                      // CA, CP
+#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER_3D (0x73)                      // CA, CP
+#define HID_USAGE_SENSORS_MOTION_GYROMETER_1D (0x74)                          // CA, CP
+#define HID_USAGE_SENSORS_MOTION_GYROMETER_2D (0x75)                          // CA, CP
+#define HID_USAGE_SENSORS_MOTION_GYROMETER_3D (0x76)                          // CA, CP
+#define HID_USAGE_SENSORS_MOTION_MOTION_DETECTOR (0x77)                       // CA, CP
+#define HID_USAGE_SENSORS_MOTION_SPEEDOMETER (0x78)                           // CA, CP
+#define HID_USAGE_SENSORS_MOTION_ACCELEROMETER (0x79)                         // CA, CP
+#define HID_USAGE_SENSORS_MOTION_GYROMETER (0x7A)                             // CA, CP
+#define HID_USAGE_SENSORS_MOTION_GRAVITY_VECTOR (0x7B)                        // CA, CP
+#define HID_USAGE_SENSORS_MOTION_LINEAR_ACCELEROMETER (0x7C)                  // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION (0x80)                                  // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_COMPASS_1D (0x81)                       // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_COMPASS_2D (0x82)                       // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_COMPASS_3D (0x83)                       // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER_1D (0x84)                  // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER_2D (0x85)                  // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER_3D (0x86)                  // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE_1D (0x87)                      // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE_2D (0x88)                      // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE_3D (0x89)                      // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_DEVICE_ORIENTATION (0x8A)               // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_COMPASS (0x8B)                          // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_INCLINOMETER (0x8C)                     // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_DISTANCE (0x8D)                         // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_RELATIVE_ORIENTATION (0x8E)             // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_SIMPLE_ORIENTATION (0x8F)               // CA, CP
+#define HID_USAGE_SENSORS_SCANNER (0x90)                                      // CA, CP
+#define HID_USAGE_SENSORS_SCANNER_BARCODE (0x91)                              // CA, CP
+#define HID_USAGE_SENSORS_SCANNER_RFID (0x92)                                 // CA, CP
+#define HID_USAGE_SENSORS_SCANNER_NFC (0x93)                                  // CA, CP
+#define HID_USAGE_SENSORS_TIME (0xA0)                                         // CA, CP
+#define HID_USAGE_SENSORS_TIME_ALARM_TIMER (0xA1)                             // CA, CP
+#define HID_USAGE_SENSORS_TIME_REAL_TIME_CLOCK (0xA2)                         // CA, CP
+#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY (0xB0)                            // CA, CP
+#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_ACTIVITY_DETECTION (0xB1)         // CA, CP
+#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_DEVICE_POSITION (0xB2)            // CA, CP
+#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_PEDOMETER (0xB3)                  // CA, CP
+#define HID_USAGE_SENSORS_PERSONAL_ACTIVITY_STEP_DETECTION (0xB4)             // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_EXTENDED (0xC0)                         // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_EXTENDED_GEOMAGNETIC_ORIENTATION (0xC1) // CA, CP
+#define HID_USAGE_SENSORS_ORIENTATION_EXTENDED_MAGNETOMETER (0xC2)            // CA, CP
+#define HID_USAGE_SENSORS_GESTURE (0xD0)                                      // CA, CP
+#define HID_USAGE_SENSORS_GESTURE_CHASSIS_FLIP_GESTURE (0xD1)                 // CA, CP
+#define HID_USAGE_SENSORS_GESTURE_HINGE_FOLD_GESTURE (0xD2)                   // CA, CP
+#define HID_USAGE_SENSORS_OTHER (0xE0)                                        // CA, CP
+#define HID_USAGE_SENSORS_OTHER_CUSTOM (0xE1)                                 // CA, CP
+#define HID_USAGE_SENSORS_OTHER_GENERIC (0xE2)                                // CA, CP
+#define HID_USAGE_SENSORS_OTHER_GENERIC_ENUMERATOR (0xE3)                     // CA, CP
+#define HID_USAGE_SENSORS_OTHER_HINGE_ANGLE (0xE4)                            // CA, CP
+#define HID_USAGE_SENSORS_EVENT (0x200)                                       // DV
 /* HID_USAGE_SENSORS_EVENT_SENSOR_STATE: provided by <zephyr/usb/class/hid.h> */
-#define HID_USAGE_SENSORS_EVENT_SENSOR_EVENT (0x202)                                   // NAry
-#define HID_USAGE_SENSORS_PROPERTY (0x300)                                             // DV
+#define HID_USAGE_SENSORS_EVENT_SENSOR_EVENT (0x202) // NAry
+#define HID_USAGE_SENSORS_PROPERTY (0x300)           // DV
 /* HID_USAGE_SENSORS_PROPERTY_FRIENDLY_NAME: provided by <zephyr/usb/class/hid.h> */
-#define HID_USAGE_SENSORS_PROPERTY_PERSISTENT_UNIQUE_ID (0x302)                        // DV
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_STATUS (0x303)                               // DV
-#define HID_USAGE_SENSORS_PROPERTY_MINIMUM_REPORT_INTERVAL (0x304)                     // SV
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_MANUFACTURER (0x305)                         // SV
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_MODEL (0x306)                                // SV
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_SERIAL_NUMBER (0x307)                        // SV
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_DESCRIPTION (0x308)                          // SV
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_CONNECTION_TYPE (0x309)                      // NAry
-#define HID_USAGE_SENSORS_PROPERTY_SENSOR_DEVICE_PATH (0x30A)                          // DV
-#define HID_USAGE_SENSORS_PROPERTY_HARDWARE_REVISION (0x30B)                           // SV
-#define HID_USAGE_SENSORS_PROPERTY_FIRMWARE_VERSION (0x30C)                            // SV
-#define HID_USAGE_SENSORS_PROPERTY_RELEASE_DATE (0x30D)                                // SV
-#define HID_USAGE_SENSORS_PROPERTY_REPORT_INTERVAL (0x30E)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CHANGE_SENSITIVITY_ABSOLUTE (0x30F)                 // DV
-#define HID_USAGE_SENSORS_PROPERTY_CHANGE_SENSITIVITY_PERCENT_OF_RANGE (0x310)         // DV
-#define HID_USAGE_SENSORS_PROPERTY_CHANGE_SENSITIVITY_PERCENT_RELATIVE (0x311)         // DV
-#define HID_USAGE_SENSORS_PROPERTY_ACCURACY (0x312)                                    // DV
-#define HID_USAGE_SENSORS_PROPERTY_RESOLUTION (0x313)                                  // DV
-#define HID_USAGE_SENSORS_PROPERTY_MAXIMUM (0x314)                                     // DV
-#define HID_USAGE_SENSORS_PROPERTY_MINIMUM (0x315)                                     // DV
-#define HID_USAGE_SENSORS_PROPERTY_REPORTING_STATE (0x316)                             // NAry
-#define HID_USAGE_SENSORS_PROPERTY_SAMPLING_RATE (0x317)                               // DV
-#define HID_USAGE_SENSORS_PROPERTY_RESPONSE_CURVE (0x318)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_POWER_STATE (0x319)                                 // NAry
-#define HID_USAGE_SENSORS_PROPERTY_MAXIMUM_FIFO_EVENTS (0x31A)                         // SV
-#define HID_USAGE_SENSORS_PROPERTY_REPORT_LATENCY (0x31B)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_FLUSH_FIFO_EVENTS (0x31C)                           // DF
-#define HID_USAGE_SENSORS_PROPERTY_MAXIMUM_POWER_CONSUMPTION (0x31D)                   // DV
-#define HID_USAGE_SENSORS_PROPERTY_IS_PRIMARY (0x31E)                                  // DF
-#define HID_USAGE_SENSORS_DATA_FIELD_LOCATION (0x400)                                  // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_ANTENNA_SEA_LEVEL (0x402)                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DIFFERENTIAL_REFERENCE_STATION_ID (0x403)         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_ELLIPSOID_ERROR (0x404)                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_ELLIPSOID (0x405)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_SEA_LEVEL_ERROR (0x406)                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_SEA_LEVEL (0x407)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DIFFERENTIAL_GPS_DATA_AGE (0x408)                 // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ERROR_RADIUS (0x409)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_FIX_QUALITY (0x40A)                               // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_FIX_TYPE (0x40B)                                  // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GEOIDAL_SEPARATION (0x40C)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GPS_OPERATION_MODE (0x40D)                        // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GPS_SELECTION_MODE (0x40E)                        // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GPS_STATUS (0x40F)                                // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_POSITION_DILUTION_OF_PRECISION (0x410)            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HORIZONTAL_DILUTION_OF_PRECISION (0x411)          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_VERTICAL_DILUTION_OF_PRECISION (0x412)            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_LATITUDE (0x413)                                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_LONGITUDE (0x414)                                 // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TRUE_HEADING (0x415)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_HEADING (0x416)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_VARIATION (0x417)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SPEED (0x418)                                     // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW (0x419)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_AZIMUTH (0x41A)                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_ELEVATION (0x41B)              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_IDS (0x41C)                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_PRNS (0x41D)                   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_S_N_RATIOS (0x41E)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_USED_COUNT (0x41F)                     // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_USED_PRNS (0x420)                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_NMEA_SENTENCE (0x421)                             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ADDRESS_LINE_1 (0x422)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ADDRESS_LINE_2 (0x423)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CITY (0x424)                                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_STATE_OR_PROVINCE (0x425)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_COUNTRY_OR_REGION (0x426)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_POSTAL_CODE (0x427)                               // SV
-#define HID_USAGE_SENSORS_PROPERTY_LOCATION (0x42A)                                    // DV
-#define HID_USAGE_SENSORS_PROPERTY_LOCATION_DESIRED_ACCURACY (0x42B)                   // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_ENVIRONMENTAL (0x430)                             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ATMOSPHERIC_PRESSURE (0x431)                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_RELATIVE_HUMIDITY (0x433)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TEMPERATURE (0x434)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_WIND_DIRECTION (0x435)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_WIND_SPEED (0x436)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_AIR_QUALITY_INDEX (0x437)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_EQUIVALENT_CO2 (0x438)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_VOLATILE_ORGANIC_COMPOUND_CONCENTRATION (0x439)   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_OBJECT_PRESENCE (0x43A)                           // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_OBJECT_PROXIMITY_RANGE (0x43B)                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_OBJECT_PROXIMITY_OUT_OF_RANGE (0x43C)             // SF
-#define HID_USAGE_SENSORS_PROPERTY_ENVIRONMENTAL (0x440)                               // SV
-#define HID_USAGE_SENSORS_PROPERTY_REFERENCE_PRESSURE (0x441)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MOTION (0x450)                                    // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_MOTION_STATE (0x451)                              // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION (0x452)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION_AXIS_X (0x453)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION_AXIS_Y (0x454)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION_AXIS_Z (0x455)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY (0x456)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY_ABOUT_X_AXIS (0x457)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY_ABOUT_Y_AXIS (0x458)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY_ABOUT_Z_AXIS (0x459)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION (0x45A)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION_ABOUT_X_AXIS (0x45B)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION_ABOUT_Y_AXIS (0x45C)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION_ABOUT_Z_AXIS (0x45D)             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MOTION_SPEED (0x45E)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MOTION_INTENSITY (0x45F)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ORIENTATION (0x470)                               // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING (0x471)                                   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_X_AXIS (0x472)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_Y_AXIS (0x473)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_Z_AXIS (0x474)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_COMPENSATED_MAGNETIC_NORTH (0x475)        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_COMPENSATED_TRUE_NORTH (0x476)            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_MAGNETIC_NORTH (0x477)                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_TRUE_NORTH (0x478)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE (0x479)                                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_X_AXIS (0x47A)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_Y_AXIS (0x47B)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_Z_AXIS (0x47C)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_OUT_OF_RANGE (0x47D)                     // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_TILT (0x47E)                                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TILT_X_AXIS (0x47F)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TILT_Y_AXIS (0x480)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TILT_Z_AXIS (0x481)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ROTATION_MATRIX (0x482)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_QUATERNION (0x483)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX (0x484)                             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX_X_AXIS (0x485)                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX_Y_AXIS (0x486)                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX_Z_AXIS (0x487)                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETOMETER_ACCURACY (0x488)                     // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_SIMPLE_ORIENTATION_DIRECTION (0x489)              // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_MECHANICAL (0x490)                                // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_BOOLEAN_SWITCH_STATE (0x491)                      // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_BOOLEAN_SWITCH_ARRAY_STATES (0x492)               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MULTIVALUE_SWITCH_VALUE (0x493)                   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_FORCE (0x494)                                     // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ABSOLUTE_PRESSURE (0x495)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GAUGE_PRESSURE (0x496)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_STRAIN (0x497)                                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_WEIGHT (0x498)                                    // SV
-#define HID_USAGE_SENSORS_PROPERTY_MECHANICAL (0x4A0)                                  // DV
-#define HID_USAGE_SENSORS_PROPERTY_VIBRATION_STATE (0x4A1)                             // DF
-#define HID_USAGE_SENSORS_PROPERTY_FORWARD_VIBRATION_SPEED (0x4A2)                     // DV
-#define HID_USAGE_SENSORS_PROPERTY_BACKWARD_VIBRATION_SPEED (0x4A3)                    // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_BIOMETRIC (0x4B0)                                 // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_PRESENCE (0x4B1)                            // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_PROXIMITY_RANGE (0x4B2)                     // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_PROXIMITY_OUT_OF_RANGE (0x4B3)              // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_TOUCH_STATE (0x4B4)                         // SF
-#define HID_USAGE_SENSORS_DATA_FIELD_BLOOD_PRESSURE (0x4B5)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_BLOOD_PRESSURE_DIASTOLIC (0x4B6)                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_BLOOD_PRESSURE_SYSTOLIC (0x4B7)                   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEART_RATE (0x4B8)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_RESTING_HEART_RATE (0x4B9)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HEARTBEAT_INTERVAL (0x4BA)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_RESPIRATORY_RATE (0x4BB)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SPO2 (0x4BC)                                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_LIGHT (0x4D0)                                     // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_ILLUMINANCE (0x4D1)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_COLOR_TEMPERATURE (0x4D2)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CHROMATICITY (0x4D3)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CHROMATICITY_X (0x4D4)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CHROMATICITY_Y (0x4D5)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CONSUMER_IR_SENTENCE_RECEIVE (0x4D6)              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_INFRARED_LIGHT (0x4D7)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_RED_LIGHT (0x4D8)                                 // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GREEN_LIGHT (0x4D9)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_BLUE_LIGHT (0x4DA)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ULTRAVIOLET_A_LIGHT (0x4DB)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ULTRAVIOLET_B_LIGHT (0x4DC)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ULTRAVIOLET_INDEX (0x4DD)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_NEAR_INFRARED_LIGHT (0x4DE)                       // SV
-#define HID_USAGE_SENSORS_PROPERTY_LIGHT (0x4DF)                                       // DV
-#define HID_USAGE_SENSORS_PROPERTY_CONSUMER_IR_SENTENCE_SEND (0x4E0)                   // DV
-#define HID_USAGE_SENSORS_PROPERTY_AUTO_BRIGHTNESS_PREFERRED (0x4E2)                   // DF
-#define HID_USAGE_SENSORS_PROPERTY_AUTO_COLOR_PREFERRED (0x4E3)                        // DF
-#define HID_USAGE_SENSORS_DATA_FIELD_SCANNER (0x4F0)                                   // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_RFID_TAG_40_BIT (0x4F1)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_NFC_SENTENCE_RECEIVE (0x4F2)                      // SV
-#define HID_USAGE_SENSORS_PROPERTY_SCANNER (0x4F8)                                     // DV
-#define HID_USAGE_SENSORS_PROPERTY_NFC_SENTENCE_SEND (0x4F9)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ELECTRICAL (0x500)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CAPACITANCE (0x501)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CURRENT (0x502)                                   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ELECTRICAL_POWER (0x503)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_INDUCTANCE (0x504)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_RESISTANCE (0x505)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_VOLTAGE (0x506)                                   // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_FREQUENCY (0x507)                                 // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_PERIOD (0x508)                                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_PERCENT_OF_RANGE (0x509)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TIME (0x520)                                      // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_YEAR (0x521)                                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MONTH (0x522)                                     // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DAY (0x523)                                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_DAY_OF_WEEK (0x524)                               // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_HOUR (0x525)                                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MINUTE (0x526)                                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_SECOND (0x527)                                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_MILLISECOND (0x528)                               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TIMESTAMP (0x529)                                 // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_JULIAN_DAY_OF_YEAR (0x52A)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_TIME_SINCE_SYSTEM_BOOT (0x52B)                    // SV
-#define HID_USAGE_SENSORS_PROPERTY_TIME (0x530)                                        // DV
-#define HID_USAGE_SENSORS_PROPERTY_TIME_ZONE_OFFSET_FROM_UTC (0x531)                   // DV
-#define HID_USAGE_SENSORS_PROPERTY_TIME_ZONE_NAME (0x532)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_DAYLIGHT_SAVINGS_TIME_OBSERVED (0x533)              // DF
-#define HID_USAGE_SENSORS_PROPERTY_TIME_TRIM_ADJUSTMENT (0x534)                        // DV
-#define HID_USAGE_SENSORS_PROPERTY_ARM_ALARM (0x535)                                   // DF
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM (0x540)                                    // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_USAGE (0x541)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_BOOLEAN_ARRAY (0x542)                      // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE (0x543)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_1 (0x544)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_2 (0x545)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_3 (0x546)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_4 (0x547)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_5 (0x548)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_6 (0x549)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_7 (0x54A)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_8 (0x54B)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_9 (0x54C)                            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_10 (0x54D)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_11 (0x54E)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_12 (0x54F)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_13 (0x550)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_14 (0x551)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_15 (0x552)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_16 (0x553)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_17 (0x554)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_18 (0x555)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_19 (0x556)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_20 (0x557)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_21 (0x558)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_22 (0x559)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_23 (0x55A)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_24 (0x55B)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_25 (0x55C)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_26 (0x55D)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_27 (0x55E)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_28 (0x55F)                           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC (0x560)                                   // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_GUID_OR_PROPERTYKEY (0x561)               // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_CATEGORY_GUID (0x562)                     // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_TYPE_GUID (0x563)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_EVENT_PROPERTYKEY (0x564)                 // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_PROPERTY_PROPERTYKEY (0x565)              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_DATA_FIELD_PROPERTYKEY (0x566)            // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_EVENT (0x567)                             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_PROPERTY (0x568)                          // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_DATA_FIELD (0x569)                        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ENUMERATOR_TABLE_ROW_INDEX (0x56A)                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_ENUMERATOR_TABLE_ROW_COUNT (0x56B)                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_GUID_OR_PROPERTYKEY_KIND (0x56C)          // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_GUID (0x56D)                              // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_PROPERTYKEY (0x56E)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_TOP_LEVEL_COLLECTION_ID (0x56F)           // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_ID (0x570)                         // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_ITEM_POSITION_INDEX (0x571)        // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_FIRMWARE_VARTYPE (0x572)                  // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_UNIT_OF_MEASURE (0x573)                   // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_UNIT_EXPONENT (0x574)                     // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_SIZE (0x575)                       // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_COUNT (0x576)                      // SV
-#define HID_USAGE_SENSORS_PROPERTY_GENERIC (0x580)                                     // DV
-#define HID_USAGE_SENSORS_PROPERTY_ENUMERATOR_TABLE_ROW_INDEX (0x581)                  // DV
-#define HID_USAGE_SENSORS_PROPERTY_ENUMERATOR_TABLE_ROW_COUNT (0x582)                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_PERSONAL_ACTIVITY (0x590)                         // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_ACTIVITY_TYPE (0x591)                             // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_ACTIVITY_STATE (0x592)                            // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_DEVICE_POSITION (0x593)                           // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_STEP_COUNT (0x594)                                // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_STEP_COUNT_RESET (0x595)                          // DF
-#define HID_USAGE_SENSORS_DATA_FIELD_STEP_DURATION (0x596)                             // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_STEP_TYPE (0x597)                                 // NAry
-#define HID_USAGE_SENSORS_PROPERTY_MINIMUM_ACTIVITY_DETECTION_INTERVAL (0x5A0)         // DV
-#define HID_USAGE_SENSORS_PROPERTY_SUPPORTED_ACTIVITY_TYPES (0x5A1)                    // NAry
-#define HID_USAGE_SENSORS_PROPERTY_SUBSCRIBED_ACTIVITY_TYPES (0x5A2)                   // NAry
-#define HID_USAGE_SENSORS_PROPERTY_SUPPORTED_STEP_TYPES (0x5A3)                        // NAry
-#define HID_USAGE_SENSORS_PROPERTY_SUBSCRIBED_STEP_TYPES (0x5A4)                       // NAry
-#define HID_USAGE_SENSORS_PROPERTY_FLOOR_HEIGHT (0x5A5)                                // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_TYPE_ID (0x5B0)                            // SV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM (0x5C0)                                      // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_1 (0x5C1)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_2 (0x5C2)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_3 (0x5C3)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_4 (0x5C4)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_5 (0x5C5)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_6 (0x5C6)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_7 (0x5C7)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_8 (0x5C8)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_9 (0x5C9)                              // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_10 (0x5CA)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_11 (0x5CB)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_12 (0x5CC)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_13 (0x5CD)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_14 (0x5CE)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_15 (0x5CF)                             // DV
-#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_16 (0x5D0)                             // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_HINGE (0x5E0)                                     // SV, DV
-#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_ANGLE (0x5E1)                               // SV, DV
-#define HID_USAGE_SENSORS_DATA_FIELD_GESTURE_SENSOR (0x5F0)                            // DV
-#define HID_USAGE_SENSORS_DATA_FIELD_GESTURE_STATE (0x5F1)                             // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_INITIAL_ANGLE (0x5F2)                  // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_FINAL_ANGLE (0x5F3)                    // SV
-#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_CONTRIBUTING_PANEL (0x5F4)             // NAry
-#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_TYPE (0x5F5)                           // NAry
+#define HID_USAGE_SENSORS_PROPERTY_PERSISTENT_UNIQUE_ID (0x302)                      // DV
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_STATUS (0x303)                             // DV
+#define HID_USAGE_SENSORS_PROPERTY_MINIMUM_REPORT_INTERVAL (0x304)                   // SV
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_MANUFACTURER (0x305)                       // SV
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_MODEL (0x306)                              // SV
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_SERIAL_NUMBER (0x307)                      // SV
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_DESCRIPTION (0x308)                        // SV
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_CONNECTION_TYPE (0x309)                    // NAry
+#define HID_USAGE_SENSORS_PROPERTY_SENSOR_DEVICE_PATH (0x30A)                        // DV
+#define HID_USAGE_SENSORS_PROPERTY_HARDWARE_REVISION (0x30B)                         // SV
+#define HID_USAGE_SENSORS_PROPERTY_FIRMWARE_VERSION (0x30C)                          // SV
+#define HID_USAGE_SENSORS_PROPERTY_RELEASE_DATE (0x30D)                              // SV
+#define HID_USAGE_SENSORS_PROPERTY_REPORT_INTERVAL (0x30E)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CHANGE_SENSITIVITY_ABSOLUTE (0x30F)               // DV
+#define HID_USAGE_SENSORS_PROPERTY_CHANGE_SENSITIVITY_PERCENT_OF_RANGE (0x310)       // DV
+#define HID_USAGE_SENSORS_PROPERTY_CHANGE_SENSITIVITY_PERCENT_RELATIVE (0x311)       // DV
+#define HID_USAGE_SENSORS_PROPERTY_ACCURACY (0x312)                                  // DV
+#define HID_USAGE_SENSORS_PROPERTY_RESOLUTION (0x313)                                // DV
+#define HID_USAGE_SENSORS_PROPERTY_MAXIMUM (0x314)                                   // DV
+#define HID_USAGE_SENSORS_PROPERTY_MINIMUM (0x315)                                   // DV
+#define HID_USAGE_SENSORS_PROPERTY_REPORTING_STATE (0x316)                           // NAry
+#define HID_USAGE_SENSORS_PROPERTY_SAMPLING_RATE (0x317)                             // DV
+#define HID_USAGE_SENSORS_PROPERTY_RESPONSE_CURVE (0x318)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_POWER_STATE (0x319)                               // NAry
+#define HID_USAGE_SENSORS_PROPERTY_MAXIMUM_FIFO_EVENTS (0x31A)                       // SV
+#define HID_USAGE_SENSORS_PROPERTY_REPORT_LATENCY (0x31B)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_FLUSH_FIFO_EVENTS (0x31C)                         // DF
+#define HID_USAGE_SENSORS_PROPERTY_MAXIMUM_POWER_CONSUMPTION (0x31D)                 // DV
+#define HID_USAGE_SENSORS_PROPERTY_IS_PRIMARY (0x31E)                                // DF
+#define HID_USAGE_SENSORS_DATA_FIELD_LOCATION (0x400)                                // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_ANTENNA_SEA_LEVEL (0x402)              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DIFFERENTIAL_REFERENCE_STATION_ID (0x403)       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_ELLIPSOID_ERROR (0x404)                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_ELLIPSOID (0x405)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_SEA_LEVEL_ERROR (0x406)                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ALTITUDE_SEA_LEVEL (0x407)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DIFFERENTIAL_GPS_DATA_AGE (0x408)               // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ERROR_RADIUS (0x409)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_FIX_QUALITY (0x40A)                             // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_FIX_TYPE (0x40B)                                // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GEOIDAL_SEPARATION (0x40C)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GPS_OPERATION_MODE (0x40D)                      // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GPS_SELECTION_MODE (0x40E)                      // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GPS_STATUS (0x40F)                              // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_POSITION_DILUTION_OF_PRECISION (0x410)          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HORIZONTAL_DILUTION_OF_PRECISION (0x411)        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_VERTICAL_DILUTION_OF_PRECISION (0x412)          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_LATITUDE (0x413)                                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_LONGITUDE (0x414)                               // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TRUE_HEADING (0x415)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_HEADING (0x416)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_VARIATION (0x417)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SPEED (0x418)                                   // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW (0x419)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_AZIMUTH (0x41A)              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_ELEVATION (0x41B)            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_IDS (0x41C)                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_PRNS (0x41D)                 // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_IN_VIEW_S_N_RATIOS (0x41E)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_USED_COUNT (0x41F)                   // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SATELLITES_USED_PRNS (0x420)                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_NMEA_SENTENCE (0x421)                           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ADDRESS_LINE_1 (0x422)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ADDRESS_LINE_2 (0x423)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CITY (0x424)                                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_STATE_OR_PROVINCE (0x425)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_COUNTRY_OR_REGION (0x426)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_POSTAL_CODE (0x427)                             // SV
+#define HID_USAGE_SENSORS_PROPERTY_LOCATION (0x42A)                                  // DV
+#define HID_USAGE_SENSORS_PROPERTY_LOCATION_DESIRED_ACCURACY (0x42B)                 // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_ENVIRONMENTAL (0x430)                           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ATMOSPHERIC_PRESSURE (0x431)                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_RELATIVE_HUMIDITY (0x433)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TEMPERATURE (0x434)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_WIND_DIRECTION (0x435)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_WIND_SPEED (0x436)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_AIR_QUALITY_INDEX (0x437)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_EQUIVALENT_CO2 (0x438)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_VOLATILE_ORGANIC_COMPOUND_CONCENTRATION (0x439) // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_OBJECT_PRESENCE (0x43A)                         // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_OBJECT_PROXIMITY_RANGE (0x43B)                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_OBJECT_PROXIMITY_OUT_OF_RANGE (0x43C)           // SF
+#define HID_USAGE_SENSORS_PROPERTY_ENVIRONMENTAL (0x440)                             // SV
+#define HID_USAGE_SENSORS_PROPERTY_REFERENCE_PRESSURE (0x441)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MOTION (0x450)                                  // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_MOTION_STATE (0x451)                            // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION (0x452)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION_AXIS_X (0x453)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION_AXIS_Y (0x454)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ACCELERATION_AXIS_Z (0x455)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY (0x456)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY_ABOUT_X_AXIS (0x457)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY_ABOUT_Y_AXIS (0x458)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_VELOCITY_ABOUT_Z_AXIS (0x459)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION (0x45A)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION_ABOUT_X_AXIS (0x45B)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION_ABOUT_Y_AXIS (0x45C)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ANGULAR_POSITION_ABOUT_Z_AXIS (0x45D)           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MOTION_SPEED (0x45E)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MOTION_INTENSITY (0x45F)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ORIENTATION (0x470)                             // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING (0x471)                                 // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_X_AXIS (0x472)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_Y_AXIS (0x473)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_Z_AXIS (0x474)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_COMPENSATED_MAGNETIC_NORTH (0x475)      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_COMPENSATED_TRUE_NORTH (0x476)          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_MAGNETIC_NORTH (0x477)                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEADING_TRUE_NORTH (0x478)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE (0x479)                                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_X_AXIS (0x47A)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_Y_AXIS (0x47B)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_Z_AXIS (0x47C)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DISTANCE_OUT_OF_RANGE (0x47D)                   // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_TILT (0x47E)                                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TILT_X_AXIS (0x47F)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TILT_Y_AXIS (0x480)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TILT_Z_AXIS (0x481)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ROTATION_MATRIX (0x482)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_QUATERNION (0x483)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX (0x484)                           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX_X_AXIS (0x485)                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX_Y_AXIS (0x486)                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETIC_FLUX_Z_AXIS (0x487)                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MAGNETOMETER_ACCURACY (0x488)                   // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_SIMPLE_ORIENTATION_DIRECTION (0x489)            // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_MECHANICAL (0x490)                              // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_BOOLEAN_SWITCH_STATE (0x491)                    // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_BOOLEAN_SWITCH_ARRAY_STATES (0x492)             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MULTIVALUE_SWITCH_VALUE (0x493)                 // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_FORCE (0x494)                                   // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ABSOLUTE_PRESSURE (0x495)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GAUGE_PRESSURE (0x496)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_STRAIN (0x497)                                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_WEIGHT (0x498)                                  // SV
+#define HID_USAGE_SENSORS_PROPERTY_MECHANICAL (0x4A0)                                // DV
+#define HID_USAGE_SENSORS_PROPERTY_VIBRATION_STATE (0x4A1)                           // DF
+#define HID_USAGE_SENSORS_PROPERTY_FORWARD_VIBRATION_SPEED (0x4A2)                   // DV
+#define HID_USAGE_SENSORS_PROPERTY_BACKWARD_VIBRATION_SPEED (0x4A3)                  // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_BIOMETRIC (0x4B0)                               // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_PRESENCE (0x4B1)                          // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_PROXIMITY_RANGE (0x4B2)                   // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_PROXIMITY_OUT_OF_RANGE (0x4B3)            // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_HUMAN_TOUCH_STATE (0x4B4)                       // SF
+#define HID_USAGE_SENSORS_DATA_FIELD_BLOOD_PRESSURE (0x4B5)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_BLOOD_PRESSURE_DIASTOLIC (0x4B6)                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_BLOOD_PRESSURE_SYSTOLIC (0x4B7)                 // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEART_RATE (0x4B8)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_RESTING_HEART_RATE (0x4B9)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HEARTBEAT_INTERVAL (0x4BA)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_RESPIRATORY_RATE (0x4BB)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SPO2 (0x4BC)                                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_LIGHT (0x4D0)                                   // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_ILLUMINANCE (0x4D1)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_COLOR_TEMPERATURE (0x4D2)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CHROMATICITY (0x4D3)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CHROMATICITY_X (0x4D4)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CHROMATICITY_Y (0x4D5)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CONSUMER_IR_SENTENCE_RECEIVE (0x4D6)            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_INFRARED_LIGHT (0x4D7)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_RED_LIGHT (0x4D8)                               // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GREEN_LIGHT (0x4D9)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_BLUE_LIGHT (0x4DA)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ULTRAVIOLET_A_LIGHT (0x4DB)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ULTRAVIOLET_B_LIGHT (0x4DC)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ULTRAVIOLET_INDEX (0x4DD)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_NEAR_INFRARED_LIGHT (0x4DE)                     // SV
+#define HID_USAGE_SENSORS_PROPERTY_LIGHT (0x4DF)                                     // DV
+#define HID_USAGE_SENSORS_PROPERTY_CONSUMER_IR_SENTENCE_SEND (0x4E0)                 // DV
+#define HID_USAGE_SENSORS_PROPERTY_AUTO_BRIGHTNESS_PREFERRED (0x4E2)                 // DF
+#define HID_USAGE_SENSORS_PROPERTY_AUTO_COLOR_PREFERRED (0x4E3)                      // DF
+#define HID_USAGE_SENSORS_DATA_FIELD_SCANNER (0x4F0)                                 // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_RFID_TAG_40_BIT (0x4F1)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_NFC_SENTENCE_RECEIVE (0x4F2)                    // SV
+#define HID_USAGE_SENSORS_PROPERTY_SCANNER (0x4F8)                                   // DV
+#define HID_USAGE_SENSORS_PROPERTY_NFC_SENTENCE_SEND (0x4F9)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ELECTRICAL (0x500)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CAPACITANCE (0x501)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CURRENT (0x502)                                 // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ELECTRICAL_POWER (0x503)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_INDUCTANCE (0x504)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_RESISTANCE (0x505)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_VOLTAGE (0x506)                                 // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_FREQUENCY (0x507)                               // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_PERIOD (0x508)                                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_PERCENT_OF_RANGE (0x509)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TIME (0x520)                                    // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_YEAR (0x521)                                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MONTH (0x522)                                   // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DAY (0x523)                                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_DAY_OF_WEEK (0x524)                             // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_HOUR (0x525)                                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MINUTE (0x526)                                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_SECOND (0x527)                                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_MILLISECOND (0x528)                             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TIMESTAMP (0x529)                               // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_JULIAN_DAY_OF_YEAR (0x52A)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_TIME_SINCE_SYSTEM_BOOT (0x52B)                  // SV
+#define HID_USAGE_SENSORS_PROPERTY_TIME (0x530)                                      // DV
+#define HID_USAGE_SENSORS_PROPERTY_TIME_ZONE_OFFSET_FROM_UTC (0x531)                 // DV
+#define HID_USAGE_SENSORS_PROPERTY_TIME_ZONE_NAME (0x532)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_DAYLIGHT_SAVINGS_TIME_OBSERVED (0x533)            // DF
+#define HID_USAGE_SENSORS_PROPERTY_TIME_TRIM_ADJUSTMENT (0x534)                      // DV
+#define HID_USAGE_SENSORS_PROPERTY_ARM_ALARM (0x535)                                 // DF
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM (0x540)                                  // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_USAGE (0x541)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_BOOLEAN_ARRAY (0x542)                    // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE (0x543)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_1 (0x544)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_2 (0x545)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_3 (0x546)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_4 (0x547)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_5 (0x548)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_6 (0x549)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_7 (0x54A)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_8 (0x54B)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_9 (0x54C)                          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_10 (0x54D)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_11 (0x54E)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_12 (0x54F)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_13 (0x550)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_14 (0x551)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_15 (0x552)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_16 (0x553)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_17 (0x554)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_18 (0x555)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_19 (0x556)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_20 (0x557)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_21 (0x558)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_22 (0x559)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_23 (0x55A)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_24 (0x55B)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_25 (0x55C)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_26 (0x55D)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_27 (0x55E)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_VALUE_28 (0x55F)                         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC (0x560)                                 // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_GUID_OR_PROPERTYKEY (0x561)             // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_CATEGORY_GUID (0x562)                   // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_TYPE_GUID (0x563)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_EVENT_PROPERTYKEY (0x564)               // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_PROPERTY_PROPERTYKEY (0x565)            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_DATA_FIELD_PROPERTYKEY (0x566)          // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_EVENT (0x567)                           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_PROPERTY (0x568)                        // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_DATA_FIELD (0x569)                      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ENUMERATOR_TABLE_ROW_INDEX (0x56A)              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_ENUMERATOR_TABLE_ROW_COUNT (0x56B)              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_GUID_OR_PROPERTYKEY_KIND (0x56C)        // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_GUID (0x56D)                            // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_PROPERTYKEY (0x56E)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_TOP_LEVEL_COLLECTION_ID (0x56F)         // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_ID (0x570)                       // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_ITEM_POSITION_INDEX (0x571)      // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_FIRMWARE_VARTYPE (0x572)                // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_UNIT_OF_MEASURE (0x573)                 // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_UNIT_EXPONENT (0x574)                   // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_SIZE (0x575)                     // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_GENERIC_REPORT_COUNT (0x576)                    // SV
+#define HID_USAGE_SENSORS_PROPERTY_GENERIC (0x580)                                   // DV
+#define HID_USAGE_SENSORS_PROPERTY_ENUMERATOR_TABLE_ROW_INDEX (0x581)                // DV
+#define HID_USAGE_SENSORS_PROPERTY_ENUMERATOR_TABLE_ROW_COUNT (0x582)                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_PERSONAL_ACTIVITY (0x590)                       // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_ACTIVITY_TYPE (0x591)                           // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_ACTIVITY_STATE (0x592)                          // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_DEVICE_POSITION (0x593)                         // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_STEP_COUNT (0x594)                              // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_STEP_COUNT_RESET (0x595)                        // DF
+#define HID_USAGE_SENSORS_DATA_FIELD_STEP_DURATION (0x596)                           // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_STEP_TYPE (0x597)                               // NAry
+#define HID_USAGE_SENSORS_PROPERTY_MINIMUM_ACTIVITY_DETECTION_INTERVAL (0x5A0)       // DV
+#define HID_USAGE_SENSORS_PROPERTY_SUPPORTED_ACTIVITY_TYPES (0x5A1)                  // NAry
+#define HID_USAGE_SENSORS_PROPERTY_SUBSCRIBED_ACTIVITY_TYPES (0x5A2)                 // NAry
+#define HID_USAGE_SENSORS_PROPERTY_SUPPORTED_STEP_TYPES (0x5A3)                      // NAry
+#define HID_USAGE_SENSORS_PROPERTY_SUBSCRIBED_STEP_TYPES (0x5A4)                     // NAry
+#define HID_USAGE_SENSORS_PROPERTY_FLOOR_HEIGHT (0x5A5)                              // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_CUSTOM_TYPE_ID (0x5B0)                          // SV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM (0x5C0)                                    // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_1 (0x5C1)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_2 (0x5C2)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_3 (0x5C3)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_4 (0x5C4)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_5 (0x5C5)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_6 (0x5C6)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_7 (0x5C7)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_8 (0x5C8)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_9 (0x5C9)                            // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_10 (0x5CA)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_11 (0x5CB)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_12 (0x5CC)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_13 (0x5CD)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_14 (0x5CE)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_15 (0x5CF)                           // DV
+#define HID_USAGE_SENSORS_PROPERTY_CUSTOM_VALUE_16 (0x5D0)                           // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_HINGE (0x5E0)                                   // SV, DV
+#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_ANGLE (0x5E1)                             // SV, DV
+#define HID_USAGE_SENSORS_DATA_FIELD_GESTURE_SENSOR (0x5F0)                          // DV
+#define HID_USAGE_SENSORS_DATA_FIELD_GESTURE_STATE (0x5F1)                           // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_INITIAL_ANGLE (0x5F2)                // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_FINAL_ANGLE (0x5F3)                  // SV
+#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_CONTRIBUTING_PANEL (0x5F4)           // NAry
+#define HID_USAGE_SENSORS_DATA_FIELD_HINGE_FOLD_TYPE (0x5F5)                         // NAry
 /* HID_USAGE_SENSORS_SENSOR_STATE_* (0x800-0x806): provided by
  * <zephyr/usb/class/hid.h>
  */

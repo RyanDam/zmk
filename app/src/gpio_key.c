@@ -90,7 +90,7 @@ static void gpio_key_work_handler(struct k_work *work) {
         if (press_duration >= GPIO_KEY_HOLD_THRESHOLD_MS) {
             LOG_DBG("GPIO key hold reached threshold (%d ms) on pin %d", GPIO_KEY_HOLD_THRESHOLD_MS,
                     config->gpio.pin);
-#ifdef CONFIG_ZMK_BLE
+#if IS_ENABLED(CONFIG_ZMK_BLE) && INDICATOR_CENTRAL_ONLY
             zmk_ble_clear_bonds();
             indicate_connectivity();
 #endif

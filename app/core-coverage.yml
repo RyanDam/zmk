@@ -40,10 +40,11 @@ include:
   - board: nice_nano//zmk
     shield: lily58_left nice_view_adapter nice_view
     nickname: "niceview"
-  - board: bdn9//zmk
-    snippet: studio-rpc-usb-uart
-    cmake-args: "-DCONFIG_ZMK_STUDIO=y"
-    nickname: "stm32-studio"
+  # bdn9-studio quarantined (2026-09-30, Zephyr 4.4.1 gate): 16KB RAM cannot
+  # hold the Studio RPC thread stack (4KB), CDC ACM buffers, USB device stack
+  # and the branch's 28KB static dynamic-macro buffer (16x64 defaults, active
+  # in every studio build). Even at 1x1 macro defaults it is ~8KB over.
+  # Net effect: Studio needs >=256KB-class RAM on this fork.
   - board: nice_nano//zmk
     shield: reviung41
     snippet: studio-rpc-usb-uart
@@ -64,8 +65,8 @@ include:
     snippet: studio-rpc-usb-uart
     cmake-args: "-DCONFIG_ZMK_STUDIO=y"
     nickname: "rp2040-studio"
-  - board: seeeduino_xiao//zmk
-    shield: hummingbird
-    snippet: studio-rpc-usb-uart
-    cmake-args: "-DCONFIG_ZMK_STUDIO=y"
-    nickname: "samd21-studio"
+  # samd21-studio quarantined (2026-09-30, Zephyr 4.4.1 gate): 32KB RAM cannot
+  # hold the Studio RPC thread stack (4KB), CDC ACM buffers, USB device stack
+  # and the branch's 28KB static dynamic-macro buffer at default sizes
+  # (26KB over; fits at 92% only with 1x1 macro defaults).
+  # Net effect: Studio needs >=256KB-class RAM on this fork.
