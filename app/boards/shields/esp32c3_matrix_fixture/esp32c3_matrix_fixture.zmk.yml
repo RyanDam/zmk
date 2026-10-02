@@ -1,0 +1,11 @@
+file_format: "1"
+id: esp32c3_matrix_fixture
+name: ESP32-C3 Matrix Fixture
+type: shield
+url: https://github.com/RyanDam/zmk/blob/feat/esp32/esp-port/fixtures/matrix-fixture.md
+description: |
+  4x4 direct-GPIO matrix fixture for ESP32-C3 SuperMini bring-up.
+  Rows on GPIO0/1/3/4, columns on GPIO5/10/20/21, diode anode on the row side.
+requires: [esp32c3_supermini]
+features:
+  - keys

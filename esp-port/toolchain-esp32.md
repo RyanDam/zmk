@@ -183,3 +183,37 @@ Serial/JTAG via `fixtures/usb-console.overlay`; esptool v5.4.0 from a macOS
 host). Records: `fixtures/flash-monitor-runbook.md` and
 `test-results/00-c3-001-flash-monitor.md`,
 `test-results/00-s3-001-flash-monitor.md`.
+
+## Zephyr 4.4: the `espressif` variant is gone (Phase 5, 2026-10-02)
+
+The upstream merge into `v4.4.1+zmk-fixes` (2026-09-30) pulled in
+`d8215fe2891 "cmake: remove deprecated espressif toolchain variant"`. The
+`zephyr/cmake/toolchain/espressif/` directory no longer exists, so the
+`ZEPHYR_TOOLCHAIN_VARIANT=espressif` instructions above no longer work.
+Upstream now builds Espressif targets with the **Zephyr SDK** (which bundles
+the Xtensa and RISC-V toolchains) or with a generic cross-compile toolchain.
+
+The Zephyr SDK installed here (`/opt/zephyr-sdk-1.0.1`) ships
+`xtensa-espressif_esp32s3_zephyr-elf` but **no riscv32 toolchain**, so the
+C3 still needs the Espressif `riscv32-esp-elf` compiler — used through the
+`cross-compile` variant:
+
+```sh
+export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
+export CROSS_COMPILE=riscv32-esp-elf-          # S3: xtensa-esp32s3-elf-
+west build -b <board> -d <dir> ... \
+  -- -DTOOLCHAIN_HOME=/opt/espressif/tools/riscv32-esp-elf/bin
+```
+
+Two gotchas found while wiring this up:
+
+- `TOOLCHAIN_HOME` is **not read from the environment** by the cross-compile
+  variant — it must be passed as `-DTOOLCHAIN_HOME=<bin dir>` (the directory
+  that directly contains `<prefix>gcc`).
+- Do **not** pass `-DCROSS_COMPILE=<prefix>`: the CMake cache variable is
+  typed `PATH`, so a relative prefix gets resolved against the source dir
+  (e.g. `riscv32-esp-elf-` becomes `/workspaces/zmk/riscv32-esp-elf-`).
+  Pass it via the environment instead.
+
+`esp-port/build_zmk_c3.sh` (Phase 5) and `esp-port/build_esp32.sh` (Phase 0,
+updated) set all of this up.

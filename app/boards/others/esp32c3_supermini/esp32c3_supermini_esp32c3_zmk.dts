@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include <../boards/others/esp32c3_supermini/esp32c3_supermini.dts>
+
+/*
+ * ZMK variant of the ESP32-C3 SuperMini:
+ * - BLE HID only (the C3 has no USB OTG; ZMK USB stays disabled)
+ * - console/flash/recovery stay on USB Serial/JTAG (GPIO18/19)
+ * - UART0 stays disabled (GPIO20/21 are reserved for the matrix fixture)
+ * - settings live in the storage_partition (192 KiB @ 0x3b0000) of the
+ *   upstream 4 MB partition layout; the NVS settings backend selects it by
+ *   label
+ * - Wi-Fi is disabled: this is a BLE keyboard, not a Wi-Fi device
+ */
+
+&wifi {
+    status = "disabled";
+};

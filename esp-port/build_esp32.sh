@@ -83,8 +83,15 @@ while [ $# -gt 0 ]; do
 done
 
 # --- ESP32 toolchain (see esp-port/toolchain-esp32.md) ---
-export ZEPHYR_TOOLCHAIN_VARIANT=espressif
+# Zephyr 4.4 removed the legacy "espressif" toolchain variant, so the
+# Espressif cross compilers are used through the generic cross-compile
+# variant instead. Per-board CROSS_COMPILE prefixes:
+#   C3 (RISC-V)  -> riscv32-esp-elf-
+#   S3 (Xtensa)  -> xtensa-esp32s3-elf-
+export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
 export ESPRESSIF_TOOLCHAIN_PATH="${ESPRESSIF_TOOLCHAIN_PATH:-/opt/espressif/tools}"
+# ~/.local/bin for a pip --user esptool (required by the ESP32 SOC cmake)
+export PATH="$HOME/.local/bin:$PATH"
 
 if [ ! -d "$ESPRESSIF_TOOLCHAIN_PATH" ]; then
   echo "ERROR: ESP32 toolchain not found at $ESPRESSIF_TOOLCHAIN_PATH" >&2
@@ -117,13 +124,15 @@ S3_BOARD=esp32s3_devkitc/esp32s3/procpu
 S3_DIR="build/s3-$SAMPLE_NAME"
 USB_CONSOLE_OVERLAY="$ROOT/esp-port/fixtures/usb-console.overlay"
 
-build() { # $1=board  $2=build dir
+build() { # $1=board  $2=build dir  $3=cross-compile prefix  $4=toolchain bin dir
   # -p always = full clean rebuild, so a stale CMake cache can never pin the
   # wrong toolchain variant. Change to "-p auto" for incremental rebuilds once
   # the build dir is known-good.
   echo "=== building $1 ($SAMPLE_NAME) -> $2 (pristine) ==="
-  west build -b "$1" -d "$2" -p always "$SAMPLE" \
-    -- -DEXTRA_DTC_OVERLAY_FILE="$USB_CONSOLE_OVERLAY"
+  # CROSS_COMPILE via environment (the CMake cache var is typed PATH and would
+  # mangle the prefix); TOOLCHAIN_HOME has no env fallback, so pass it as -D.
+  CROSS_COMPILE="$3" west build -b "$1" -d "$2" -p always "$SAMPLE" \
+    -- -DEXTRA_DTC_OVERLAY_FILE="$USB_CONSOLE_OVERLAY" -DTOOLCHAIN_HOME="$4"
 }
 
 flash() { # $1=build dir
@@ -132,12 +141,12 @@ flash() { # $1=build dir
 }
 
 build_c3() {
-  build "$C3_BOARD" "$C3_DIR"
+  build "$C3_BOARD" "$C3_DIR" "riscv32-esp-elf-" "$ESPRESSIF_TOOLCHAIN_PATH/riscv32-esp-elf/bin"
   if [ "$DO_FLASH" = yes ]; then flash "$C3_DIR"; fi
 }
 
 build_s3() {
-  build "$S3_BOARD" "$S3_DIR"
+  build "$S3_BOARD" "$S3_DIR" "xtensa-esp32s3-elf-" "$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin"
   if [ "$DO_FLASH" = yes ]; then flash "$S3_DIR"; fi
 }
 
