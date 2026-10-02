@@ -64,6 +64,20 @@ owner decision — revisit when the dependent phase starts:
   continuity evidence, S3 eFuse dump, unit 02 flash/monitor) → before Phase 5/6
 - **power-measurement setup** (3.3 V supply + current meter) → before Phase 7
 
+## Phase 4 note (closed 2026-10-02)
+
+Phase 4 ([d02](done/d02-zephyr-upgrade-regression-gate.md)) is closed with the
+automated gate green (tests 247/0/2, build matrix 1083/1083 all final-code
+builds, metadata/formatting/static checks pass) and cobanpad16a verified
+working by the owner. Skipped by owner decision — revisit when the dependent
+work starts:
+
+- **stack high-water marks** (ferris priority: 92.8% RAM, deliberately shrunk
+  stacks) → before relying on ferris or cutting a release
+- **physical smoke tests for non-coban combinations** (BLE-only, splits,
+  display) → covered by the build matrix only
+- **settings downgrade cycle** (4.4.1 → 4.1) → upgrade path verified in place
+
 ## Index
 
 ### c — Correctness & reliability
@@ -85,7 +99,7 @@ owner decision — revisit when the dependent phase starts:
 | File | Title | Severity | Effort | Status |
 |------|-------|----------|--------|--------|
 | [d01](done/d01-esp-port-baseline-hardware-fixtures.md) | Phase 0: Establish reproducible baseline and hardware fixtures | Medium | M | DONE |
-| [d02](d02-zephyr-upgrade-regression-gate.md) | Phase 4: Whole-project Zephyr upgrade regression gate | High | M | TODO |
+| [d02](done/d02-zephyr-upgrade-regression-gate.md) | Phase 4: Whole-project Zephyr upgrade regression gate | High | M | DONE |
 | [d03](d03-esp-ble-power-reliability-qualification.md) | Phase 7: ESP BLE reliability and power qualification | High | L | TODO |
 
 ### b — Build, deploy & config

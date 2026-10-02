@@ -2,7 +2,7 @@
 
 - **Category:** d (Testing & CI)
 - **Severity:** High
-- **Status:** TODO
+- **Status:** DONE
 - **Effort (est):** M
 
 ## Problem
@@ -30,10 +30,27 @@ support is layered on top.
 ## Out of scope (for now)
 - ESP board work (b02/b03) — starts only after this gate passes.
 
+> **Closed 2026-10-02 (owner decision):** Phase 4 closed with the automated
+> gate green (tests 247/0/2, build matrix 1083/1083 all final-code builds,
+> metadata/formatting/static checks pass, 8 failure classes resolved — see
+> `.audit/phase4/gate-report.md`) and the owner's cobanpad16a verified working
+> on the new firmware (USB+BLE, RGB/LED indicators, encoder/pointing, branch
+> features). The following remain open work:
+>
+> - **Physical smoke tests, remaining combinations:** BLE-only, wired/wireless
+>   split, and display boards were not physically tested (no hardware); they
+>   are covered by the build matrix only.
+> - **Settings persistence, downgrade cycle:** the upgrade path was verified
+>   in place on cobanpad16a; an explicit 4.4.1 → 4.1 downgrade cycle was not
+>   run.
+> - **Stack high-water marks:** not measured. `ferris` is the priority
+>   follow-up (92.8% RAM with deliberately shrunk stacks) — boot with
+>   `-DCONFIG_REPORT_MEMORY_USAGE=y` before relying on it.
+
 ## Acceptance / verification
 - [x] Full CI (all build targets, tests, DT/metadata validation, formatting, static checks) is green on 4.4.1. (2026-10-02: tests 247/0/2, matrix 1083/1083, metadata/formatting/static checks pass — see `.audit/phase4/gate-report.md`)
 - [x] Board-by-board migration failure list exists and is resolved or explicitly quarantined with rationale. (2026-10-02: 8 failure classes, all fixed or user-approved quarantine — see `.audit/phase4/gate-report.md` §2)
 - [ ] Physical smoke tests pass for all representative combinations listed above.
 - [ ] Settings persistence across upgrade/downgrade validated and any required reset documented.
 - [ ] RAM/flash/stack deltas reviewed for constrained boards.
-- [ ] The Zephyr upgrade can stand on its own as a release candidate.
+- [x] The Zephyr upgrade can stand on its own as a release candidate. (2026-10-02: owner accepted the gate — see Closed note above)
