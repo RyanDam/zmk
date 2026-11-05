@@ -1,0 +1,13 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+if BOARD_ESP32S3_SUPERMINI
+
+config BOARD
+    default "esp32s3_supermini"
+
+# Name must be less than 16 characters long!
+config ZMK_KEYBOARD_NAME
+    default "S3 SuperMini"
+
+endif # BOARD_ESP32S3_SUPERMINI

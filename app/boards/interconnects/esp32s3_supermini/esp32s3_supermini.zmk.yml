@@ -1,0 +1,15 @@
+file_format: "1"
+id: esp32s3_supermini
+name: ESP32-S3 SuperMini
+type: interconnect
+url: https://www.espressif.com/en/products/socs/esp32-s3
+description: |
+  The ESP32-S3 SuperMini pin header exposes the board's GPIO0 controller
+  (GPIO0-21). Shields wired to the header reference pins as `&gpio0 <pin>`
+  in devicetree.
+  Reserved pins (do not use): GPIO19/20 (USB-C), GPIO0 (BOOT), GPIO3
+  (strapping), GPIO43/44 (UART0 recovery console), GPIO45/46
+  (strapping/VDD_SPI), GPIO48 (WS2812, revision-specific). GPIO33-38 are
+  reserved for the flash/PSRAM interface on 2 MB QSPI-PSRAM parts.
+node_labels:
+  gpio: gpio0

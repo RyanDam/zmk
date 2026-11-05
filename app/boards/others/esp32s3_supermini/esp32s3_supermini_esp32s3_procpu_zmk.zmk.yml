@@ -1,0 +1,9 @@
+file_format: "1"
+id: esp32s3_supermini/esp32s3/procpu/zmk
+name: ESP32-S3 SuperMini
+type: board
+arch: xtensa
+outputs:
+  - ble
+url: https://www.espressif.com/en/products/socs/esp32-s3
+exposes: [esp32s3_supermini]

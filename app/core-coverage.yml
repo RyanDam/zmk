@@ -65,6 +65,14 @@ include:
     snippet: studio-rpc-usb-uart
     cmake-args: "-DCONFIG_ZMK_STUDIO=y"
     nickname: "rp2040-studio"
+  # ESP32 boards build with the Espressif cross compilers (not the Zephyr
+  # SDK) and need the proprietary hal_espressif blobs; the build workflow
+  # installs both when toolchain is "espressif".
+  - board: esp32s3_supermini/esp32s3/procpu/zmk
+    shield: esp32s3_matrix_fixture
+    toolchain: espressif
+    cross-compile: xtensa-esp32s3-elf-
+    nickname: "esp32s3-ble"
   # samd21-studio quarantined (2026-09-30, Zephyr 4.4.1 gate): 32KB RAM cannot
   # hold the Studio RPC thread stack (4KB), CDC ACM buffers, USB device stack
   # and the branch's 28KB static dynamic-macro buffer at default sizes

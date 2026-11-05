@@ -1,0 +1,10 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+if SHIELD_ESP32S3_MATRIX_FIXTURE
+
+# Name must be less than 16 characters long!
+config ZMK_KEYBOARD_NAME
+    default "S3 4x4 Fixture"
+
+endif

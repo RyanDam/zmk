@@ -1,0 +1,12 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+board:
+  name: esp32s3_supermini
+  full_name: ESP32-S3 SuperMini
+  vendor: others
+  socs:
+    - name: esp32s3
+      variants:
+        - name: zmk
+          cpucluster: procpu

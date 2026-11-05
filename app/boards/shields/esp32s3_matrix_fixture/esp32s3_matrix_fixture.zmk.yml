@@ -1,0 +1,11 @@
+file_format: "1"
+id: esp32s3_matrix_fixture
+name: ESP32-S3 Matrix Fixture
+type: shield
+url: https://github.com/RyanDam/zmk/blob/feat/esp32s3/esp-port/fixtures/matrix-fixture.md
+description: |
+  4x4 direct-GPIO matrix fixture for ESP32-S3 SuperMini bring-up.
+  Rows on GPIO1/2/4/5, columns on GPIO6/7/8/15, diode anode on the row side.
+requires: [esp32s3_supermini]
+features:
+  - keys
