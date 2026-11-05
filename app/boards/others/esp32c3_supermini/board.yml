@@ -1,0 +1,5 @@
+board:
+  extend: esp32c3_supermini
+  variants:
+    - name: zmk
+      qualifier: esp32c3

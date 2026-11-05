@@ -30,8 +30,8 @@ under `docs/docs/hardware-integration/`.
 | 2 — kscan → matrix input | `a01` | done |
 | 3 — Legacy USB migration | `a02` | done |
 | 4 — Upgrade regression gate | `d02` | done |
-| 5 — C3 BLE board | `b02` | in progress (branch `feat/esp32c3`, not in this branch) |
-| 6 — S3 BLE board | `b03` | in progress (this branch, `feat/esp32s3`) |
+| 5 — C3 BLE board | `b02` | in progress (board + fixture merged to `feat/esp32`, hardware tests pending) |
+| 6 — S3 BLE board | `b03` | in progress (board + fixture merged to `feat/esp32`, hardware tests pending) |
 | 7 — BLE power/reliability | `d03` | not started |
 | 8 — S3 USB HID (conditional) | `b04` | not started |
 | 9 — Optional capabilities | `a03`, `a04`, `a05` | not started |
@@ -39,6 +39,21 @@ under `docs/docs/hardware-integration/`.
 
 ## Decisions
 
+- **2026-10-02 — Studio-over-USB is a critical product feature; the C3 cannot
+  provide it.** The C3 has no USB OTG, and ZMK's Studio UART RPC transport is
+  only selected when a ZMK USB *endpoint* is active (`app/src/studio/rpc.c`
+  matches transports against `zmk_endpoint_get_selected().transport`; the UART
+  transport registers as `ZMK_TRANSPORT_USB`). The USB Serial/JTAG console port
+  is a plain UART device, not a ZMK endpoint, so it cannot carry Studio RPC
+  without fork-level changes to the endpoint/RPC layer. Decision: the C3 stays
+  BLE-only (Studio, if enabled, uses the BLE GATT transport, which is
+  `default y` under `ZMK_BLE`); the Studio-over-USB requirement is carried by
+  the ESP32-S3 in Phase 6/8 (USB OTG → `ZMK_USB` → CDC-ACM Studio port).
+- **2026-10-02 — Phase 5 C3 work lives on branch `feat/esp32c3`** (branched
+  from `feat/esp32` at "Close phase 4"). Phase 6 (S3) references this work as
+  the ZMK-on-Espressif pattern: board-extension layout, shield/fixture
+  structure, toolchain setup (cross-compile variant — the `espressif` variant
+  was removed upstream in Zephyr 4.4), and the build-script conventions.
 - **2026-10-03 — Phase 6 (S3) work lives on branch `feat/esp32s3`**,
   branched from `feat/esp32` at "Close phase 4". The Phase 5 C3 board is NOT
   in this branch, so the CI compile target covers the S3 only; the C3 compile
@@ -59,6 +74,11 @@ under `docs/docs/hardware-integration/`.
   hard-fails without a keymap node. A copy in the config repo
   (`esp32s3_matrix_fixture.keymap`) takes precedence for local builds via
   `-DZMK_CONFIG`.
+- **2026-11-05 — Phases 5 and 6 merged into `feat/esp32`.** The
+  `feat/esp32s3` and `feat/esp32c3` lines (both branched from `feat/esp32` at
+  "Close phase 4") were merged without fast-forward, so both boards and both
+  matrix fixtures now live in one tree and the CI matrix in
+  `app/core-coverage.yml` compiles the S3 and the C3 fixture.
 
 ## Host test matrix
 

@@ -1,0 +1,12 @@
+file_format: "1"
+id: esp32c3_supermini
+name: ESP32-C3 SuperMini
+type: interconnect
+url: https://www.espressif.com/en/products/socs/esp32-c3
+description: |
+  The ESP32-C3 SuperMini pin header exposes the board's GPIO0 controller.
+  Shields wired to the header reference pins as `&gpio0 <pin>` in devicetree.
+  Reserved pins (do not use): GPIO18/19 (USB Serial/JTAG), GPIO2/8/9 (strapping),
+  GPIO3 (RTC domain), GPIO4 (RTC domain).
+node_labels:
+  gpio: gpio0
