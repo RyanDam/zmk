@@ -25,17 +25,40 @@ under `docs/docs/hardware-integration/`.
 
 | Phase | Backlog item | Status |
 | --- | --- | --- |
-| 0 — Baseline and hardware fixtures | `d01` | in progress (see `phase0-baseline.md`) |
-| 1 — Zephyr 4.4.1 upgrade | `b01` | not started |
-| 2 — kscan → matrix input | `a01` | not started |
-| 3 — Legacy USB migration | `a02` | not started |
-| 4 — Upgrade regression gate | `d02` | not started |
-| 5 — C3 BLE board | `b02` | not started |
-| 6 — S3 BLE board | `b03` | not started |
+| 0 — Baseline and hardware fixtures | `d01` | done (see `phase0-baseline.md`) |
+| 1 — Zephyr 4.4.1 upgrade | `b01` | done |
+| 2 — kscan → matrix input | `a01` | done |
+| 3 — Legacy USB migration | `a02` | done |
+| 4 — Upgrade regression gate | `d02` | done |
+| 5 — C3 BLE board | `b02` | in progress (branch `feat/esp32c3`, not in this branch) |
+| 6 — S3 BLE board | `b03` | in progress (this branch, `feat/esp32s3`) |
 | 7 — BLE power/reliability | `d03` | not started |
 | 8 — S3 USB HID (conditional) | `b04` | not started |
 | 9 — Optional capabilities | `a03`, `a04`, `a05` | not started |
 | 10 — Docs/CI/release policy | `f01` | not started |
+
+## Decisions
+
+- **2026-10-03 — Phase 6 (S3) work lives on branch `feat/esp32s3`**,
+  branched from `feat/esp32` at "Close phase 4". The Phase 5 C3 board is NOT
+  in this branch, so the CI compile target covers the S3 only; the C3 compile
+  target gets added when `feat/esp32c3` is merged. The S3 board reuses the
+  ZMK-on-Espressif pattern established by the C3 work (board layout,
+  shield/fixture structure, cross-compile toolchain setup, build-script
+  conventions) without depending on its files.
+- **2026-10-03 — ESP CI infrastructure lands with Phase 6.** The build
+  workflow installs the Espressif 12.2.0 cross compilers (riscv32 + xtensa,
+  both chips) and fetches the `hal_espressif` blobs for any matrix entry with
+  `toolchain: espressif` — explicit in `app/core-coverage.yml`, or derived
+  from the SoC in the board name for board-changes/nightly entries. Builds
+  use the `cross-compile` toolchain variant (Zephyr 4.4 removed the legacy
+  `espressif` variant); see `toolchain-esp32.md`.
+- **2026-10-03 — S3 fixture keymap ships in the repo** at
+  `app/boards/shields/esp32s3_matrix_fixture/esp32s3_matrix_fixture.keymap`
+  because CI has no access to the external ZMK config repo and the build
+  hard-fails without a keymap node. A copy in the config repo
+  (`esp32s3_matrix_fixture.keymap`) takes precedence for local builds via
+  `-DZMK_CONFIG`.
 
 ## Host test matrix
 

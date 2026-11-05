@@ -1,0 +1,16 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+identifier: esp32s3_supermini/esp32s3/procpu
+name: ESP32-S3 SuperMini PROCPU
+type: mcu
+arch: xtensa
+toolchain:
+  - zephyr
+supported:
+  - gpio
+  - uart
+  - spi
+  - watchdog
+  - entropy
+vendor: others

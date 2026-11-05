@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include "esp32s3_supermini_esp32s3_procpu.dts"
+
+/*
+ * ZMK variant of the ESP32-S3 SuperMini:
+ * - BLE HID only (ZMK USB stays disabled; USB HID is a separate, gated
+ *   configuration pending the S3 USB-PHY/eFuse decision)
+ * - console/flash/recovery stay on USB Serial/JTAG (GPIO19/20);
+ *   UART0 (GPIO43/44) is the recovery console
+ * - settings live in the storage partition (192 KiB @ 0x3b0000) of the
+ *   4 MB partition layout; the NVS settings backend selects it by label
+ * - PSRAM (2 MB QSPI on the FH4R2 sample) is present but left unused:
+ *   enabling it requires CONFIG_ESP_SPIRAM and dedicated memory/boot
+ *   validation on the exact board revision
+ * - Wi-Fi is disabled: this is a BLE keyboard, not a Wi-Fi device
+ */
+
+&wifi {
+    status = "disabled";
+};

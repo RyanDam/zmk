@@ -56,6 +56,40 @@ jobs:
         run: west update --fetch-opt=--filter=tree:0
       - name: Export Zephyr CMake package (west zephyr-export)
         run: west zephyr-export
+      - name: Cache Espressif toolchain
+        if: ${{ matrix.toolchain == 'espressif' }}
+        uses: actions/cache@v6
+        with:
+          path: /opt/espressif/tools
+          key: ${{ runner.os }}-espressif-tools-12.2.0_20230208
+          restore-keys: |
+            ${{ runner.os }}-espressif-tools-
+      - name: Install Espressif toolchain
+        if: ${{ matrix.toolchain == 'espressif' }}
+        run: |
+          set -euo pipefail
+          TC=/opt/espressif/tools
+          VER=12.2.0_20230208
+          BASE="https://github.com/espressif/crosstool-NG/releases/download/esp-${VER}"
+          if [ -x "$TC/riscv32-esp-elf/bin/riscv32-esp-elf-gcc" ] && [ -x "$TC/xtensa-esp32s3-elf/bin/xtensa-esp32s3-elf-gcc" ]; then
+            echo "Espressif toolchain already installed (cache hit)"
+          else
+            mkdir -p "$TC"
+            curl -fL --retry 3 -o /tmp/riscv32-esp-elf.tar.xz "$BASE/riscv32-esp-elf-${VER}-x86_64-linux-gnu.tar.xz"
+            curl -fL --retry 3 -o /tmp/xtensa-esp32s3-elf.tar.xz "$BASE/xtensa-esp32s3-elf-${VER}-x86_64-linux-gnu.tar.xz"
+            # sha256 values from ESP-IDF v5.1 tools/tools.json (x86_64)
+            echo "21694e5ee506f5e52908b12c6b5be7044d87cf34bb4dfcd151d0a10ea09dedc1  /tmp/riscv32-esp-elf.tar.xz" | sha256sum -c -
+            echo "29b5ea6b30d98231f0c17f2327404109e0abf59b48d0f2890d9d9899678a89a3  /tmp/xtensa-esp32s3-elf.tar.xz" | sha256sum -c -
+            tar -xJf /tmp/riscv32-esp-elf.tar.xz -C "$TC"
+            tar -xJf /tmp/xtensa-esp32s3-elf.tar.xz -C "$TC"
+          fi
+          "$TC/riscv32-esp-elf/bin/riscv32-esp-elf-gcc" --version
+          "$TC/xtensa-esp32s3-elf/bin/xtensa-esp32s3-elf-gcc" --version
+          # esptool is required by the ESP32 SoC cmake for image generation
+          pip3 install --user --break-system-packages 'esptool>=5.0.2'
+      - name: Fetch Espressif blobs
+        if: ${{ matrix.toolchain == 'espressif' }}
+        run: west blobs fetch hal_espressif
       - name: Use Node.js
         uses: actions/setup-node@v7
         with:
@@ -73,13 +107,30 @@ jobs:
 
             const buildShieldArgs = JSON.parse(`${{ matrix.shieldArgs }}`);
 
+            // Espressif boards build with the cross-compile toolchain variant
+            // (Zephyr 4.4 removed the legacy "espressif" variant); the
+            // compilers were installed by the "Install Espressif toolchain"
+            // step. Everything else keeps the default Zephyr SDK.
+            const toolchain = `${{ matrix.toolchain }}`;
+            const crossCompile = `${{ matrix['cross-compile'] }}`;
+            const env = { ...process.env };
+            let toolchainArgs = '';
+            if (toolchain === 'espressif') {
+              const tc = '/opt/espressif/tools';
+              const tcName = crossCompile.slice(0, -1);
+              env.ZEPHYR_TOOLCHAIN_VARIANT = 'cross-compile';
+              env.CROSS_COMPILE = crossCompile;
+              env.PATH = `${env.HOME}/.local/bin:${tc}/${tcName}/bin:${env.PATH}`;
+              toolchainArgs = ` -DTOOLCHAIN_HOME=${tc}/${tcName}/bin`;
+            }
+
             let error = false;
 
             for (const shieldArgs of buildShieldArgs) {
               try {
                 console.log(`::group::${{ matrix.board}} ${shieldArgs.shield} Build`)
 
-                const output = execSync(`west build -s app -p -b ${{ matrix.board }} ${shieldArgs.snippet ? '-S ' + shieldArgs.snippet : ''} -- ${shieldArgs.shield ? '-DSHIELD="' + shieldArgs.shield + '"' : ''} ${shieldArgs['cmake-args'] || ''}`);
+                const output = execSync(`west build -s app -p -b ${{ matrix.board }} ${shieldArgs.snippet ? '-S ' + shieldArgs.snippet : ''} -- ${shieldArgs.shield ? '-DSHIELD="' + shieldArgs.shield + '"' : ''} ${shieldArgs['cmake-args'] || ''}${toolchainArgs}`, { env });
 
                 console.log(output.toString());
               } catch (e) {
@@ -111,7 +162,8 @@ jobs:
               try {
                 console.log(`::group::${{ matrix.board}} ${shieldArgs.shield} Upload`)
 
-                const fileExtensions = ["hex", "uf2"];
+                // Espressif boards produce a raw .bin image (no hex/uf2)
+                const fileExtensions = `${{ matrix.toolchain }}` === 'espressif' ? ["bin"] : ["hex", "uf2"];
 
                 const files = fileExtensions
                   .map(extension => "build/zephyr/zmk." + extension)
@@ -161,13 +213,32 @@ jobs:
             ];
             const combinedUnique = [...new Map(combined.map(el => [JSON.stringify(el), el])).values()];
 
+            // Boards changed by a PR (board-changes) and nightly entries carry
+            // no toolchain info, so fall back to the Espressif cross compilers
+            // based on the SoC in the board name.
+            const espressifFallback = {
+              esp32s3: 'xtensa-esp32s3-elf-',
+              esp32c3: 'riscv32-esp-elf-',
+            };
+            const toolchainFor = (board, toolchain, crossCompile) => {
+              if (toolchain)
+                return { toolchain, 'cross-compile': crossCompile };
+              for (const [soc, prefix] of Object.entries(espressifFallback)) {
+                if (board.includes(soc))
+                  return { toolchain: 'espressif', 'cross-compile': prefix };
+              }
+              return { toolchain: undefined, 'cross-compile': undefined };
+            };
+
             const perBoard = {};
 
             for (const configuration of combinedUnique) {
               if (!perBoard[configuration.board])
-                perBoard[configuration.board] = [];
+                perBoard[configuration.board] = Object.assign({
+                  shieldArgs: []
+                }, toolchainFor(configuration.board, configuration.toolchain, configuration['cross-compile']));
 
-              perBoard[configuration.board].push({
+              perBoard[configuration.board].shieldArgs.push({
                 shield: configuration.shield,
                 'cmake-args': configuration['cmake-args'],
                 snippet: configuration.snippet,
@@ -175,9 +246,11 @@ jobs:
               })
             }
 
-            return Object.entries(perBoard).map(([board, shieldArgs]) => ({
+            return Object.entries(perBoard).map(([board, entry]) => ({
               board,
-              shieldArgs: JSON.stringify(shieldArgs),
+              toolchain: entry.toolchain,
+              'cross-compile': entry['cross-compile'],
+              shieldArgs: JSON.stringify(entry.shieldArgs),
             }));
   core-coverage:
     if: ${{ needs.get-changed-files.outputs.core-changes == 'true' }}
