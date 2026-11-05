@@ -73,6 +73,11 @@ include:
     toolchain: espressif
     cross-compile: xtensa-esp32s3-elf-
     nickname: "esp32s3-ble"
+  - board: esp32c3_supermini/esp32c3/zmk
+    shield: esp32c3_matrix_fixture
+    toolchain: espressif
+    cross-compile: riscv32-esp-elf-
+    nickname: "esp32c3-ble"
   # samd21-studio quarantined (2026-09-30, Zephyr 4.4.1 gate): 32KB RAM cannot
   # hold the Studio RPC thread stack (4KB), CDC ACM buffers, USB device stack
   # and the branch's 28KB static dynamic-macro buffer at default sizes
