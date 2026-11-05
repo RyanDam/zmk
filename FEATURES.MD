@@ -40,8 +40,9 @@ See `git diff main...HEAD` for the full change set.
 
 ## Studio RPC
 
-- New RPC subsystems: `sensor`, `touchpad`, `macro` (`app/src/studio/*_subsystem.c`); keymap/behavior subsystems extended for sensors and dynamic macros.
-- `app/west.yml` now pulls `zmk-studio-messages` from the `cobanfirmware` (RyanDam) remote, which adds `macros.proto`, `sensors.proto`, `touchpad.proto`.
+- New RPC subsystems: `sensor`, `touchpad`, `macro`, `settings` (`app/src/studio/*_subsystem.c`); keymap/behavior subsystems extended for sensors and dynamic macros.
+- The `settings` subsystem (`app/src/studio/settings_subsystem.c`, `CONFIG_ZMK_STUDIO_SETTINGS`) reports and updates Bluetooth profiles, sleep/idle configuration, preferred endpoint transport, and read-only diagnostics (battery, USB power, WPM, HID indicators, split status, uptime, activity state). Runtime activity/sleep configuration is persisted via the new `zmk_activity_*` API.
+- `app/west.yml` now pulls `zmk-studio-messages` from the `cobanfirmware` (RyanDam) remote, which adds `macros.proto`, `sensors.proto`, `touchpad.proto`, `settings.proto` (with `settings.options`).
 
 ## Endpoint / transport changes
 

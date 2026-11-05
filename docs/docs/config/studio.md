@@ -33,3 +33,9 @@ Definition file: [zmk/app/src/studio/Kconfig](https://github.com/zmkfirmware/zmk
 | `CONFIG_ZMK_STUDIO_RPC_THREAD_STACK_SIZE`      | int  | Stack size for the dedicated RPC thread                                       | 1800    |
 | `CONFIG_ZMK_STUDIO_RPC_RX_BUF_SIZE`            | int  | Number of bytes available for buffering incoming messages                     | 30      |
 | `CONFIG_ZMK_STUDIO_RPC_TX_BUF_SIZE`            | int  | Number of bytes available for buffering outgoing messages                     | 64      |
+
+### Device Settings
+
+| Config                       | Type | Description                                                                                 | Default |
+| ---------------------------- | ---- | ------------------------------------------------------------------------------------------- | ------- |
+| `CONFIG_ZMK_STUDIO_SETTINGS` | bool | Enable the Studio RPC subsystem for reading/writing device settings and reading diagnostics | y       |

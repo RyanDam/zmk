@@ -163,6 +163,53 @@ int zmk_split_central_get_peripheral_battery_level(uint8_t source, uint8_t *leve
 
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
 
+int zmk_split_central_get_status(struct zmk_split_transport_status *status) {
+    if (!status) {
+        return -EINVAL;
+    }
+
+    if (!active_transport || !active_transport->api) {
+        return -ENODEV;
+    }
+
+    if (active_transport->api->get_status) {
+        *status = active_transport->api->get_status();
+    } else {
+        // Transports without get_status are assumed to always be available and
+        // fully connected.
+        *status = (struct zmk_split_transport_status){
+            .available = true,
+            .enabled = true,
+            .connections = ZMK_SPLIT_TRANSPORT_CONNECTIONS_STATUS_ALL_CONNECTED,
+        };
+    }
+
+    return 0;
+}
+
+int zmk_split_central_get_available_source_ids(uint8_t *sources, size_t max_sources) {
+    if (!sources || !active_transport || !active_transport->api ||
+        !active_transport->api->get_available_source_ids) {
+        return -ENODEV;
+    }
+
+    uint8_t source_ids[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT];
+    int count = active_transport->api->get_available_source_ids(source_ids);
+    if (count < 0) {
+        return count;
+    }
+
+    if ((size_t)count > max_sources) {
+        count = max_sources;
+    }
+
+    for (int i = 0; i < count; i++) {
+        sources[i] = source_ids[i];
+    }
+
+    return count;
+}
+
 static int select_first_available_transport(void) {
     // Transports are sorted by priority, so find the first
     // One that's available, and enable it. Any transport that

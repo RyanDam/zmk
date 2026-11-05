@@ -34,6 +34,7 @@ ZMK Studio currently has the following capabilities:
 |   ✅   | Selecting alternative pre-defined physical layouts for the keyboard                                                                       |
 |   ❌   | Defining new physical layouts for the keyboard                                                                                            |
 |   ✅   | Renaming layers & enabling [extra layers](#including-extra-layers)                                                                        |
+|   ✅   | Reading and updating device settings (Bluetooth profiles, sleep configuration, endpoint selection) and reading diagnostics                |
 |   ❌   | Adding more layers than specified by devicetree                                                                                           |
 |   💡   | Host locale selection                                                                                                                     |
 |   💡   | Importing and exporting keymaps                                                                                                           |

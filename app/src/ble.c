@@ -271,6 +271,27 @@ bt_addr_le_t *zmk_ble_profile_address(uint8_t index) {
     return &profiles[index].peer;
 }
 
+char *zmk_ble_profile_name(uint8_t index) {
+    if (index >= ZMK_BLE_PROFILE_COUNT) {
+        return NULL;
+    }
+    return profiles[index].name;
+}
+
+int zmk_ble_profile_clear_bond(uint8_t index) {
+    if (index >= ZMK_BLE_PROFILE_COUNT) {
+        return -ERANGE;
+    }
+
+    clear_profile_bond(index);
+
+    if (index == active_profile) {
+        update_advertising();
+    }
+
+    return 0;
+}
+
 #if IS_ENABLED(CONFIG_SETTINGS)
 static void ble_save_profile_work(struct k_work *work) {
     settings_save_one("ble/active_profile", &active_profile, sizeof(active_profile));

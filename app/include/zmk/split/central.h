@@ -9,6 +9,26 @@
 #include <zephyr/bluetooth/addr.h>
 #include <zmk/behavior.h>
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+#include <zmk/split/transport/types.h>
+
+/**
+ * @brief Get the status of the active split central transport.
+ *
+ * @retval 0 on success, or -ENODEV if no split transport is active.
+ */
+int zmk_split_central_get_status(struct zmk_split_transport_status *status);
+
+/**
+ * @brief Get the source IDs of currently connected peripherals.
+ *
+ * @param sources Output array for source IDs.
+ * @param max_sources Capacity of @p sources.
+ * @return Number of source IDs written, or a negative error code.
+ */
+int zmk_split_central_get_available_source_ids(uint8_t *sources, size_t max_sources);
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT)
+
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE)
 
 #include <zmk/ble.h>

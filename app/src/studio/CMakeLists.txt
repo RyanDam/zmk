@@ -18,3 +18,4 @@ target_sources_ifdef(CONFIG_ZMK_STUDIO_TRANSPORT_UART app PRIVATE uart_rpc_trans
 target_sources_ifdef(CONFIG_ZMK_STUDIO_TRANSPORT_BLE app PRIVATE gatt_rpc_transport.c)
 target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO app PRIVATE macro_subsystem.c)
 target_sources_ifdef(CONFIG_ZMK_STUDIO_TOUCHPAD app PRIVATE touchpad_subsystem.c)
+target_sources_ifdef(CONFIG_ZMK_STUDIO_SETTINGS app PRIVATE settings_subsystem.c)

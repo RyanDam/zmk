@@ -116,6 +116,14 @@ config ZMK_STUDIO_TOUCHPAD
     help
       Studio RPC support for touchpad configuration.
 
+config ZMK_STUDIO_SETTINGS
+    bool "Device Settings Studio Support"
+    default y
+    help
+      Studio RPC support for reading and writing device settings, including
+      Bluetooth profiles, sleep configuration, endpoint selection, and
+      read-only diagnostics.
+
 endif
 
 endif
