@@ -449,42 +449,42 @@ ZMK_RPC_SUBSYSTEM_SETTINGS_RESET(settings, settings_settings_reset);
 ZMK_RPC_SUBSYSTEM_HANDLER(settings, get_settings, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(settings, set_settings, ZMK_STUDIO_RPC_HANDLER_SECURED);
 
-// Settings change notifications are intentionally just a boolean signal: the
-// client re-requests the full settings snapshot, which avoids copying and
-// encoding a large settings struct through the event path.
-static int settings_event_mapper(const zmk_event_t *eh, zmk_studio_Notification *notification) {
-    *notification = SETTINGS_NOTIFICATION(settings_changed, true);
-    return 0;
-}
+/*
+ * Settings change notifications are sent asynchronously and coalesced: any
+ * trigger only reschedules a single delayed work item, and the notification
+ * is raised (and the response sent) from the work queue after the triggering
+ * event has fully unwound. This matters because set_settings can raise these
+ * events itself (e.g. a BLE profile switch), and sending a response
+ * re-entrantly from within request handling overflows the RPC thread stack.
+ *
+ * The notification is intentionally just a boolean signal: the client
+ * re-requests the full settings snapshot on receipt, which avoids copying and
+ * encoding a large settings struct through the event path.
+ */
+#define SETTINGS_NOTIFY_DEBOUNCE_MS 100
 
-ZMK_RPC_EVENT_MAPPER(settings, settings_event_mapper, zmk_activity_state_changed);
-
-#if IS_ENABLED(CONFIG_ZMK_BLE)
-ZMK_RPC_EVENT_MAPPER_ADD_LISTENER(zmk_ble_active_profile_changed);
-#endif
-
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-ZMK_RPC_EVENT_MAPPER_ADD_LISTENER(zmk_battery_state_changed);
-#endif
-
-#if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
-ZMK_RPC_EVENT_MAPPER_ADD_LISTENER(zmk_hid_indicators_changed);
-#endif
-
-// The core RPC listener consumes endpoint changed events before they reach the
-// registered event mappers, so settings uses its own listener to notify clients
-// about endpoint/transport changes.
-static int settings_endpoint_event_listener(const zmk_event_t *eh) {
-    if (!as_zmk_endpoint_changed(eh)) {
-        return ZMK_EV_EVENT_BUBBLE;
-    }
-
+static void settings_notify_work_handler(struct k_work *work) {
     zmk_studio_Notification notification = SETTINGS_NOTIFICATION(settings_changed, true);
     raise_zmk_studio_rpc_notification(
         (struct zmk_studio_rpc_notification){.notification = notification});
+}
 
+K_WORK_DELAYABLE_DEFINE(settings_notify_work, settings_notify_work_handler);
+
+static int settings_event_listener(const zmk_event_t *eh) {
+    k_work_reschedule(&settings_notify_work, K_MSEC(SETTINGS_NOTIFY_DEBOUNCE_MS));
     return ZMK_EV_EVENT_BUBBLE;
 }
 
-ZMK_LISTENER(settings_endpoint, settings_endpoint_event_listener);
-ZMK_SUBSCRIPTION(settings_endpoint, zmk_endpoint_changed);
+ZMK_LISTENER(settings_notify, settings_event_listener);
+ZMK_SUBSCRIPTION(settings_notify, zmk_activity_state_changed);
+#if IS_ENABLED(CONFIG_ZMK_BLE)
+ZMK_SUBSCRIPTION(settings_notify, zmk_ble_active_profile_changed);
+#endif
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
+ZMK_SUBSCRIPTION(settings_notify, zmk_battery_state_changed);
+#endif
+#if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
+ZMK_SUBSCRIPTION(settings_notify, zmk_hid_indicators_changed);
+#endif
+ZMK_SUBSCRIPTION(settings_notify, zmk_endpoint_changed);

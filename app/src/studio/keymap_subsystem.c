@@ -538,6 +538,12 @@ ZMK_RPC_SUBSYSTEM_HANDLER(keymap, remove_layer, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, restore_layer, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_layer_props, ZMK_STUDIO_RPC_HANDLER_SECURED);
 
-static int event_mapper(const zmk_event_t *eh, zmk_studio_Notification *n) { return 0; }
+// Placeholder: keymap currently emits no RPC notifications.
+// Must return -1 (not 0): returning 0 would claim every event that reaches
+// the studio RPC listener, send an empty notification, and — for events
+// raised from the RPC thread itself (e.g. a BLE profile switch performed by
+// a request handler) — trigger a re-entrant response send that overflows the
+// RPC thread stack.
+static int event_mapper(const zmk_event_t *eh, zmk_studio_Notification *n) { return -1; }
 
 ZMK_RPC_EVENT_MAPPER(keymap, event_mapper);
