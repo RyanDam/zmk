@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include "cobantab1a_esp32s3_procpu.dts"
+
+/*
+ * ZMK variant of the Coban Tab 1a:
+ * - BLE HID only (ZMK USB stays disabled; the S3 WROOM has no USB OTG PHY —
+ *   USB-C is the internal USB-Serial/JTAG port; USB HID is a separate,
+ *   gated configuration pending the S3 USB-PHY/eFuse decision, see b04)
+ * - console/flash/recovery stay on USB Serial/JTAG (GPIO19/20);
+ *   UART0 (GPIO43/44) is the recovery console
+ * - settings live in the storage partition (192 KiB @ 0xfb0000) of the
+ *   16 MB partition layout; the NVS settings backend selects it by label
+ * - PSRAM (8 MB octal on the N16R8 module) is enabled: the AXS15231B
+ *   display streams through it and the LVGL heap is placed there
+ * - Wi-Fi is disabled: this is a BLE keyboard, not a Wi-Fi device
+ */
+
+&wifi {
+    status = "disabled";
+};

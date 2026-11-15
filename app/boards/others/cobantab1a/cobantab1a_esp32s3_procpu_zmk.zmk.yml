@@ -1,0 +1,9 @@
+file_format: "1"
+id: cobantab1a/esp32s3/procpu/zmk
+name: Coban Tab 1a
+type: board
+arch: xtensa
+outputs:
+  - ble
+url: https://github.com/RyanDam/zmk
+exposes: [cobantab1a]

@@ -1,0 +1,8 @@
+# Coban Tab 1a board configuration
+
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+config HEAP_MEM_POOL_ADD_SIZE_BOARD
+    int
+    default 4096

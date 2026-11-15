@@ -1,0 +1,83 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+/dts-v1/;
+
+#include <espressif/esp32s3/esp32s3_wroom_n16r8.dtsi>
+#include "cobantab1a_esp32s3_procpu-pinctrl.dtsi"
+#include <espressif/partitions_0x0_default_16M.dtsi>
+
+/*
+ * Coban Tab 1a (PROCPU only).
+ *
+ * Custom ESP32-S3 display module, same silicon and display wiring as the
+ * Guition JC3248W535 reference board:
+ *
+ * - ESP32-S3-WROOM-1 N16R8: 16 MB flash + 8 MB octal PSRAM.
+ * - 3.5" 320x480 AXS15231B QSPI touch display + I2C in-cell touch +
+ *   PWM backlight (wiring described by the cobantab1a shield in the ZMK
+ *   config repo, not by this board definition).
+ * - USB-C wired to the internal PHY in USB-Serial/JTAG mode (no external
+ *   PHY): console, flashing and recovery.
+ * - Recovery console: UART0 on GPIO43/44.
+ * - PSRAM: the wroom_n16r8 include describes the 8 MB octal PSRAM node;
+ *   the ZMK variant enables it (CONFIG_ESP_SPIRAM) — the display
+ *   framebuffer and the LVGL heap live in PSRAM.
+ */
+
+/ {
+    model = "Coban Tab 1a PROCPU";
+    compatible = "coban,cobantab1a";
+
+    chosen {
+        zephyr,sram = &sram1;
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
+        zephyr,flash = &flash0;
+        zephyr,code-partition = &slot0_partition;
+        zephyr,bt-hci = &esp32_bt_hci;
+    };
+
+    aliases {
+        watchdog0 = &wdt0;
+        uart-0 = &uart0;
+    };
+};
+
+&usb_serial {
+    status = "okay";
+};
+
+&uart0 {
+    status = "okay";
+    current-speed = <115200>;
+    pinctrl-0 = <&uart0_default>;
+    pinctrl-names = "default";
+};
+
+&gpio0 {
+    status = "okay";
+};
+
+&gpio1 {
+    status = "okay";
+};
+
+&trng0 {
+    status = "okay";
+};
+
+&wdt0 {
+    status = "okay";
+};
+
+&esp32_bt_hci {
+    status = "okay";
+};
+
+&wifi {
+    status = "okay";
+};

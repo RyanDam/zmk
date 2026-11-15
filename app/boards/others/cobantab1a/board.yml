@@ -1,0 +1,12 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+board:
+  name: cobantab1a
+  full_name: Coban Tab 1a (ESP32-S3 3.5" AXS15231B display module)
+  vendor: others
+  socs:
+    - name: esp32s3
+      variants:
+        - name: zmk
+          cpucluster: procpu

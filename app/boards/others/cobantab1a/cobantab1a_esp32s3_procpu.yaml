@@ -1,0 +1,18 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+identifier: cobantab1a/esp32s3/procpu
+name: Coban Tab 1a PROCPU
+type: mcu
+arch: xtensa
+toolchain:
+  - zephyr
+supported:
+  - gpio
+  - uart
+  - spi
+  - i2c
+  - pwm
+  - watchdog
+  - entropy
+vendor: others
