@@ -49,6 +49,22 @@ config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
 
 endchoice
 
+config ZMK_DISPLAY_CLOCK_SCREEN
+    bool "Clock and calendar status screen"
+    depends on ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
+    default y
+    select LV_USE_LABEL
+    select ENTROPY_GENERATOR
+    select LV_FONT_MONTSERRAT_48
+    select LV_FONT_MONTSERRAT_20
+    select LV_FONT_MONTSERRAT_12
+    help
+      Status screen showing a clock (HH:MM:SS) and the calendar date,
+      refreshed once per second. The clock is simulated from a fixed
+      reference time plus the system uptime: the supported boards have no
+      RTC and no network time source. Tapping the screen changes the text
+      color to a random bright color, demonstrating that touch input works.
+
 choice ZMK_DISPLAY_WORK_QUEUE
     prompt "Work queue selection for UI updates"
 
