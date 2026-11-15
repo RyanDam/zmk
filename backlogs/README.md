@@ -109,6 +109,7 @@ work starts:
 | [b02](b02-esp32c3-supermini-ble-board.md) | Phase 5: Add ESP32-C3 SuperMini BLE board variant | High | M | TODO |
 | [b03](b03-esp32s3-supermini-ble-board.md) | Phase 6: Add ESP32-S3 SuperMini BLE board variant | High | L | TODO |
 | [b04](b04-esp32s3-usb-hid-conditional.md) | Phase 8: ESP32-S3 SuperMini USB HID (conditional, USB-PHY gate) | Medium | L | TODO |
+| [b05](b05-cobantab1a-display-module.md) | cobantab1a: ESP32-S3 display module board + AXS15231B QSPI display/touch shield | Medium | L | TODO |
 
 ### f — Cleanup & i18n
 | File | Title | Severity | Effort | Status |

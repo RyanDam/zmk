@@ -20,6 +20,8 @@ under `docs/docs/hardware-integration/`.
 | `compat-matrix.md` | Compatibility matrix / issue checklist per physical board | 0 |
 | `test-results/format.md` | Test-results format definition | 0 |
 | `test-results/samples/` | Demonstrated sample entries | 0 |
+| `build_esp32.sh`, `build_zmk_c3.sh`, `build_zmk_s3.sh` | Port build scripts (C3/S3 SuperMini fixtures) | 5, 6 |
+| `build_cobantab1a.sh` | Coban Tab 1a build script (BLE + display + touch) | 9b |
 
 ## Phase status
 
@@ -35,6 +37,7 @@ under `docs/docs/hardware-integration/`.
 | 7 — BLE power/reliability | `d03` | not started |
 | 8 — S3 USB HID (conditional) | `b04` | not started |
 | 9 — Optional capabilities | `a03`, `a04`, `a05` | not started |
+| 9b — cobantab1a display module (Phase 9b display class) | `b05` | in progress (board def + AXS15231B display/touch drivers + shield compile-verified; hardware bring-up pending) |
 | 10 — Docs/CI/release policy | `f01` | not started |
 
 ## Decisions
@@ -79,6 +82,27 @@ under `docs/docs/hardware-integration/`.
   "Close phase 4") were merged without fast-forward, so both boards and both
   matrix fixtures now live in one tree and the CI matrix in
   `app/core-coverage.yml` compiles the S3 and the C3 fixture.
+- **2026-11-14 — cobantab1a (b05) work lives on branch `feat/cobantab1a`**
+  (zmk fork) and `feat/cobantab1a` (zmk-config), branched from `feat/esp32`
+  and `master` respectively. The board def lives in the fork
+  (`app/boards/others/cobantab1a/`); the shield (overlay/keymap/conf) lives in
+  the external config repo (`boards/shields/cobantab1a/`), same as the
+  cobanpad shields.
+- **2026-11-14 — cobantab1a gets no CI entry.** CI has no access to the
+  external ZMK config repo, and the coban product shields (cobanpad12b/16a,
+  cobantab1a) live there — so none of them are in `app/core-coverage.yml`.
+  (The `esp32s3_matrix_fixture` CI entry is a port *test fixture* that ships
+  in the repo, not a product shield.) The canonical build path is
+  `esp-port/build_cobantab1a.sh` (pristine build, `-DSHIELD=cobantab1a`,
+  `ZMK_CONFIG` pointing at the config repo).
+- **2026-11-14 — LVGL memory on the ESP32-S3 goes to PSRAM via the
+  `.lvgl_buf`/`.lvgl_heap` custom sections**, not via `zephyr,memory-region`
+  nodes: the ESP32-S3 linker script (`zephyr/soc/espressif/esp32s3/default.ld`)
+  has fixed MEMORY regions and already `KEEP(*(.lvgl_buf*))` /
+  `KEEP(*(.lvgl_heap*))` into `.ext_ram.data` (→ `ext_dram_seg` → PSRAM).
+  Hence `CONFIG_LV_Z_VDB_CUSTOM_SECTION` + `CONFIG_LV_Z_MEMORY_POOL_CUSTOM_SECTION`
+  in the shield conf. (Custom `zephyr,memory-region` nodes produce orphan
+  sections that the ESP32 linker dumps into `IDT_LIST` and overflows.)
 
 ## Host test matrix
 
