@@ -3,4 +3,5 @@
 
 zephyr_library_amend()
 
+zephyr_library_sources_ifdef(CONFIG_AXS15231B axs15231b.c)
 zephyr_library_sources_ifdef(CONFIG_IL0323 il0323.c)

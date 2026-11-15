@@ -1,0 +1,41 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  AXS15231B QSPI LCD display controller.
+
+  The panel is driven over QSPI: the 32-bit command opcode and parameters are
+  sent in 1-wire mode and the pixel data in 4-wire (QIO) mode. The node is a
+  child of an SPI controller. The SPI controller must be configured for mode 3
+  (CPOL=1, CPHA=1) and the QSPI data lines (D0-D3) plus SCLK must be routed via
+  the GPIO matrix (see the board/shield overlay).
+
+compatible: "axs,axs15231b"
+
+include: spi-device.yaml
+
+properties:
+  width:
+    type: int
+    required: true
+    description: Width in pixels of the panel driven by the controller.
+
+  height:
+    type: int
+    required: true
+    description: Height in pixels of the panel driven by the controller.
+
+  reset-gpios:
+    type: phandle-array
+    required: false
+    description: |
+      Optional RESET pin. Not wired on the JC3248W535 / cobantab1a, where the
+      panel is reset via the SWRESET command. If present, the MCU pin should be
+      configured active low.
+
+  pwms:
+    type: phandle-array
+    required: false
+    description: |
+      Optional PWM spec for the backlight. The driver drives the duty in the
+      blanking on/off handlers (full on when unblanked, off when blanked).

@@ -1,6 +1,8 @@
 
 if INPUT
 
+rsource "Kconfig.axs15231b_touch"
+
 config ZMK_INPUT_MOCK
     bool "Input Mock"
     default y

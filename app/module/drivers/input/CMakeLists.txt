@@ -3,4 +3,5 @@
 
 zephyr_library_amend()
 
+zephyr_library_sources_ifdef(CONFIG_AXS15231B_TOUCH axs15231b_touch.c)
 zephyr_library_sources_ifdef(CONFIG_ZMK_INPUT_MOCK input_mock.c)

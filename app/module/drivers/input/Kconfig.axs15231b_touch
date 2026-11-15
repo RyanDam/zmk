@@ -1,0 +1,12 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+config AXS15231B_TOUCH
+	bool "AXS15231B integrated touch controller driver"
+	depends on I2C
+	select INPUT_TOUCH
+	help
+	  Enable driver for the capacitive touch controller integrated in the
+	  AXS15231B LCD chip (e.g. the 3.5" 320x480 panel on the Guition
+	  JC3248W535 / cobantab1a module). The controller is polled over I2C;
+	  no interrupt or reset line is required.

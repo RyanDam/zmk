@@ -3,6 +3,7 @@
 
 if DISPLAY
 
+rsource "Kconfig.axs15231b"
 rsource "Kconfig.il0323"
 
 endif # DISPLAY

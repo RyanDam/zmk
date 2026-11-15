@@ -1,0 +1,13 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+config AXS15231B
+	bool "AXS15231B QSPI LCD display controller driver"
+	depends on SPI
+	depends on SPI_EXTENDED_MODES
+	help
+	  Enable driver for the AXS15231B QSPI LCD controller (e.g. the 3.5"
+	  320x480 panel on the Guition JC3248W535 / cobantab1a module). The panel
+	  is driven over QSPI: the 32-bit command opcode and parameters are sent in
+	  1-wire mode and the pixel data in 4-wire (QIO) mode. SPI_EXTENDED_MODES is
+	  required for the 4-wire line mode.

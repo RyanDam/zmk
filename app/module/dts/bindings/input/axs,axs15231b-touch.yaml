@@ -1,0 +1,14 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  AXS15231B integrated capacitive touch controller.
+
+  The touch controller is integrated in the AXS15231B LCD chip and is
+  reachable over I2C at address 0x3B. The node is a child of an I2C
+  controller. No interrupt or reset line is required; the controller is
+  polled.
+
+compatible: "axs,axs15231b-touch"
+
+include: [i2c-device.yaml, touchscreen-common.yaml]
