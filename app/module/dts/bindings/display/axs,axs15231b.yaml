@@ -15,6 +15,18 @@ compatible: "axs,axs15231b"
 include: spi-device.yaml
 
 properties:
+  cs-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Chip select, driven by this driver rather than by the SPI core.
+
+      The panel needs the 32-bit header on one data line and the pixels that
+      follow it on four, all under a single CS assertion. Zephyr's ESP32 SPI
+      driver never reads SPI_HOLD_ON_CS, so a CS it owns would rise between the
+      header and its pixel data and the panel would never start the memory
+      write. Keep cs-gpios off the SPI bus node and put it here.
+
   width:
     type: int
     required: true
