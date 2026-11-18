@@ -113,6 +113,11 @@ if [ "$NO_BLOBS" = yes ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DCONFIG_BUILD_ONLY_NO_BLOBS=y"
 fi
 
+# The display needs SPI_LINES_QUAD to reach the wire; the pinned zephyr rev
+# drops it (see esp-port/patches/). Cheap and idempotent, so the display never
+# silently goes dark after a `west update` that skipped setup-dev.sh.
+sh esp-port/apply-zephyr-patches.sh
+
 echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
 # Note: in this west version -S means --snippet; the shield is passed as
 # -DSHIELD (same as esp-port/build_zmk_s3.sh).

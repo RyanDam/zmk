@@ -1,0 +1,9 @@
+# Post-image probe for 0001-spi-esp32-fix-quad-line-mode-truncated-to-16-bit.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Keep this list to lines only the *fixed* code contains.
+static inline uint8_t spi_esp32_get_line_mode(spi_operation_t operation)
