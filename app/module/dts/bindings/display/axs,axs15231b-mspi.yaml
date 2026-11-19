@@ -1,0 +1,27 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  AXS15231B QSPI LCD display controller, on an MSPI bus.
+
+  Each frame is one transaction: the 32-bit header - a write opcode and an LCD
+  command - goes out as the address phase on one data line, and the pixel data
+  that follows a 0x32 header goes out as the data phase on four lines, with the
+  controller holding chip select across both. That per-phase line width, under
+  one CE assertion, is the reason to use this bus for this panel. The
+  controller has to be in clock mode 3 (CPOL=1, CPHA=1).
+
+  The controller drives CE, from its own ce-gpios indexed by this node's reg,
+  so the node has no cs-gpios. The panel's clock is requested from
+  mspi-max-frequency, and the pixel phase's line width from mspi-io-mode - of
+  the values mspi-device.yaml allows, only MSPI_IO_MODE_SINGLE (1-1-1) and
+  MSPI_IO_MODE_QUAD_1_1_4 can drive this panel, because the header is decoded
+  from one line; the driver checks that at compile time.
+
+  The same panel on an SPI controller is described by axs,axs15231b.yaml; both
+  files use the same compatible, which devicetree allows because they ask for
+  different buses.
+
+compatible: "axs,axs15231b"
+
+include: ["mspi-device.yaml", "axs,axs15231b-common.yaml"]

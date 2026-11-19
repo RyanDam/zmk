@@ -3,19 +3,25 @@
 
 config AXS15231B
 	bool "AXS15231B QSPI LCD display controller driver"
-	depends on SPI
-	depends on SPI_EXTENDED_MODES
+	depends on DT_HAS_AXS_AXS15231B_ENABLED
+	depends on SPI_EXTENDED_MODES if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),spi)
+	select MSPI if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),mspi)
+	select SPI if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),spi)
 	help
 	  Enable driver for the AXS15231B QSPI LCD controller (e.g. the 3.5"
 	  320x480 panel on the Guition JC3248W535 / cobantab1a module). The panel
 	  is driven over QSPI: the 32-bit command opcode and parameters are sent in
-	  1-wire mode and the pixel data in 4-wire (QIO) mode. SPI_EXTENDED_MODES is
-	  required for the 4-wire line mode.
+	  1-wire mode and the pixel data in 4-wire (QIO) mode.
 
-	  The pinned Zephyr must let SPI_LINES_QUAD reach the controller: Zephyr
-	  before v4.5.0 truncates the operation flags and quietly sends every
-	  "quad" transfer on one line. esp-port/apply-zephyr-patches.sh carries the
-	  upstream fix for the workspace builds.
+	  Which bus the driver talks to comes from devicetree: the panel node under
+	  an SPI controller uses the SPI API and needs SPI_EXTENDED_MODES for the
+	  4-wire line mode; the node under an MSPI controller ("espressif,esp32-mspi",
+	  where the controller owns the CE line) uses the MSPI API instead.
+
+	  On the SPI path the pinned Zephyr must let SPI_LINES_QUAD reach the
+	  controller: Zephyr before v4.5.0 truncates the operation flags and quietly
+	  sends every "quad" transfer on one line. esp-port/apply-zephyr-patches.sh
+	  carries the upstream fix for the workspace builds.
 
 config AXS15231B_COLOR_TEST
 	bool "Paint color test bands on the panel at startup"
@@ -26,6 +32,27 @@ config AXS15231B_COLOR_TEST
 	  For display bring-up only: it answers whether pixel writes reach the panel
 	  GRAM and land at the addressed rows, without depending on LVGL. Say N for
 	  normal builds.
+
+config AXS15231B_FILL_TEST
+	bool "Run the three mapping-invariant fills on the panel at startup"
+	depends on AXS15231B
+	depends on !AXS15231B_COLOR_TEST
+	help
+	  For display bring-up only. After the controller is initialized, paint the
+	  whole panel with only 0xFFFF and 0x0000: everything on, a pixel
+	  checkerboard, then light/dark bars four rows tall. Those two words read
+	  the same under every permutation of the bits inside a pixel and under
+	  either byte order, so what appears on the glass says how many bytes make a
+	  pixel, how many pixels make a row, and where the panel put the rows -
+	  nothing else can account for it.
+
+	  The set runs twice: once with the pixel data on one data line and once on
+	  the bus's wide phase, which is what splits "nothing reaches the panel"
+	  from "only the quad phase is broken". On a thread of its own, repeating
+	  for as long as the board is powered, so a transition can be read whenever
+	  someone looks at the glass. Sends everything through the same write path
+	  the status screen uses, and holds further writes off while it runs. Say N
+	  for normal builds.
 
 config AXS15231B_PIXELS_1WIRE
 	bool "Send pixel data on a single data line (not QIO)"
@@ -53,6 +80,10 @@ config AXS15231B_WIRE_PROBE
 	  line at 4 MHz, or a routed pad from an idle one. Say N for normal
 	  builds.
 
+	  SPI path only: this instrument reads the SPI core's registers and has no
+	  MSPI equivalent, so the option does nothing when the panel node hangs off
+	  an MSPI controller.
+
 config AXS15231B_PAD_PROBE
 	bool "Sample the six panel pads while a slow pixel frame runs"
 	depends on AXS15231B
@@ -65,6 +96,8 @@ config AXS15231B_PAD_PROBE
 	  which line and on which clock. Needs a fine system tick
 	  (CONFIG_SYS_CLOCK_TICKS_PER_SEC of at least 100000) for the 10 us
 	  sampling to be real. Say N for normal builds.
+
+	  SPI path only: the frames it slows down are built on the SPI core.
 
 config AXS15231B_I2C_PROBE
 	bool "Ask the controller's touch block over I2C whether the chip is alive"
@@ -93,6 +126,9 @@ config AXS15231B_CS_PROBE
 	  on the controller side and unintelligible on the panel. Say N for normal
 	  builds.
 
+	  SPI path only: on the MSPI path the CE line belongs to the controller, not
+	  to this driver.
+
 config AXS15231B_GPIO_QSPI_PROBE
 	bool "Bit-bang the QSPI frames from GPIO instead of using the SPI block"
 	depends on AXS15231B
@@ -113,13 +149,17 @@ config AXS15231B_COMMAND_PROBE
 	bool "Probe the command path with commands that are visible on the glass"
 	depends on AXS15231B
 	help
-	  For display bring-up only. A few seconds after init, send six commands
-	  whose effect a person can see - DISPLAY_OFF/ON, MADCTL with the scan axes
-	  swapped and restored (rotates whatever is on the panel, no pixel writes
-	  needed), DISPLAY_INVERSION_ON/OFF - twice through, logging each one. This
-	  is the only way to tell whether the panel understands our commands at all:
-	  if nothing on the glass ever changes, no command has been understood.
-	  Say N for normal builds.
+	  For display bring-up only. On a thread of its own, repeating for as
+	  long as the board is powered, send the commands whose effect a person
+	  can see - MADCTL with the scan axes swapped and restored (turns the
+	  painted frame through 90 degrees), DISPLAY_INVERSION_ON/OFF (flips it) -
+	  twice through, logging each one. This is the only way to tell whether
+	  the panel understands our commands at all: if nothing on the glass ever
+	  changes, no command has been understood. DISPLAY_OFF is left out because
+	  a switched-off output and an all-black frame are the same black screen,
+	  and that ambiguity makes the run unreadable. It shares its thread with
+	  the fill test, because a work-queue item would land in the middle of a
+	  frame write. Say N for normal builds.
 
 config AXS15231B_QSPI_TOUCH_PROBE
 	bool "Poll the controller's touch block over QSPI and log the reply"
@@ -132,3 +172,6 @@ config AXS15231B_QSPI_TOUCH_PROBE
 	  0x3B), so the silence on this bus is the expected answer and says nothing
 	  about the panel. CONFIG_AXS15231B_I2C_PROBE asks the same question on the
 	  bus where the block actually lives. Say N for normal builds.
+
+	  SPI path only: the request is sent as a bare SPI payload with no command
+	  phase, which the MSPI frame format cannot express.

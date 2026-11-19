@@ -1,0 +1,47 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+title: AXS15231B QSPI LCD display controller, properties shared by both buses
+
+# A fragment, not a binding: no 'compatible', so nothing is registered for it
+# and it only contributes to the two bindings that include it.
+
+# display-controller.yaml matters beyond width/height: as of Zephyr 4.5 it
+# carries `class: display`, and the LVGL glue (zephyr/modules/lvgl/lvgl.c)
+# refuses to build unless the node behind zephyr,display has that class.
+include: [display-controller.yaml]
+
+properties:
+  cs-gpios:
+    type: phandle-array
+    required: false
+    description: |
+      Chip select, driven by this driver rather than by the bus core.
+
+      The panel needs a 32-bit header on one data line and the pixels that
+      follow a color header on four, all under one CS assertion, so the driver
+      cannot let the bus core raise the line between the two phases. On the SPI
+      path that means CS belongs to this driver: Zephyr's ESP32 SPI driver
+      never reads SPI_HOLD_ON_CS, so a CS it owns would rise after the header
+      and the panel would never start the memory write. Keep cs-gpios off the
+      SPI bus node and put it here.
+
+      On the MSPI path it is the other way round and this property is not read:
+      the controller holds CE across a whole transaction, which is the reason
+      to use that bus, and the line is listed in the controller node's
+      ce-gpios instead.
+
+  reset-gpios:
+    type: phandle-array
+    required: false
+    description: |
+      Optional RESET pin. Not wired on the JC3248W535 / cobantab1a, where the
+      panel is reset by the SWRESET command instead. If present, the MCU pin
+      should be configured active low.
+
+  pwms:
+    type: phandle-array
+    required: false
+    description: |
+      Optional PWM spec for the backlight. The driver drives the duty from the
+      blanking on/off handlers: fully on when unblanked, off when blanked.

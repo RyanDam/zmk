@@ -39,6 +39,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/mspi.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -52,6 +53,26 @@ LOG_MODULE_REGISTER(axs15231b, CONFIG_DISPLAY_LOG_LEVEL);
 
 #define AXS_HAS_BACKLIGHT DT_NODE_HAS_PROP(DT_INST(0, axs_axs15231b), pwms)
 
+/*
+ * Which controller this panel hangs off: an SPI bus or an MSPI bus. There is no
+ * Kconfig for it - the devicetree says where the chip is wired, so that is what
+ * gets read. Everything below that is specific to one of the two paths is
+ * written against these two symbols.
+ */
+#define AXS_ON_MSPI DT_NODE_HAS_COMPAT(DT_PARENT(DT_INST(0, axs_axs15231b)), espressif_esp32_mspi)
+
+/* The four bring-up instruments that reach into the SPI core, or drive the CS
+ * pad from this driver, describe the SPI path and have no MSPI counterpart. */
+#define AXS_SPI_PATH (!AXS_ON_MSPI)
+
+#if AXS_ON_MSPI && !IS_ENABLED(CONFIG_MSPI)
+#error "this axs,axs15231b node is a child of an MSPI controller: enable CONFIG_MSPI"
+#endif
+
+#if AXS_SPI_PATH && !IS_ENABLED(CONFIG_SPI_EXTENDED_MODES)
+#error "the pixel phase needs SPI_LINES_QUAD: enable CONFIG_SPI_EXTENDED_MODES"
+#endif
+
 /* QSPI opcodes (top byte of the 32-bit command word) */
 #define AXS_OPCODE_WRITE_CMD 0x02
 #define AXS_OPCODE_WRITE_COLOR 0x32
@@ -62,7 +83,39 @@ LOG_MODULE_REGISTER(axs15231b, CONFIG_DISPLAY_LOG_LEVEL);
  * this driver drives CS itself, so it claims a number outside that range to
  * keep the peripheral's CS lines unused.
  */
+#if AXS_SPI_PATH
 #define AXS_NO_HW_CS_SLAVE 3
+#endif
+
+#if AXS_ON_MSPI
+/*
+ * The frame header goes out as an ordinary 1-wire data phase, ahead of the data
+ * phase that carries its payload. That is how the reference driver frames it
+ * (esp_lcd_panel_io_spi's tx_param/tx_color set `length = lcd_cmd_bits` with
+ * `tx_buffer = &cmd`, and only the pixels get SPI_TRANS_MODE_QIO), and how the
+ * SPI path in this same file frames it - which is the framing this panel has
+ * visibly responded to.
+ *
+ * It is deliberately not the address phase. The ESP32 address phase is wider
+ * than the 16-bit command field (MSPI_ESP32_MAX_CMD_LEN in mspi_esp32.c), so it
+ * looked like the tidy way to carry [opcode][0x00][cmd][0x00] in a single
+ * transaction with the controller holding CS. The controller does clock it out,
+ * and every number readable in software says the transfer succeeded; the panel
+ * has never reacted to anything sent that way.
+ */
+#define AXS_MSPI_HEADER_BYTES 4
+
+/* Where the pixel phase goes, from the node's mspi-io-mode. The binding keeps
+ * its enum list in the order of enum mspi_io_mode so the index can be used as
+ * the value. */
+#define AXS_MSPI_PIXELS_IO_MODE                                                                          \
+    ((enum mspi_io_mode)DT_ENUM_IDX_OR(DT_INST(0, axs_axs15231b), mspi_io_mode, MSPI_IO_MODE_SINGLE))
+
+BUILD_ASSERT(AXS_MSPI_PIXELS_IO_MODE == MSPI_IO_MODE_SINGLE ||
+                     AXS_MSPI_PIXELS_IO_MODE == MSPI_IO_MODE_QUAD_1_1_4,
+             "mspi-io-mode: the panel decodes its 32-bit header on one line, so the pixel "
+             "phase can be 1-1-1 (SINGLE) or 1-1-4 (QUAD_1_1_4), nothing else");
+#endif
 
 /* LCD controller commands */
 #define AXS_CMD_SWRESET 0x01
@@ -83,8 +136,22 @@ LOG_MODULE_REGISTER(axs15231b, CONFIG_DISPLAY_LOG_LEVEL);
 #define AXS_DISPON_DELAY_MS 20
 
 struct axs15231b_cfg {
+#if AXS_ON_MSPI
+    const struct device *mspi_bus;
+    /*
+     * The controller identifies the device by the *address of this struct*, so
+     * it lives in the (static, long-lived) device configuration and not on a
+     * stack: mspi_esp32_transceive() refuses a transfer whose dev_id pointer is
+     * not the one mspi_esp32_dev_config() was last called with. Only dev_idx is
+     * meaningful here - the ESP32 driver picks the CE line from the controller
+     * node's ce-gpios via the configured ce_num, never from this struct.
+     */
+    struct mspi_dev_id mspi_dev_id;
+    struct mspi_dev_cfg mspi_dev_cfg;
+#else
     struct spi_dt_spec spi;
     struct gpio_dt_spec cs;
+#endif
     struct gpio_dt_spec reset;
 #if AXS_HAS_BACKLIGHT
     struct pwm_dt_spec backlight;
@@ -92,6 +159,7 @@ struct axs15231b_cfg {
 };
 
 struct axs15231b_data {
+#if AXS_SPI_PATH
     /*
      * The two line widths this panel needs, built once in axs15231b_init() and
      * reused from then on. The ESP32 SPI driver decides "same configuration?" by
@@ -100,18 +168,30 @@ struct axs15231b_data {
      */
     struct spi_config spi_cmd;    /* header (+ parameters), 1-wire */
     struct spi_config spi_pixels; /* pixel data, 4-wire (QIO) */
+#else
+    /*
+     * The line width the controller is currently set to. Switching between the
+     * 1-wire and 4-wire phases is a dev_config() call, and mspi_dev_config() is
+     * not free (it takes the controller's lock and reprograms it), so it is
+     * called only when the phase actually changes. MSPI_IO_MODE_MAX is not a
+     * mode any device can ask for, so it starts the cache empty (set in
+     * axs15231b_init(); a plain zero would look like MSPI_IO_MODE_SINGLE).
+     */
+    enum mspi_io_mode mspi_io_mode;
+#endif
 
     bool initialized;
-#if IS_ENABLED(CONFIG_AXS15231B_COLOR_TEST)
+#if IS_ENABLED(CONFIG_AXS15231B_COLOR_TEST) || IS_ENABLED(CONFIG_AXS15231B_FILL_TEST)
     /*
-     * Set once the color test has painted: further writes are dropped so the
-     * bands stay on the panel and can be inspected instead of being overdrawn
-     * by the status screen a few milliseconds later.
+     * Set once a bring-up paint has finished: further writes are dropped, so the
+     * pattern stays on the panel to be looked at instead of being overdrawn by
+     * the status screen a few milliseconds later.
      */
-    bool color_test_hold;
+    bool paint_hold;
 #endif
 };
 
+#if AXS_SPI_PATH
 /*
  * Chip select is driven by this driver, not handed to the SPI core.
  *
@@ -173,6 +253,116 @@ static int axs15231b_prime(const struct device *dev, const struct spi_config *sp
 
     return spi_transceive(cfg->spi.bus, spi_cfg, &set, NULL);
 }
+#endif /* AXS_SPI_PATH */
+
+#if AXS_ON_MSPI
+/*
+ * Put the controller in the line mode the next frame needs.
+ *
+ * The MSPI API carries no per-transfer line width: how many lines the command,
+ * address and data phases use is device configuration, set with
+ * mspi_dev_config(MSPI_DEVICE_CONFIG_IO_MODE). mspi_esp32.c picks the phase
+ * widths up from it at the start of every transfer, and changing it does not
+ * dirty the device-level registers, so switching between the parameter phase
+ * (1-1-1) and the pixel phase (1-1-4) costs one call and no reprogramming -
+ * still worth skipping when the mode is already right.
+ */
+static int axs15231b_mspi_io_mode(const struct device *dev, enum mspi_io_mode io_mode) {
+    const struct axs15231b_cfg *cfg = dev->config;
+    struct axs15231b_data *data = dev->data;
+    struct mspi_dev_cfg dev_cfg;
+
+    if (data->mspi_io_mode == io_mode) {
+        return 0;
+    }
+
+    dev_cfg = cfg->mspi_dev_cfg;
+    dev_cfg.io_mode = io_mode;
+
+    int err = mspi_dev_config(cfg->mspi_bus, &cfg->mspi_dev_id, MSPI_DEVICE_CONFIG_IO_MODE,
+                              &dev_cfg);
+    if (err) {
+        LOG_ERR("MSPI I/O mode %d failed: %d", io_mode, err);
+        return err;
+    }
+
+    data->mspi_io_mode = io_mode;
+
+    return 0;
+}
+
+/*
+ * One TX transfer on this bus: @a len bytes from @a buf, on the data lines
+ * @a io_mode selects, with CE released afterwards unless @a hold_ce says another
+ * transfer of the same frame follows. The line width is device configuration
+ * rather than a property of a transfer, so anything that changes width has to
+ * change mode with it - done here, where the two belong together.
+ */
+static int axs15231b_mspi_write(const struct device *dev, const void *buf, size_t len,
+                                enum mspi_io_mode io_mode, enum mspi_xfer_mode mode,
+                                bool hold_ce) {
+    const struct axs15231b_cfg *cfg = dev->config;
+    struct mspi_xfer_packet packet = {
+        .dir = MSPI_TX,
+        .num_bytes = (uint32_t)len,
+        .data_buf = (uint8_t *)buf,
+    };
+    struct mspi_xfer xfer = {
+        .xfer_mode = mode,
+        .hold_ce = hold_ce,
+        .packets = &packet,
+        .num_packet = 1,
+        /*
+         * The controller's default timeout (its transfer-timeout, 100 ms unless
+         * the node says otherwise) is sized for flash reads. A panel frame is
+         * much longer at a bring-up clock: a whole 320x480 RGB565 frame is
+         * 300 kB, over 2 s at 1 MHz. So ask for twice the transfer's own
+         * duration, in case the clock divider rounded down.
+         */
+        .timeout = (uint32_t)((2ULL * len * 8ULL * 1000ULL) / MAX(cfg->mspi_dev_cfg.freq, 1U)) +
+                   50U,
+    };
+    int err = axs15231b_mspi_io_mode(dev, io_mode);
+
+    if (err) {
+        return err;
+    }
+
+    return mspi_transceive(cfg->mspi_bus, &cfg->mspi_dev_id, &xfer);
+}
+
+/*
+ * One frame, framed the way the reference driver frames it: the 32-bit header
+ * [opcode][0x00][cmd][0x00] as a 1-wire data phase, then @a payload on @a
+ * io_mode's data lines, with CE held low across both so the panel reads them as
+ * one frame.
+ *
+ * Two transfers, because the line width changes between the header and its
+ * pixels and that change has to happen between them; hold_ce is what keeps the
+ * panel inside the frame while it does. A header with no payload is just the
+ * header with CE released - the parameter-less commands.
+ */
+static int axs15231b_mspi_frame(const struct device *dev, uint8_t opcode, uint8_t cmd,
+                                const void *payload, size_t payload_len,
+                                enum mspi_io_mode io_mode) {
+    /* Sent in memory order, so the opcode is the first byte on the wire. */
+    uint8_t header[AXS_MSPI_HEADER_BYTES] __aligned(4) = {opcode, 0x00, cmd, 0x00};
+    const bool has_payload = payload_len > 0;
+    int err;
+
+    err = axs15231b_mspi_write(dev, header, sizeof(header), MSPI_IO_MODE_SINGLE, MSPI_PIO,
+                               has_payload);
+    if (err) {
+        return err;
+    }
+
+    if (!has_payload) {
+        return 0;
+    }
+
+    return axs15231b_mspi_write(dev, payload, payload_len, io_mode, MSPI_DMA, false);
+}
+#endif /* AXS_ON_MSPI */
 
 /*
  * Send a 32-bit command opcode followed by optional parameters, all in 1-wire
@@ -180,6 +370,10 @@ static int axs15231b_prime(const struct device *dev, const struct spi_config *sp
  */
 static int axs15231b_tx_cmd(const struct device *dev, uint8_t cmd, const void *params,
                             size_t params_len) {
+#if AXS_ON_MSPI
+    return axs15231b_mspi_frame(dev, AXS_OPCODE_WRITE_CMD, cmd, params, params_len,
+                                 MSPI_IO_MODE_SINGLE);
+#else
     const struct axs15231b_cfg *cfg = dev->config;
     struct axs15231b_data *data = dev->data;
 
@@ -211,8 +405,10 @@ static int axs15231b_tx_cmd(const struct device *dev, uint8_t cmd, const void *p
     axs15231b_cs_release(dev);
 
     return err;
+#endif
 }
 
+#if AXS_SPI_PATH
 /*
  * One CS assertion, two transfers: the 32-bit header under @a hdr_cfg, then the
  * payload under @a px_cfg. Opcode 0x02 promises a payload on D0 only, 0x32 one
@@ -253,30 +449,46 @@ static int axs15231b_tx_frame(const struct device *dev, const struct spi_config 
 
     return err;
 }
+#endif /* AXS_SPI_PATH */
 
 /*
  * Stream a pixel frame the way the reference driver does: the 32-bit color
- * header in 1-wire mode, then the pixels in 4-wire (QIO) mode, under one CS
- * assertion. Opcode 0x32 is what tells the panel the data phase is on four
- * lines.
+ * header in 1-wire mode, then the pixels on the wide data phase, under one CS
+ * assertion. Opcode 0x32 is what tells the panel the pixels come on four
+ * lines; opcode 0x02 with @a wide false keeps the whole frame on D0, so the
+ * transfer is byte-for-byte what the wide pass sends apart from the width of
+ * the data phase.
  *
- * CONFIG_AXS15231B_PIXELS_1WIRE is the bring-up control run: header and pixels
- * both on D0 with the 0x02 opcode, so the transfer sequence is byte-for-byte
- * what the quad path sends apart from the width of the data phase. If bands
- * appear that way, the framing is right and only the quad phase is broken.
+ * @a wide is a parameter rather than only CONFIG_AXS15231B_PIXELS_1WIRE
+ * because the fill test runs both passes back to back in one boot: together
+ * they say whether anything at all reaches GRAM, and whether the fault is
+ * specific to the wide phase. On the MSPI bus a pass is one I/O-mode change; on
+ * SPI it is a different spi_config. Writes from LVGL take the mode from the
+ * Kconfig, in axs15231b_write().
  */
-static int axs15231b_tx_color(const struct device *dev, uint8_t cmd, const void *pixels,
-                              size_t pixels_len) {
+static int axs15231b_tx_color_wide(const struct device *dev, uint8_t cmd, const void *pixels,
+                                    size_t pixels_len, bool wide) {
+#if AXS_ON_MSPI
+    if (!wide) {
+        return axs15231b_mspi_frame(dev, AXS_OPCODE_WRITE_CMD, cmd, pixels, pixels_len,
+                                     MSPI_IO_MODE_SINGLE);
+    }
+
+    return axs15231b_mspi_frame(dev, AXS_OPCODE_WRITE_COLOR, cmd, pixels, pixels_len,
+                                 AXS_MSPI_PIXELS_IO_MODE);
+#else
     struct axs15231b_data *data = dev->data;
 
-#if IS_ENABLED(CONFIG_AXS15231B_PIXELS_1WIRE)
-    return axs15231b_tx_frame(dev, &data->spi_cmd, &data->spi_cmd, AXS_OPCODE_WRITE_CMD, cmd,
-                              pixels, pixels_len);
-#else
+    if (!wide) {
+        return axs15231b_tx_frame(dev, &data->spi_cmd, &data->spi_cmd, AXS_OPCODE_WRITE_CMD, cmd,
+                                  pixels, pixels_len);
+    }
+
     return axs15231b_tx_frame(dev, &data->spi_cmd, &data->spi_pixels, AXS_OPCODE_WRITE_COLOR, cmd,
                               pixels, pixels_len);
 #endif
 }
+
 #if AXS_HAS_BACKLIGHT
 static int axs15231b_set_backlight(const struct device *dev, bool on) {
     const struct axs15231b_cfg *cfg = dev->config;
@@ -421,16 +633,24 @@ static const struct axs15231b_init_cmd axs15231b_init_cmds[] = {
 static int axs15231b_color_test(const struct device *dev);
 #endif
 
-#if IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
-static void axs_cmd_probe_start(const struct device *dev);
+#if IS_ENABLED(CONFIG_AXS15231B_FILL_TEST)
+static int axs15231b_fill_test(const struct device *dev);
 #endif
 
-#if IS_ENABLED(CONFIG_AXS15231B_QSPI_TOUCH_PROBE)
+#if IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
+static void axs_cmd_probe_run(const struct device *dev);
+#endif
+
+#if IS_ENABLED(CONFIG_AXS15231B_FILL_TEST) || IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
+static void axs_bringup_start(const struct device *dev);
+#endif
+
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_QSPI_TOUCH_PROBE)
 static void axs_probe_start(const struct device *dev);
 #endif
 
 
-#if IS_ENABLED(CONFIG_AXS15231B_WIRE_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_WIRE_PROBE)
 /*
  * Wire probe (bring-up aid, ESP32-S3).
  *
@@ -538,7 +758,7 @@ static void axs15231b_wire_probe(const struct device *dev) {
 }
 #endif /* CONFIG_AXS15231B_WIRE_PROBE */
 
-#if IS_ENABLED(CONFIG_AXS15231B_PAD_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_PAD_PROBE)
 /*
  * Pad capture (bring-up aid, ESP32-S3).
  *
@@ -892,7 +1112,7 @@ static void axs15231b_i2c_probe(void) {
 }
 #endif /* CONFIG_AXS15231B_I2C_PROBE */
 
-#if IS_ENABLED(CONFIG_AXS15231B_CS_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_CS_PROBE)
 /*
  * Does the CS pad actually move?
  *
@@ -1478,15 +1698,15 @@ static int axs15231b_controller_init(const struct device *dev) {
 
     LOG_INF("AXS15231B initialized (%ux%u)", AXS_WIDTH, AXS_HEIGHT);
 
-#if IS_ENABLED(CONFIG_AXS15231B_WIRE_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_WIRE_PROBE)
     axs15231b_wire_probe(dev);
 #endif
 
-#if IS_ENABLED(CONFIG_AXS15231B_PAD_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_PAD_PROBE)
     axs15231b_pad_probe(dev);
 #endif
 
-#if IS_ENABLED(CONFIG_AXS15231B_CS_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_CS_PROBE)
     axs15231b_cs_pad_check(dev);
 #endif
 
@@ -1500,7 +1720,20 @@ static int axs15231b_controller_init(const struct device *dev) {
         LOG_ERR("Color test failed: %d", test_err);
         return test_err;
     }
-    data->color_test_hold = true;
+    data->paint_hold = true;
+#endif
+
+#if IS_ENABLED(CONFIG_AXS15231B_FILL_TEST) || IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
+    /*
+     * The fills and the visible commands have to run as one sequence on one
+     * thread: each fill holds the bus for seconds, so anything else touching it
+     * - a work item, or LVGL - would land in the middle of a frame. They repeat
+     * for as long as the board is powered, so whoever is watching the glass can
+     * look at any moment and catch a transition rather than the one ~35 s window
+     * after power-on. paint_hold keeps LVGL off the bus while they run.
+     */
+    data->paint_hold = true;
+    axs_bringup_start(dev);
 #endif
 
 #if IS_ENABLED(CONFIG_AXS15231B_GPIO_QSPI_PROBE)
@@ -1509,11 +1742,7 @@ static int axs15231b_controller_init(const struct device *dev) {
     axs15231b_gpio_qspi_probe();
 #endif
 
-#if IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
-    axs_cmd_probe_start(dev);
-#endif
-
-#if IS_ENABLED(CONFIG_AXS15231B_QSPI_TOUCH_PROBE)
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_QSPI_TOUCH_PROBE)
     axs_probe_start(dev);
 #endif
 
@@ -1521,20 +1750,15 @@ static int axs15231b_controller_init(const struct device *dev) {
     return 0;
 }
 
-static int axs15231b_write(const struct device *dev, const uint16_t x, const uint16_t y,
-                           const struct display_buffer_descriptor *desc, const void *buf) {
+static int axs15231b_write_wide(const struct device *dev, const uint16_t x, const uint16_t y,
+                                const struct display_buffer_descriptor *desc, const void *buf,
+                                bool wide) {
     struct axs15231b_data *data = dev->data;
     int err;
 
     if (!data->initialized) {
         return -ENODEV;
     }
-
-#if IS_ENABLED(CONFIG_AXS15231B_COLOR_TEST)
-    if (data->color_test_hold) {
-        return 0;
-    }
-#endif
 
     uint16_t x_end = x + desc->width - 1;
     uint16_t y_end = y + desc->height - 1;
@@ -1581,7 +1805,7 @@ static int axs15231b_write(const struct device *dev, const uint16_t x, const uin
     uint32_t total_bytes = (uint32_t)desc->width * desc->height * 2;
 
     if (desc->pitch == desc->width) {
-        return axs15231b_tx_color(dev, ram_cmd, buf, total_bytes);
+        return axs15231b_tx_color_wide(dev, ram_cmd, buf, total_bytes, wide);
     }
 
     uint8_t *tmp = k_malloc(total_bytes);
@@ -1596,9 +1820,28 @@ static int axs15231b_write(const struct device *dev, const uint16_t x, const uin
                (uint32_t)desc->width * 2);
     }
 
-    err = axs15231b_tx_color(dev, ram_cmd, tmp, total_bytes);
+    err = axs15231b_tx_color_wide(dev, ram_cmd, tmp, total_bytes, wide);
     k_free(tmp);
     return err;
+}
+
+static int axs15231b_write(const struct device *dev, const uint16_t x, const uint16_t y,
+                           const struct display_buffer_descriptor *desc, const void *buf) {
+    struct axs15231b_data *data = dev->data;
+
+#if IS_ENABLED(CONFIG_AXS15231B_COLOR_TEST) || IS_ENABLED(CONFIG_AXS15231B_FILL_TEST)
+    /*
+     * Only the display API is held off, never the write path itself: the fill
+     * test calls axs15231b_write_wide() directly, and a hold that covered that
+     * made every pattern "succeed" in milliseconds without sending anything.
+     */
+    if (data->paint_hold) {
+        return 0;
+    }
+#endif
+
+    return axs15231b_write_wide(dev, x, y, desc, buf,
+                                 !IS_ENABLED(CONFIG_AXS15231B_PIXELS_1WIRE));
 }
 
 #if IS_ENABLED(CONFIG_AXS15231B_COLOR_TEST)
@@ -1662,30 +1905,144 @@ static int axs15231b_color_test(const struct device *dev) {
 }
 #endif
 
+#if IS_ENABLED(CONFIG_AXS15231B_FILL_TEST)
+/*
+ * Bring-up aid: the three mapping-invariant fills, sent through the same write
+ * path LVGL uses, so a change of bus or framing can be judged by what appears on
+ * the glass. Enabled with CONFIG_AXS15231B_FILL_TEST.
+ *
+ * Only 0xFFFF and 0x0000 are ever sent. Those two words look the same under
+ * every permutation of the bits inside a pixel and under both byte orders, so
+ * no color mapping can spoil the result: what appears is a verdict on the
+ * framing alone - how many bytes make a pixel, how many pixels make a row, and
+ * where the panel starts a row.
+ *
+ *   (1) whole panel on                          the one thing every framing agrees on
+ *   (2) pixel-on / pixel-off checkerboard       diagonal skew means the bytes per
+ *                                               pixel or the pixels per row are wrong
+ *   (3) light and dark bars, 4 rows each        bars at the wrong height or slanted
+ *                                               say where the rows actually landed
+ *
+ * Each fill restarts the window (the strip at y = 0 sends RAMWR, the ones below
+ * it RAMWRC), and the fills are a few seconds apart so the transitions can be
+ * watched one at a time. The bars, the last of the three, are the frame the
+ * command probe then acts on.
+ *
+ * The set runs twice, the pixels on one data line and then on the bus's wide
+ * phase, because the two failures look the same from the console and different
+ * on the glass:
+ *
+ *   one line paints, wide does not  the framing and the commands are right,
+ *                                   only the wide phase is broken
+ *   neither paints                  nothing reaches GRAM; look at the command
+ *                                   probe's visible commands
+ *   both paint                      the wide phase is fine at this clock - the
+ *                                   remaining step is to raise the clock
+ */
+#define AXS_FILL_TEST_STRIP_ROWS 16
+#define AXS_FILL_TEST_BAR_ROWS 4
+#define AXS_FILL_TEST_HOLD_MS 2000
+
+static int axs15231b_fill_test(const struct device *dev) {
+    static uint8_t strip[AXS_WIDTH * AXS_FILL_TEST_STRIP_ROWS * 2] __aligned(4);
+    static const char *const pattern_names[] = {
+        "all on",
+        "checkerboard",
+        "4-row bars",
+    };
+    const bool wide_passes[] = {false, true};
+    struct display_buffer_descriptor desc = {
+        .buf_size = sizeof(strip),
+        .width = AXS_WIDTH,
+        .pitch = AXS_WIDTH,
+    };
+
+    for (size_t pass = 0; pass < ARRAY_SIZE(wide_passes); pass++) {
+        const bool wide = wide_passes[pass];
+        const char *pass_name = wide ? "wide" : "1-wire";
+
+        for (size_t pattern = 0; pattern < ARRAY_SIZE(pattern_names); pattern++) {
+            const bool checker = (pattern == 1);
+            const bool bars = (pattern == 2);
+            int64_t started = k_uptime_get();
+            int err;
+
+            for (uint16_t row = 0; row < (uint16_t)AXS_HEIGHT; row += AXS_FILL_TEST_STRIP_ROWS) {
+                const uint16_t rows = MIN((uint16_t)AXS_FILL_TEST_STRIP_ROWS,
+                                          (uint16_t)(AXS_HEIGHT - row));
+                size_t i = 0;
+
+                for (uint16_t y = 0; y < rows; y++) {
+                    const uint16_t screen_y = (uint16_t)(row + y);
+
+                    for (uint16_t x = 0; x < (uint16_t)AXS_WIDTH; x++, i += 2) {
+                        bool on = true;
+
+                        if (checker) {
+                            on = (((uint16_t)(screen_y + x)) & 1U) != 0U;
+                        } else if (bars) {
+                            on = (((uint16_t)(screen_y / AXS_FILL_TEST_BAR_ROWS)) & 1U) == 0U;
+                        }
+
+                        /* RGB565 goes out big-endian: high byte first. */
+                        strip[i] = on ? 0xFFU : 0x00U;
+                        strip[i + 1] = on ? 0xFFU : 0x00U;
+                    }
+                }
+
+                desc.height = rows;
+                err = axs15231b_write_wide(dev, 0, row, &desc, strip, wide);
+                if (err) {
+                    LOG_ERR("fill test %s/%s at row %u failed: %d", pass_name,
+                            pattern_names[pattern], row, err);
+                    return err;
+                }
+            }
+
+            /*
+             * The elapsed time is part of the measurement, not decoration: the
+             * panel is 320 x 480 x 2 bytes = 2457600 bits, so a full-panel fill
+             * cannot take less than that divided by (clock x data lines). At the
+             * 1 MHz this is brought up at that is ~2460 ms on one line and ~610 ms
+             * on four, and a fill that "succeeds" far below those numbers wrote
+             * nothing at all.
+             */
+            LOG_INF("fill test [%s pixels]: %s painted in %lld ms", pass_name,
+                    pattern_names[pattern], k_uptime_get() - started);
+            k_msleep(AXS_FILL_TEST_HOLD_MS);
+        }
+    }
+
+    return 0;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
 /*
  * Command probe (bring-up aid).
  *
  * The panel gives us no read-back, so the only way to find out whether a
  * command was ever understood is to pick commands whose effect is visible on the
- * glass and have a person watch. Six of them, in sequence, each logged as it
- * goes out, run twice:
+ * glass and have a person watch. It runs after the fills, so what it acts on is
+ * a frame this firmware painted:
  *
- *   DISPLAY_OFF / DISPLAY_ON          - blank the output, restore it
- *   MADCTL scan-axes on / off         - swap the scan axes: whatever is on the
- *                                       panel visibly turns through 90 degrees.
- *                                       This is the strongest of the six: it
- *                                       needs no pixel writes from us, so it
- *                                       acts on the vendor firmware's leftover
- *                                       frame, which we know is on the glass.
- *   DISPLAY_INVERSION_ON / _OFF       - invert the colors of the frame
+ *   MADCTL scan-axes on / off   - the bars turn through 90 degrees and back.
+ *                                 Needs no pixel writes of its own, so it also
+ *                                 works on a frame left there by another
+ *                                 firmware.
+ *   DISPLAY_INVERSION_ON / _OFF - flips the frame. On an all black screen this
+ *                                 is the whole point: black turning white is
+ *                                 something only a panel with its output
+ *                                 switched on can do, so it separates "the
+ *                                 pixels arrived as black" from "the output is
+ *                                 off", which look identical otherwise.
  *
- * If none of the six produces any visible change, no command of ours has ever
- * been understood and the search narrows to the framing of the 32-bit command
- * phase itself.
+ * If nothing on the glass changes at any point, no command of ours has been
+ * understood, and no amount of reading GRAM-dependent patterns back will tell
+ * us more.
  */
 #define AXS_CMD_PROBE_ROUNDS 2
-#define AXS_CMD_PROBE_PERIOD_MS 2000
+#define AXS_CMD_PROBE_PERIOD_MS 1500
 
 struct axs_cmd_probe_step {
     const char *what;
@@ -1697,52 +2054,118 @@ struct axs_cmd_probe_step {
 static const uint8_t axs_cmd_madctl_mv[] = {0x80}; /* swap X/Y scan axes */
 static const uint8_t axs_cmd_madctl_normal[] = {0x00};
 
+/*
+ * The three commands that stay here are the ones with an effect a person can
+ * see without any assumption about what is in GRAM. DISPLAY_OFF/ON is left out
+ * on purpose: a panel whose output is switched off and a panel whose GRAM is
+ * all black are the same black screen, so with DISPLAY_OFF first, nothing
+ * afterwards can be read. Inversion is the discriminator - it turns an all
+ * black frame white, which only a panel with its output on can do.
+ */
 static const struct axs_cmd_probe_step axs_cmd_probe_seq[] = {
-    {"DISPLAY_OFF", AXS_CMD_DISPOFF, NULL, 0},
-    {"DISPLAY_ON", AXS_CMD_DISPON, NULL, 0},
-    {"MADCTL scan axes swapped (image should rotate 90 deg)", AXS_CMD_MADCTL, axs_cmd_madctl_mv,
+    {"MADCTL scan axes swapped (the bars should rotate 90 deg)", AXS_CMD_MADCTL, axs_cmd_madctl_mv,
      sizeof(axs_cmd_madctl_mv)},
-    {"MADCTL scan axes normal (image should rotate back)", AXS_CMD_MADCTL, axs_cmd_madctl_normal,
+    {"MADCTL scan axes normal (the bars should rotate back)", AXS_CMD_MADCTL, axs_cmd_madctl_normal,
      sizeof(axs_cmd_madctl_normal)},
-    {"DISPLAY_INVERSION_ON (colors should invert)", 0x21, NULL, 0},
-    {"DISPLAY_INVERSION_OFF (colors should restore)", 0x20, NULL, 0},
+    {"DISPLAY_INVERSION_ON (a black screen here means the frame arrived as black, so this "
+     "should turn it WHITE)",
+     0x21, NULL, 0},
+    {"DISPLAY_INVERSION_OFF (should turn it back)", 0x20, NULL, 0},
 };
 
 #define AXS_CMD_PROBE_STEPS (ARRAY_SIZE(axs_cmd_probe_seq) * AXS_CMD_PROBE_ROUNDS)
 
-static const struct device *axs_cmd_probe_dev;
-static struct k_work_delayable axs_cmd_probe_work;
+/*
+ * Sent from the bring-up thread, after the fills, so it acts on a frame this
+ * firmware painted and can describe. A work-queue item would land in the middle
+ * of a fill (each of which holds the bus for seconds) and put a second command
+ * stream on a bus that has no arbitration for that.
+ */
+static void axs_cmd_probe_run(const struct device *dev) {
+    for (size_t round = 0; round < AXS_CMD_PROBE_ROUNDS; round++) {
+        for (size_t i = 0; i < ARRAY_SIZE(axs_cmd_probe_seq); i++) {
+            const struct axs_cmd_probe_step *entry = &axs_cmd_probe_seq[i];
+            uint16_t step = (uint16_t)(round * ARRAY_SIZE(axs_cmd_probe_seq) + i + 1);
+            int err = axs15231b_tx_cmd(dev, entry->cmd, entry->param, entry->param_len);
 
-static void axs_cmd_probe_work_fn(struct k_work *work) {
-    static uint16_t step;
-    const struct device *dev = axs_cmd_probe_dev;
-    const struct axs_cmd_probe_step *entry = &axs_cmd_probe_seq[step % ARRAY_SIZE(axs_cmd_probe_seq)];
-    int err;
+            LOG_INF("Command probe %u/%u: %s (err %d) - watch the screen", step,
+                    (uint16_t)AXS_CMD_PROBE_STEPS, entry->what, err);
 
-    if (step >= AXS_CMD_PROBE_STEPS) {
-        LOG_INF("Command probe finished (the panel should be back to its normal look)");
-        return;
+            k_msleep(AXS_CMD_PROBE_PERIOD_MS);
+        }
     }
 
-    step++;
-    err = axs15231b_tx_cmd(dev, entry->cmd, entry->param, entry->param_len);
-    LOG_INF("Command probe %u/%u: %s (err %d) - watch the screen", step, AXS_CMD_PROBE_STEPS,
-            entry->what, err);
-
-    k_work_reschedule(&axs_cmd_probe_work, K_MSEC(AXS_CMD_PROBE_PERIOD_MS));
-}
-
-static void axs_cmd_probe_start(const struct device *dev) {
-    axs_cmd_probe_dev = dev;
-    k_work_init_delayable(&axs_cmd_probe_work, axs_cmd_probe_work_fn);
-    k_work_schedule(&axs_cmd_probe_work, K_MSEC(6000));
-
-    LOG_INF("Command probe: %u commands, %u ms apart, starting in 6 s", AXS_CMD_PROBE_STEPS,
-            AXS_CMD_PROBE_PERIOD_MS);
+    LOG_INF("Command probe finished (the panel should be back to its normal look)");
 }
 #endif
 
-#if IS_ENABLED(CONFIG_AXS15231B_QSPI_TOUCH_PROBE)
+#if IS_ENABLED(CONFIG_AXS15231B_FILL_TEST) || IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
+/*
+ * Bring-up sequence (bring-up aid).
+ *
+ * The fills and the visible commands run back to back on their own thread,
+ * forever. Both halves need the bus to themselves for seconds at a time, so one
+ * thread owns the sequence - a work item would land in the middle of a fill -
+ * and the fills being repeated means the person reading the glass never has to
+ * be watching the one ~35 s window after power-on: any transition they arrive
+ * to is one of these.
+ *
+ * The order is deliberate. The fills ask "do pixels land?"; if they do not, the
+ * only question left is whether any command landed either, and the probe answers
+ * that with commands whose effect is visible without writing a pixel.
+ */
+#define AXS_BRINGUP_STACK_SIZE  4096
+#define AXS_BRINGUP_PRIORITY    7
+#define AXS_BRINGUP_GAP_MS      2000
+
+static struct k_thread axs_bringup_thread;
+K_THREAD_STACK_DEFINE(axs_bringup_stack, AXS_BRINGUP_STACK_SIZE);
+static const struct device *axs_bringup_dev;
+
+static void axs_bringup_cycle(void *unused1, void *unused2, void *unused3) {
+    const struct device *dev = axs_bringup_dev;
+    unsigned int cycle = 0;
+
+    for (;;) {
+        /*
+         * The backlight is enabled here, and every cycle after this, because
+         * nothing else reliably does it in time. ZMK's unblank (blanking_off,
+         * the only caller that turns the backlight on) is a later POST_KERNEL
+         * step, and a panel with an unlit backlight is indistinguishable from a
+         * dead one.
+         */
+        (void)axs15231b_set_backlight(dev, true);
+
+        cycle++;
+        LOG_INF("Bring-up cycle %u: painting", cycle);
+
+#if IS_ENABLED(CONFIG_AXS15231B_FILL_TEST)
+        int err = axs15231b_fill_test(dev);
+        if (err != 0) {
+            LOG_ERR("Fill test failed: %d", err);
+        }
+#endif
+
+#if IS_ENABLED(CONFIG_AXS15231B_COMMAND_PROBE)
+        LOG_INF("Fills done; the commands that follow must visibly move or invert that pattern");
+        axs_cmd_probe_run(dev);
+#endif
+
+        k_msleep(AXS_BRINGUP_GAP_MS);
+    }
+}
+
+static void axs_bringup_start(const struct device *dev) {
+    axs_bringup_dev = dev;
+
+    k_thread_create(&axs_bringup_thread, axs_bringup_stack,
+                    K_THREAD_STACK_SIZEOF(axs_bringup_stack), axs_bringup_cycle, NULL, NULL, NULL,
+                    AXS_BRINGUP_PRIORITY, 0, K_NO_WAIT);
+    k_thread_name_set(&axs_bringup_thread, "axs_bringup");
+}
+#endif
+
+#if AXS_SPI_PATH && IS_ENABLED(CONFIG_AXS15231B_QSPI_TOUCH_PROBE)
 /*
  * QSPI touch probe (bring-up aid).
  *
@@ -1896,6 +2319,42 @@ static int axs15231b_init(const struct device *dev) {
     struct axs15231b_data *data = dev->data;
     int err;
 
+#if AXS_ON_MSPI
+    if (!device_is_ready(cfg->mspi_bus)) {
+        LOG_ERR("MSPI bus not ready for AXS15231B");
+        return -ENODEV;
+    }
+
+    /*
+     * Ask the controller what it can do before claiming it: this is the
+     * documented order, it releases the controller's device-config lock for a
+     * caller that left one behind, and -EINVAL from here means the node asks
+     * for a channel the controller does not have.
+     */
+    err = mspi_get_channel_status(cfg->mspi_bus, 0);
+    if (err) {
+        LOG_ERR("MSPI channel 0 not usable for AXS15231B: %d", err);
+        return err;
+    }
+
+    data->mspi_io_mode = MSPI_IO_MODE_MAX;
+
+    /*
+     * Everything that does not change per frame, in one call: the clock the
+     * panel is rated for, the clock mode, and the CE line the controller drives
+     * for this device. mspi_esp32.c came up at the controller node's own
+     * clock-frequency, so the panel's rate has to be requested here.
+     */
+    err = mspi_dev_config(cfg->mspi_bus, &cfg->mspi_dev_id,
+                          MSPI_DEVICE_CONFIG_FREQUENCY | MSPI_DEVICE_CONFIG_CPP |
+                              MSPI_DEVICE_CONFIG_DATA_RATE | MSPI_DEVICE_CONFIG_CE_NUM |
+                              MSPI_DEVICE_CONFIG_CE_POL | MSPI_DEVICE_CONFIG_ENDIAN,
+                          &cfg->mspi_dev_cfg);
+    if (err) {
+        LOG_ERR("MSPI device configuration failed: %d", err);
+        return err;
+    }
+#else
     if (!spi_is_ready_dt(&cfg->spi)) {
         LOG_ERR("SPI bus not ready for AXS15231B");
         return -ENODEV;
@@ -1940,6 +2399,7 @@ static int axs15231b_init(const struct device *dev) {
         LOG_ERR("CS GPIO configure failed: %d", err);
         return err;
     }
+#endif
 
     if (cfg->reset.port != NULL) {
         if (!device_is_ready(cfg->reset.port)) {
@@ -1969,8 +2429,28 @@ static const struct display_driver_api axs15231b_api = {
 };
 
 static const struct axs15231b_cfg axs15231b_cfg = {
+#if AXS_ON_MSPI
+    .mspi_bus = DEVICE_DT_GET(DT_PARENT(DT_INST(0, axs_axs15231b))),
+    .mspi_dev_id = {
+        .dev_idx = DT_REG_ADDR(DT_INST(0, axs_axs15231b)),
+    },
+    .mspi_dev_cfg = {
+        /* The child's reg is also its CE index on this controller. */
+        .ce_num = DT_REG_ADDR(DT_INST(0, axs_axs15231b)),
+        .freq = DT_INST_PROP(0, mspi_max_frequency),
+        .io_mode = AXS_MSPI_PIXELS_IO_MODE,
+        .data_rate = MSPI_DATA_RATE_SINGLE,
+        .cpp = (enum mspi_cpp_mode)DT_ENUM_IDX_OR(DT_INST(0, axs_axs15231b), mspi_cpp_mode,
+                                                   MSPI_CPP_MODE_3),
+        /* Bytes always leave MSB first on this controller; the panel expects
+         * that, and it is what mspi_esp32.c does whatever this field says. */
+        .endian = MSPI_XFER_BIG_ENDIAN,
+        .ce_polarity = MSPI_CE_ACTIVE_LOW,
+    },
+#else
     .spi = SPI_DT_SPEC_GET(DT_INST(0, axs_axs15231b), SPI_OP_MODE_MASTER | SPI_WORD_SET(8)),
     .cs = GPIO_DT_SPEC_GET(DT_INST(0, axs_axs15231b), cs_gpios),
+#endif
     .reset = GPIO_DT_SPEC_GET_OR(DT_INST(0, axs_axs15231b), reset_gpios, {0}),
 #if AXS_HAS_BACKLIGHT
     .backlight = PWM_DT_SPEC_GET(DT_INST(0, axs_axs15231b)),

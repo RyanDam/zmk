@@ -2,52 +2,20 @@
 # SPDX-License-Identifier: MIT
 
 description: |
-  AXS15231B QSPI LCD display controller.
+  AXS15231B QSPI LCD display controller, on an SPI bus.
 
-  The panel is driven over QSPI: the 32-bit command opcode and parameters are
-  sent in 1-wire mode and the pixel data in 4-wire (QIO) mode. The node is a
-  child of an SPI controller. The SPI controller must be configured for mode 3
-  (CPOL=1, CPHA=1) and the QSPI data lines (D0-D3) plus SCLK must be routed via
-  the GPIO matrix (see the board/shield overlay).
+  Each frame starts with a 32-bit header - a write opcode and an LCD command -
+  on one data line, and a 0x32 header is followed by its pixel data on all four
+  lines, under a single chip select assertion. The controller has to be in
+  clock mode 3 (CPOL=1, CPHA=1) and has to be able to put four data lines on
+  the wire (CONFIG_SPI_EXTENDED_MODES); the QSPI lines plus SCLK have to be
+  routed to the panel, on the ESP32 through the GPIO matrix.
+
+  This panel can also sit on an MSPI controller; see axs,axs15231b-mspi.yaml.
+  Both files use the same compatible, which devicetree allows because they ask
+  for different buses: a node is matched against the binding for the bus its
+  parent is a controller of, so exactly one of the two applies.
 
 compatible: "axs,axs15231b"
 
-include: spi-device.yaml
-
-properties:
-  cs-gpios:
-    type: phandle-array
-    required: true
-    description: |
-      Chip select, driven by this driver rather than by the SPI core.
-
-      The panel needs the 32-bit header on one data line and the pixels that
-      follow it on four, all under a single CS assertion. Zephyr's ESP32 SPI
-      driver never reads SPI_HOLD_ON_CS, so a CS it owns would rise between the
-      header and its pixel data and the panel would never start the memory
-      write. Keep cs-gpios off the SPI bus node and put it here.
-
-  width:
-    type: int
-    required: true
-    description: Width in pixels of the panel driven by the controller.
-
-  height:
-    type: int
-    required: true
-    description: Height in pixels of the panel driven by the controller.
-
-  reset-gpios:
-    type: phandle-array
-    required: false
-    description: |
-      Optional RESET pin. Not wired on the JC3248W535 / cobantab1a, where the
-      panel is reset via the SWRESET command. If present, the MCU pin should be
-      configured active low.
-
-  pwms:
-    type: phandle-array
-    required: false
-    description: |
-      Optional PWM spec for the backlight. The driver drives the duty in the
-      blanking on/off handlers (full on when unblanked, off when blanked).
+include: [spi-device.yaml, "axs,axs15231b-common.yaml"]
