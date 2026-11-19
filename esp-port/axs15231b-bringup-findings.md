@@ -524,17 +524,62 @@ branch rather than a dirty west working tree:
 | --- | --- | --- |
 | `zmk` | `feat/cobantab1a` | the v4.5.0 pin, the patch set + re-applier, the 4.5 porting fixes, the MSPI path in the panel driver, the binding split, the bring-up instruments |
 | `zmk-config` | `feat/cobantab1a` | the Coban Tab overlay on the MSPI bus, the bring-up `.conf`, the pad `.conf` cleanups |
-| `zephyr/` | `v4.5.0+coban-fixes` | `v4.5.0` with one commit per carried zephyr patch (0002, 0004, 0005, 0006) |
-| `modules/hal/espressif/` | **nothing yet** | patch 0003 (the HAL half of the MSPI port) is still only a working-tree change. It needs the same treatment before `west.yml` can point at branches instead of tags |
+| `zephyr/` | `v4.5.0+coban-fixes` | `v4.5.0` + **18 commits**: one per carried zephyr patch (0002, 0004, 0005, 0006) plus the other 14 commits of the old fork's delta (0007-0012). **Pushed to `RyanDam/zephyr`**, tracking set |
+| `modules/hal/espressif/` | **nothing yet** | patch 0003 (the HAL half of the MSPI port) is still only a working-tree change: no branch, and `west.yml` has no remote that can take one |
 
 **The pin.** `app/west.yml` moved off the `cobanfirmware` fork's `v4.4.1+zmk-fixes` to upstream
 `zephyrproject-rtos/zephyr` at tag **`v4.5.0`**. No fork is needed for the pin itself: everything ZMK took
 from the old fork is either upstream now (the quad line-mode truncation, `24cc93286`, which is why patch 0001
 was retired — see `esp-port/patches/RETIRED`) or carried as a numbered patch. That is what makes
-`v4.5.0+coban-fixes` a plain stack of commits on a release tag rather than a rebase, and it is what
-`west.yml` can point at as soon as there is a fork remote to push it to. Until then the patches go on top of
-the tag via `esp-port/apply-zephyr-patches.sh`, which is idempotent, verifies each patch by content
-(`.verify`) instead of by `patch(1)` exit codes, and fails loudly on drift.
+`v4.5.0+coban-fixes` a plain stack of commits on a release tag rather than a rebase. The patches go on top of
+the tag via `esp-port/apply-zephyr-patches.sh`: idempotent, verifying each patch by content (`.verify`) rather
+than by `patch(1)` exit codes, and failing loudly on drift.
+
+`west.yml` could now point at that branch instead of the tag + patches: the `cobanfirmware` remote (RyanDam) is
+already declared in the manifest, so the change is two lines — `remote: cobanfirmware`, `revision:
+v4.5.0+coban-fixes`. **Not done deliberately.** The patches stay the source of truth, because the branch and the
+patches are two copies of one thing, and the patches are the copy this repo can verify by content
+(`.verify`) and apply to whatever the pin says next; a branch pin makes the whole build depend on a fork that
+CI cannot see. Switch it if `west update` ever has to carry these for someone else, and keep the patch set
+either way — the applier verifies and no-ops on a tree that already has them.
+
+Two facts from the push, because they were both surprises:
+
+- The west clone is `clone-depth: 1`, and the expected refusal never came: **a shallow push is accepted when
+  the receiving repo already has the base**. `RyanDam/zephyr` is a fork of `zephyrproject-rtos/zephyr` and
+  shares its object store, so `v4.5.0` was there even though the fork has no `v4.5.0` *ref*
+  (`git ls-remote --tags fork 'v4.5.0*'` is empty). So no `git fetch --unshallow` — a ~1 GB download — was
+  needed. Try the push before unshallowing.
+- The checkout also still carries a `tmp-coban-fixes` branch pointing at the `v4.5.0` tag. It holds no work;
+  `git -C zephyr branch -d tmp-coban-fixes` removes it.
+
+**The old delta, accounted for.** `v4.4.1+zmk-fixes` was upstream `v4.4-branch` + 20 commits — *not* the 409
+a compare against the `v4.4.1` tag reports, which is the trap §12.6 is about. All 20 are now settled:
+
+| | |
+| --- | --- |
+| 4 carried before this pass | `aa2128d00a02` → 0005, `1d19f7290138` → 0004, and `75d4e3c07623` + `8789b5b8cb5c` → 0006 |
+| 14 carried now | 0007-0012, cherry-picked with `git cherry-pick -x` so the branch keeps the original authors and the `(cherry picked from …)` trailers |
+| 1 needs nothing | `2af146e92293` `ls0xx: fix releasing SPI bus too soon` — cherry-picks onto 4.5 **empty**, i.e. already upstream. Recorded as a note in `esp-port/patches/RETIRED` so nobody re-carries it |
+| 1 is a merge commit | `2f825edfb3bf` merging `upstream/v4.4-branch` — no content to carry |
+
+**Is the patch set really the same as the branch?** Checked, not assumed, by building the patch set onto a
+clean checkout and diffing the trees:
+
+```sh
+SB=$(mktemp -d) && mkdir -p "$SB/esp-port" "$SB/modules/hal"
+cp -R esp-port/patches "$SB/esp-port/patches" && cp esp-port/apply-zephyr-patches.sh "$SB/esp-port/"
+git -C zephyr worktree add --detach "$SB/zephyr" v4.5.0
+git -C modules/hal/espressif worktree add --detach "$SB/modules/hal/espressif" HEAD
+( cd "$SB" && sh esp-port/apply-zephyr-patches.sh )
+git -C "$SB/zephyr" add -A && git -C "$SB/zephyr" commit -qm patched
+git -C "$SB/zephyr" diff --stat HEAD v4.5.0+coban-fixes     # empty == identical
+```
+
+`v4.5.0` + the 11 patches is byte-for-byte the 18-commit branch, and `modules/hal/espressif` + 0003 matches
+the working-tree change. Run it after editing any patch. Note the `git add -A`: a plain `git diff` compares
+tracked files only and silently omits every file a patch *adds*, which is most of this set — that comparison
+looks like a pass and means nothing.
 
 **The patch set** (`esp-port/patches/`):
 
@@ -545,6 +590,12 @@ the tag via `esp-port/apply-zephyr-patches.sh`, which is idempotent, verifies ea
 | `0004-zephyr-post-boards-shields-extension` | `zephyr` | restores the `post_boards_shields` CMake hook ZMK uses to turn a config-repo `.keymap` into a devicetree overlay. Fork-only (was `f50faa7bcb38`); Zephyr 4.5 deleted the include |
 | `0005-soc-nordic-optional-binding-header-validation` | `zephyr` | makes Nordic's `validate_binding_headers.c` compilable-or-skippable: it `-include`s every `dt-bindings` header the tree pulled in, and ZMK's single-letter HID key macros collide with CMSIS register bitfield names. Fork-only (was `ac2504c916f1`) |
 | `0006-usbd-cdc-acm-suspend-resume-and-irq-loop` | `zephyr` | our own CDC-ACM fixes, re-authored against 4.5's rewritten TX path. Replaces the two fork commits that did not cherry-pick |
+| `0007-boards-boardsource-blok-rp2040` | `zephyr` | the BoardSource blok RP2040 board, its flash controller, and the `full_name` property the 4.4+ board schema wants (`596794e8d4`, `3341e4c0c3`, `da9b77b04d`). The whole `boards/boardsource/` directory is absent from stock 4.5 |
+| `0008-soc-arm-stm32-rom-bootloader` | `zephyr` | STM32 ROM-bootloader support: the soc side plus the `f0`, `f411` and STM32WB bootloader devicetree, and boot-mode retention on the Nucleo WB55RG (five commits). `grep rom_bootloader soc/st/stm32` finds nothing in 4.5 |
+| `0009-retention-skip-mutex-pre-kernel` | `zephyr` | retention took its mutex unconditionally, which is wrong when a board checks boot mode during init, before the kernel is ready (`0728577485`) |
+| `0010-boards-seeed-xiao-ble-uf2-runner` | `zephyr` | `xiao_ble`: UF2 runner default, ID match removed (`6db6476803`). The board exists upstream; the runner choice does not |
+| `0011-drivers-retained-mem-bbram` | `zephyr` | the `retained_mem` BBRAM driver and its two tests (`4fcd7d869c`, `2d112e45a0`, `0e3a8abf42`). The subsystem is upstream in 4.5, this driver is not |
+| `0012-pm-restore-always-defined-slots` | `zephyr` | reverts upstream's `pm: only define slots if CONFIG_PM is enabled`, so `Z_PM_DEVICE_DEFINE_SLOT` is defined whatever CONFIG_PM says (`965f68f282`). **The one patch here that touches a header every ZMK build includes** — if a pad build breaks in `pm/device.h`, look here first |
 
 **Verified, do not re-litigate:** the quad line-mode fix is genuinely in the tree, because v4.5.0 contains
 it. `spi_esp32_get_line_mode()` takes the full `spi_operation_t` and `SPI_LINES_QUAD` survives to the
@@ -562,6 +613,12 @@ cat "$(ls /dev/cu.usbmodem* | head -1)" # console at 115200
 The port name is **not stable** across replugs (`usbmodem834401`, `usbmodem83101` both seen) — list it, do
 not hardcode it. **Power-cycling the board (unplug/replug USB) is the only thing that clears the panel's
 GRAM**; resets and reflashes do not.
+
+`./build.sh all` is `pad12b pad16a tab1a c3 s3`. The two fixture targets (`c3`, `s3`) keep Bluetooth on, so
+they need the proprietary Espressif blobs, and **the blobs are pinned to the hal_espressif revision**: move
+the Zephyr or HAL pin and CMake configure dies with `Blob for path …/libble_app.a isn't valid`. Fix with
+`west blobs fetch hal_espressif` (or just re-run `setup-dev.sh`, which does it as step 7). `tab1a` gets away
+without them only because the bring-up config has `CONFIG_ZMK_BLE=n`.
 
 The bring-up instrument repeats forever on the `axs_bringup` thread, one cycle ≈ 35 s, so there is no window
 to be early for:
@@ -594,7 +651,7 @@ caused by (rows 22, 27).
 - [ ] Restore `CONFIG_ZMK_BLE=y` and drop the `CONFIG_SYS_CLOCK_TICKS_PER_SEC=250000` override.
 - [ ] Raise `mspi-max-frequency` in steps (1 → 8 → 20 → 40 MHz), re-running the fill test at each and checking the measured milliseconds against the floor for that clock. The reference proves 40 MHz on these pads through the GPIO matrix.
 - [ ] Try `CONFIG_MSPI_ESP32_PSRAM_DMA=y` once the framebuffer lives in PSRAM, so a full frame does not bounce through a copy each write.
-- [ ] Commit patch 0003 on a branch in `modules/hal/espressif` the way the zephyr patches are now committed, so both halves of the MSPI port are branch-pinnable.
+- [ ] Commit patch 0003 on a branch in `modules/hal/espressif`, the way the zephyr side is now committed (branch `v4.5.0+coban-fixes` on `RyanDam/zephyr`, §11). Needs a fork of `zephyrproject-rtos/hal_espressif` under RyanDam and a new `remotes:` entry in `app/west.yml` — the local clone's only remote is `upstream`, so unlike the zephyr side this one is blocked on a `gh repo fork` as well as the work. Until then, `west update` wipes the MSPI HAL sources and the applier has to put them back.
 - [ ] Fix or drop `axs15231b_prime()` (currently an unused-function warning).
 - [ ] LVGL pixel format: `PIXEL_FORMAT_RGB_565X` does **not** exist in this Zephyr/LVGL (the pin is the ZMK LVGL fork at 9.5.0, which also lacks `LV_COLOR_FORMAT_DEFAULT`) — byte order has to be settled in the driver or the flush, not assumed.
 - [ ] Try `CONFIG_LV_Z_AREA_X_ALIGNMENT_WIDTH=2` / `_Y_=2` if dirty-region flushes ever come out smeared or shifted.
@@ -639,6 +696,28 @@ Stated plainly, so the next person does not repeat it:
    unreadable because the command probe opened with `DISPLAY_OFF`: from then on, an output switched off and a
    frame that is all black are the same black screen (row 21). Pick the commands whose effects stay
    distinguishable whatever is in GRAM — inversion is worth exactly that much.
+9. **A checker that looks at content can approve an incomplete artifact.** The first version of the carried
+   patch set (0002-0012) passed every `.verify` probe on a clean `v4.5.0` tree and still produced a broken
+   board. Reason: git records an added **empty** file as `new file mode` plus an `index 0000000..e69de29` line
+   and nothing else — no `---`/`+++` pair, no `@@` hunk — so `patch(1)` had no work to do and created nothing,
+   and `patch_files()`, which reads `+++ b/` lines, never even saw the path.
+   `boards/boardsource/blok/board.cmake` was simply absent, and no content probe could have asked about it.
+   Two rules come out of this. First, **verify a patch set by diffing trees, not by running its own checker**
+   (§11 has the recipe). Second, when using the recipe: `git diff` compares tracked files only, so it silently
+   omits every file a patch *adds* — most of this set — and a comparison built on it looks like a pass and
+   means nothing; commit the result first, or use `git add -A`.
+10. **Absence of content and absence of a container look identical to `grep`.** The fix for the above is not a
+    better string list: it is `files_present()`, a separate check that every file a patch declares exists.
+    Existence and content are different facts and only ever get conflated when one function has to answer both.
+11. **A pin is only a drop-in if its delta moves with it.** I moved the workspace off `v4.4.1+zmk-fixes` onto
+    upstream `v4.5.0` and called it clean after carrying the four commits the display happened to need. The old
+    branch sat 20 commits over its base, 15 of them still absent from the new pin, and nothing in the tree, the
+    manifest or this document said so — a board that came to depend on one of them would have met a silently
+    different Zephyr with no trace of the difference. A pin move is not finished when the builds pass; it is
+    finished when the delta has been listed commit by commit and every entry is carried, shown to be already
+    upstream, or recorded as deliberately dropped. Getting the true list means diffing the fork against the
+    branch it was cut from, never against the nearest tag — §12.6 all over again, and I walked into it twice
+    in one week.
 
 ---
 
@@ -777,3 +856,28 @@ node asks for (row 22); the data phase really changes width per phase (same row)
 are correct (rows 1, 27); the driver's framing matches the reference in both forms it could take (row 26); and
 the panel's GRAM still holds whatever some other firmware wrote, which is why "the screen changed" is only
 ever evidence when the change is one we caused. Every one of those was a live hypothesis three days ago.
+
+### The pin is now actually a drop-in (same day, after the checkpoint above)
+
+The first version of `v4.5.0+coban-fixes` carried only 4 of the old fork's 20 commits, which makes "we moved
+off the fork" a claim about a pin that was quietly not equivalent — see §12.11. All 20 are now settled (§11):
+18 commits on `v4.5.0` (4 + 14, cherry-picked with `-x`), one that needs nothing because 4.5 already has it
+(`ls0xx`), one merge commit. The patch set reproduces those 18 exactly, verified by tree diff against a clean
+checkout, not by the applier's own probes — which had passed on a set that was missing a whole file (§12.9,
+§12.10).
+
+Every target builds against it, from `./build.sh all` (pristine, same tree as above):
+
+| target | board | result | flash | RAM |
+| --- | --- | --- | --- | --- |
+| `pad12b` | `nice_nano@1` + cobanpad12b | ✅ `.uf2` | 240 236 B / 792 KB (29.6%) | 94 468 B / 256 KB (36.0%) |
+| `pad16a` | `nice_nano@1` + cobanpad16a | ✅ `.uf2` | 258 412 B / 792 KB (31.9%) | 96 844 B / 256 KB (36.9%) |
+| `tab1a` | `cobantab1a/esp32s3/procpu` | ✅ `zmk.bin` | 543 684 B | dram0 101 648 B / 399 KB (25.5%) |
+| `c3` | `esp32c3_supermini/esp32c3/zmk` + matrix fixture | ✅ `zmk.bin` | 414 868 B | dram0 154 672 B / 379 KB (40.9%) |
+| `s3` | `esp32s3_supermini/esp32s3/procpu` + matrix fixture | ✅ `zmk.bin` | 416 628 B | dram0 150 320 B / 399 KB (37.7%) |
+
+Builds, not boots: nothing here was flashed except what §5–§9 already recorded, and `tab1a`'s figure is the
+BLE-off bring-up config. The two carries worth watching are `0012`, which reverts a `pm/device.h` change that
+touches every ZMK build, and `0009` — both are in the pads above, and neither is exercised at runtime by
+anything on this bench. `c3` and `s3` initially failed on stale Espressif blobs left by the pin move
+(§11 runbook), not on anything in the delta.
