@@ -1,0 +1,34 @@
+CARRIED PATCH - fork content, not ours, and not upstream. Provenance and why,
+for whoever reads this next.
+
+Source: RyanDam/zephyr branch `v4.4.1+zmk-fixes` (the pin this workspace used
+before moving to upstream v4.5.0). The commits below were cherry-picked onto
+the v4.5.0 tag with `git cherry-pick -x`, so they are also history on the
+`v4.5.0+coban-fixes` branch in the west checkout - this file is the copy that
+survives a `west update`, which throws away the branch.
+
+Commits, oldest first:
+  f3ec35d5bc  Peter Johanson <peter@peterjohanson.com>  2025-11-01
+            boards: seeed: xiao_ble: UF2 runner default, remove ID match
+Why it is carried rather than dropped: the old pin had it and this one would
+not, so a board that comes to depend on it would silently get a different
+Zephyr. The pin is meant to be a drop-in for the branch it replaced, so the
+whole delta moves with it rather than the parts today's boards happen to use.
+
+diff --git a/boards/seeed/xiao_ble/board.cmake b/boards/seeed/xiao_ble/board.cmake
+index 30caef5834..0b5b54a0c6 100644
+--- a/boards/seeed/xiao_ble/board.cmake
++++ b/boards/seeed/xiao_ble/board.cmake
+@@ -3,11 +3,10 @@
+ board_runner_args(nrfjprog "--nrf-family=NRF52")
+ board_runner_args(jlink "--device=nRF52840_xxAA" "--speed=4000")
+ board_runner_args(pyocd "--target=nrf52840" "--frequency=4000000")
+-board_runner_args(uf2 "--board-id=Seeed_XIAO_nRF52840_Sense")
++include(${ZEPHYR_BASE}/boards/common/uf2.board.cmake)
+ include(${ZEPHYR_BASE}/boards/common/nrfutil.board.cmake)
+ include(${ZEPHYR_BASE}/boards/common/nrfjprog.board.cmake)
+ include(${ZEPHYR_BASE}/boards/common/jlink.board.cmake)
+ include(${ZEPHYR_BASE}/boards/common/pyocd.board.cmake)
+ include(${ZEPHYR_BASE}/boards/common/openocd.board.cmake)
+-include(${ZEPHYR_BASE}/boards/common/uf2.board.cmake)
+ include(${ZEPHYR_BASE}/boards/common/blackmagicprobe.board.cmake)

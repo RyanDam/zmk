@@ -1,0 +1,15 @@
+# Post-image probe for 0009-retention-skip-mutex-pre-kernel.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Written by hand, because no added line works for this patch (see the two
+# cases below). Every line was checked against the v4.5.0 tag and against
+# v4.5.0+coban-fixes:
+#   - a plain line is present on the branch; if it is also in the tag it is only
+#     an anchor, there to fail if the file is renamed or restructured;
+#   - a line starting with '!' is a string the fix REMOVES and must be gone; it
+#     was checked to exist in the tag, so its absence is real evidence.
+if (!k_is_pre_kernel()) {

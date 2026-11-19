@@ -1,0 +1,13 @@
+# Post-image probe for 0011-drivers-retained-mem-bbram.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Every line below was checked to be absent from the v4.5.0 tag and present on
+# v4.5.0+coban-fixes, so it is evidence of the fix and not of a stock line.
+zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_ZEPHYR_BBRAM retained_mem_zephyr_bbram.c)
+menuconfig RETAINED_MEM_ZEPHYR_BBRAM
+CONFIG_BBRAM=y
+retainedmemtestdevice = &retainedmem0;

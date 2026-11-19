@@ -1,0 +1,284 @@
+CARRIED PATCH - fork content, not ours, and not upstream. Provenance and why,
+for whoever reads this next.
+
+Source: RyanDam/zephyr branch `v4.4.1+zmk-fixes` (the pin this workspace used
+before moving to upstream v4.5.0). The commits below were cherry-picked onto
+the v4.5.0 tag with `git cherry-pick -x`, so they are also history on the
+`v4.5.0+coban-fixes` branch in the west checkout - this file is the copy that
+survives a `west update`, which throws away the branch.
+
+Commits, oldest first:
+  230e866b26  Peter Johanson <peter@peterjohanson.com>  2024-12-02
+            arm: stm32: Add DTS describing ROM bootloader for f0
+  ef4d9f17b1  Peter Johanson <peter@peterjohanson.com>  2025-09-30
+            dts: arm: st: Add STM32WB bootloader information
+  27162c04a0  Peter Johanson <peter@peterjohanson.com>  2025-09-30
+            boards: st: Add boot mode retention support to Nucleo WB55RG board
+  2905c997fa  Peter Johanson <peter@peterjohanson.com>  2025-10-01
+            arm: stm32: Add DTS describing ROM bootloader for f411
+  5836e4e27a  Peter Johanson <peter@peterjohanson.com>  2024-12-02
+            soc: arm: stm32: Add ROM bootloader support
+Why it is carried rather than dropped: the old pin had it and this one would
+not, so a board that comes to depend on it would silently get a different
+Zephyr. The pin is meant to be a drop-in for the branch it replaced, so the
+whole delta moves with it rather than the parts today's boards happen to use.
+
+diff --git a/dts/arm/st/f0/stm32f072.dtsi b/dts/arm/st/f0/stm32f072.dtsi
+index c495d9af24..74dbbbfa30 100644
+--- a/dts/arm/st/f0/stm32f072.dtsi
++++ b/dts/arm/st/f0/stm32f072.dtsi
+@@ -10,6 +10,12 @@
+ 	soc {
+ 		compatible = "st,stm32f072", "st,stm32f0", "simple-bus";
+ 
++		rom_bootloader: rom_bootloader@1fffc800 {
++			compatible = "st,stm32-bootloader";
++			reg = <0x1fffc800 DT_SIZE_K(12)>;
++			status = "okay";
++		};
++
+ 		can1: can@40006400 {
+ 			compatible = "st,stm32-bxcan";
+ 			reg = <0x40006400 0x400>;
+diff --git a/dts/arm/st/wb/stm32wb.dtsi b/dts/arm/st/wb/stm32wb.dtsi
+index 98f32f5b3c..2f75e37173 100644
+--- a/dts/arm/st/wb/stm32wb.dtsi
++++ b/dts/arm/st/wb/stm32wb.dtsi
+@@ -146,6 +146,12 @@
+ 	};
+ 
+ 	soc {
++		rom_bootloader: rom_bootloader@1fff0000 {
++			compatible = "st,stm32-bootloader";
++			reg = <0x1fff0000 DT_SIZE_K(28)>;
++			status = "okay";
++		};
++
+ 		flash: flash-controller@58004000 {
+ 			compatible = "st,stm32-flash-controller", "st,stm32wb-flash-controller";
+ 			reg = <0x58004000 0x400>;
+diff --git a/boards/st/nucleo_wb55rg/nucleo_wb55rg.dts b/boards/st/nucleo_wb55rg/nucleo_wb55rg.dts
+index bf86fd5005..d067e03a06 100644
+--- a/boards/st/nucleo_wb55rg/nucleo_wb55rg.dts
++++ b/boards/st/nucleo_wb55rg/nucleo_wb55rg.dts
+@@ -10,12 +10,18 @@
+ #include "arduino_r3_connector.dtsi"
+ #include <zephyr/dt-bindings/input/input-event-codes.h>
+ 
++
++&sram0 {
++	reg = <0x20000000 (DT_SIZE_K(192) - 4)>;
++};
++
+ / {
+ 	model = "STMicroelectronics STM32WB55RG-NUCLEO board";
+ 	compatible = "st,stm32wb55rg-nucleo";
+ 
+ 	chosen {
+ 		zephyr,console = &usart1;
++		zephyr,boot-mode = &boot_mode;
+ 		zephyr,shell-uart = &usart1;
+ 		zephyr,bt-mon-uart = &lpuart1;
+ 		zephyr,bt-c2h-uart = &lpuart1;
+@@ -25,6 +31,27 @@
+ 		zephyr,system-timer = &lptim1;
+ 	};
+ 
++	sram_ret@2002fffc {
++		compatible = "zephyr,memory-region", "mmio-sram";
++		reg = <0x2002fffc 0x4>;
++		zephyr,memory-region = "RetainedMem";
++		status = "okay";
++
++		retainedmem {
++			compatible = "zephyr,retained-ram";
++			status = "okay";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			boot_mode: retention@0 {
++				compatible = "zephyr,retention";
++				status = "okay";
++				reg = <0x0 0x1>;
++			};
++		};
++	};
++
++
+ 	leds: leds {
+ 		compatible = "gpio-leds";
+ 
+diff --git a/dts/arm/st/f4/stm32f411.dtsi b/dts/arm/st/f4/stm32f411.dtsi
+index 6159fa85ab..3fe02e27d4 100644
+--- a/dts/arm/st/f4/stm32f411.dtsi
++++ b/dts/arm/st/f4/stm32f411.dtsi
+@@ -10,6 +10,12 @@
+ 	soc {
+ 		compatible = "st,stm32f411", "st,stm32f4", "simple-bus";
+ 
++		rom_bootloader: rom_bootloader@1fff0000 {
++			compatible = "st,stm32-bootloader";
++			reg = <0x1fff0000 DT_SIZE_K(29)>;
++			status = "okay";
++		};
++
+ 		spi5: spi@40015000 {
+ 			compatible = "st,stm32-spi";
+ 			#address-cells = <1>;
+diff --git a/dts/bindings/arm/st,stm32-bootloader.yaml b/dts/bindings/arm/st,stm32-bootloader.yaml
+new file mode 100644
+index 0000000000..ec1375a8ba
+--- /dev/null
++++ b/dts/bindings/arm/st,stm32-bootloader.yaml
+@@ -0,0 +1,12 @@
++# Copyright (c) 2025 Peter Johanson
++# SPDX-License-Identifier: Apache-2.0
++
++description: ST STM32 ROM Bootloader Details
++
++compatible: "st,stm32-bootloader"
++
++include: base.yaml
++
++properties:
++  reg:
++    required: true
+diff --git a/soc/st/stm32/Kconfig b/soc/st/stm32/Kconfig
+index 96e1396da1..426b2f296b 100644
+--- a/soc/st/stm32/Kconfig
++++ b/soc/st/stm32/Kconfig
+@@ -36,6 +36,21 @@ config HAS_STM32_FLASH_PREFETCH
+ 	help
+ 	  Hidden symbol selected by SoCs which support flash prefetch.
+ 
++config STM32_BOOTLOADER
++	bool "STM32 Bootloader Support"
++	default y
++	depends on RETENTION_BOOT_MODE && DT_HAS_ST_STM32_BOOTLOADER_ENABLED
++	help
++	  Enable support for jumping into the STM32 bootloader when the
++	  bootmode is set.
++
++config STM32_BOOTLOADER_INIT_PRIORITY
++	int "STM32 bootloader check init priority"
++	default 3
++	help
++	  STM32 bootloader check initialization priority (must be higher than init
++	  priorities for retention/retained memory drivers).
++
+ # This option is consumed by `soc.c` of applicable series
+ config STM32_FLASH_PREFETCH
+ 	bool "Flash prefetch buffer"
+diff --git a/soc/st/stm32/Kconfig.defconfig b/soc/st/stm32/Kconfig.defconfig
+index 20e6700323..ccf52dbaa8 100644
+--- a/soc/st/stm32/Kconfig.defconfig
++++ b/soc/st/stm32/Kconfig.defconfig
+@@ -131,6 +131,15 @@ config CLOCK_CONTROL_INIT_PRIORITY
+ 	default 1
+ 	depends on CLOCK_CONTROL
+ 
++if STM32_BOOTLOADER
++
++config RETAINED_MEM_INIT_PRIORITY
++	default 1
++
++config RETENTION_INIT_PRIORITY
++	default 2
++
++endif
+ # Get flash configuration for NS image from dts flash partition
+ config USE_DT_CODE_PARTITION
+ 	default y if TRUSTED_EXECUTION_NONSECURE
+diff --git a/soc/st/stm32/common/CMakeLists.txt b/soc/st/stm32/common/CMakeLists.txt
+index 57e73ccd7b..b6973011b7 100644
+--- a/soc/st/stm32/common/CMakeLists.txt
++++ b/soc/st/stm32/common/CMakeLists.txt
+@@ -12,6 +12,8 @@ zephyr_sources_ifdef(CONFIG_STM32_NEOCHROM_GPU2D stm32_neochrom_gpu2d.c)
+ zephyr_sources_ifdef(CONFIG_STM32_BACKUP_SRAM stm32_backup_sram.c)
+ zephyr_linker_sources_ifdef(CONFIG_STM32_BACKUP_SRAM SECTIONS stm32_backup_sram.ld)
+ 
++zephyr_sources_ifdef(CONFIG_STM32_BOOTLOADER stm32_bootloader.c)
++
+ if(NOT CONFIG_DEBUG AND CONFIG_PM)
+   zephyr_sources_ifdef(CONFIG_DT_HAS_SWJ_CONNECTOR_ENABLED pm_debug_swj.c)
+ endif()
+diff --git a/soc/st/stm32/common/stm32_bootloader.c b/soc/st/stm32/common/stm32_bootloader.c
+new file mode 100644
+index 0000000000..ebe891fe12
+--- /dev/null
++++ b/soc/st/stm32/common/stm32_bootloader.c
+@@ -0,0 +1,74 @@
++/*
++ * Copyright (c) 2020 Google LLC.
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#include <soc.h>
++#include <zephyr/init.h>
++#include <zephyr/retention/retention.h>
++#include <zephyr/retention/bootmode.h>
++#include <stm32_ll_system.h>
++
++#if defined(CONFIG_ARM_MPU)
++extern void arm_core_mpu_disable(void);
++#endif
++
++static const uint32_t bootloader = DT_REG_ADDR(DT_INST(0, st_stm32_bootloader));
++static FUNC_NORETURN void jump_to_bootloader(void)
++{
++	int i;
++	void (*jmp)(void);
++
++	__disable_irq();
++
++	for (i = 0; i < ARRAY_SIZE(NVIC->ICER); i++) {
++		NVIC->ICER[i] = 0xFFFFFFFF;
++		NVIC->ICPR[i] = 0xFFFFFFFF;
++	}
++
++#if defined(CONFIG_ARM_MPU)
++	/*
++	 * Needed to allow the bootloader to erase/write to flash, and the MPU
++	 * is set up in the arch init phase.
++	 */
++	arm_core_mpu_disable();
++#endif
++
++	/*
++	 * Disable SysTick before jumping, to keep the bootloader happy
++	 */
++	SysTick->CTRL = 0;
++
++	LL_SYSCFG_SetRemapMemory(LL_SYSCFG_REMAP_SYSTEMFLASH);
++
++	jmp = (void (*)(void))(void (*)(void))(*((uint32_t *)((bootloader + 4))));
++
++	/*
++	 * We need to clear a few things set by the Zephyr early startup code
++	 */
++	__set_CONTROL(0);
++#if !defined(CONFIG_CPU_CORTEX_M0)
++	__set_BASEPRI(0);
++#endif
++
++	__set_MSP(*(uint32_t *)bootloader);
++
++	__enable_irq();
++
++	jmp();
++
++	CODE_UNREACHABLE;
++}
++
++static int bootloader_check_boot_init(void)
++{
++	if (bootmode_check(BOOT_MODE_TYPE_BOOTLOADER) > 0) {
++		bootmode_clear();
++		jump_to_bootloader();
++	}
++
++	return 0;
++}
++
++SYS_INIT(bootloader_check_boot_init, POST_KERNEL, CONFIG_STM32_BOOTLOADER_INIT_PRIORITY);

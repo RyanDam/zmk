@@ -10,3 +10,10 @@
 #   24cc93286, which the v4.5.0 pin contains. Retired 2026-11-19 with the pin
 #   move from v4.4.1+zmk-fixes.
 0001-spi-esp32-fix-quad-line-mode-truncated-to-16-bit.patch
+
+# Note, for the next person who works through the old fork delta (there is no
+# file here to enforce it, because nobody can guess what such a patch would be
+# named): v4.4.1+zmk-fixes also carried 2af146e92293 "drivers: display: ls0xx:
+# fix releasing SPI bus too soon". It needs no patch. Cherry-picking it onto
+# v4.5.0 produced an empty commit, i.e. 4.5 already contains that fix, so do
+# not re-carry it. The other 14 commits of that delta are carried, as 0004-0012.

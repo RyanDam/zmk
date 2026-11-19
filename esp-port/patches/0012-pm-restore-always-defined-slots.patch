@@ -1,0 +1,39 @@
+CARRIED PATCH - fork content, not ours, and not upstream. Provenance and why,
+for whoever reads this next.
+
+Source: RyanDam/zephyr branch `v4.4.1+zmk-fixes` (the pin this workspace used
+before moving to upstream v4.5.0). The commits below were cherry-picked onto
+the v4.5.0 tag with `git cherry-pick -x`, so they are also history on the
+`v4.5.0+coban-fixes` branch in the west checkout - this file is the copy that
+survives a `west update`, which throws away the branch.
+
+Commits, oldest first:
+  7af6a9a2b1  Peter Johanson <peter@peterjohanson.com>  2026-06-24
+            Revert "pm: only define slots if CONFIG_PM is enabled"
+Why it is carried rather than dropped: the old pin had it and this one would
+not, so a board that comes to depend on it would silently get a different
+Zephyr. The pin is meant to be a drop-in for the branch it replaced, so the
+whole delta moves with it rather than the parts today's boards happen to use.
+
+diff --git a/include/zephyr/pm/device.h b/include/zephyr/pm/device.h
+index ca45c4b1b8..442470fcd1 100644
+--- a/include/zephyr/pm/device.h
++++ b/include/zephyr/pm/device.h
+@@ -351,7 +351,6 @@ BUILD_ASSERT(offsetof(struct pm_device_isr, base) == 0);
+  */
+ #define Z_PM_DEVICE_NAME(dev_id) _CONCAT(__pm_device_, dev_id)
+ 
+-#ifdef CONFIG_PM
+ /**
+  * @brief Define device PM slot.
+  *
+@@ -366,9 +365,6 @@ BUILD_ASSERT(offsetof(struct pm_device_isr, base) == 0);
+ #define Z_PM_DEVICE_DEFINE_SLOT(dev_id)					\
+ 	static STRUCT_SECTION_ITERABLE_ALTERNATE(pm_device_slots, device, \
+ 			_CONCAT(__pm_slot_, dev_id))
+-#else
+-#define Z_PM_DEVICE_DEFINE_SLOT(dev_id)
+-#endif /* CONFIG_PM */
+ 
+ #ifdef CONFIG_PM_DEVICE
+ /**

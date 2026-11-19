@@ -1,0 +1,13 @@
+# Post-image probe for 0007-boards-boardsource-blok-rp2040.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Every line below was checked to be absent from the v4.5.0 tag and present on
+# v4.5.0+coban-fixes, so it is evidence of the fix and not of a stock line.
+# Copyright (c) 2022 Pete Johanson
+config BOARD_BOARDSOURCE_BLOK
+zephyr,flash-controller = &ssi;
+full_name: boardsource_blok

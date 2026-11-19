@@ -1,0 +1,14 @@
+# Post-image probe for 0008-soc-arm-stm32-rom-bootloader.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Every line below was checked to be absent from the v4.5.0 tag and present on
+# v4.5.0+coban-fixes, so it is evidence of the fix and not of a stock line.
+compatible = "st,stm32-bootloader";
+reg = <0x1fffc800 DT_SIZE_K(12)>;
+reg = <0x1fff0000 DT_SIZE_K(28)>;
+reg = <0x20000000 (DT_SIZE_K(192) - 4)>;
+zephyr,boot-mode = &boot_mode;

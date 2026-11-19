@@ -1,0 +1,394 @@
+CARRIED PATCH - fork content, not ours, and not upstream. Provenance and why,
+for whoever reads this next.
+
+Source: RyanDam/zephyr branch `v4.4.1+zmk-fixes` (the pin this workspace used
+before moving to upstream v4.5.0). The commits below were cherry-picked onto
+the v4.5.0 tag with `git cherry-pick -x`, so they are also history on the
+`v4.5.0+coban-fixes` branch in the west checkout - this file is the copy that
+survives a `west update`, which throws away the branch.
+
+Commits, oldest first:
+  8032b0e292  Samuel Coleman <samuel.coleman@rbr-global.com>  2025-09-12
+            drivers: retained_mem: add BBRAM driver.
+  01a7449305  Samuel Coleman <samuel.coleman@rbr-global.com>  2025-09-12
+            tests: drivers: retained_mem: fix compilation.
+  f13700da25  Samuel Coleman <samuel.coleman@rbr-global.com>  2025-09-12
+            tests: drivers: retained_mem: add BBRAM test.
+Why it is carried rather than dropped: the old pin had it and this one would
+not, so a board that comes to depend on it would silently get a different
+Zephyr. The pin is meant to be a drop-in for the branch it replaced, so the
+whole delta moves with it rather than the parts today's boards happen to use.
+
+diff --git a/drivers/retained_mem/CMakeLists.txt b/drivers/retained_mem/CMakeLists.txt
+index fff392de26..dbb0d0b21f 100644
+--- a/drivers/retained_mem/CMakeLists.txt
++++ b/drivers/retained_mem/CMakeLists.txt
+@@ -11,6 +11,7 @@ zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_NRF_GPREGRET retained_mem_nrf_g
+ zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_NRF_RAM_CTRL retained_mem_nrf_ram_ctrl.c)
+ zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_RV3028 retained_mem_rv3028.c)
+ zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_SILABS_BURAM retained_mem_silabs_buram.c)
++zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_ZEPHYR_BBRAM retained_mem_zephyr_bbram.c)
+ zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_ZEPHYR_RAM retained_mem_zephyr_ram.c)
+ zephyr_library_sources_ifdef(CONFIG_RETAINED_MEM_ZEPHYR_REG retained_mem_zephyr_reg.c)
+ # zephyr-keep-sorted-stop
+diff --git a/drivers/retained_mem/Kconfig.zephyr b/drivers/retained_mem/Kconfig.zephyr
+index 0348efbab1..162373b03c 100644
+--- a/drivers/retained_mem/Kconfig.zephyr
++++ b/drivers/retained_mem/Kconfig.zephyr
+@@ -1,6 +1,26 @@
+ # Copyright (c) 2023 Nordic Semiconductor ASA
+ # SPDX-License-Identifier: Apache-2.0
+ 
++menuconfig RETAINED_MEM_ZEPHYR_BBRAM
++	bool "Generic BBRAM retained memory driver"
++	default y
++	depends on BBRAM
++	depends on DT_HAS_ZEPHYR_RETAINED_BBRAM_ENABLED
++	help
++	  Enable driver for retained memory in BBRAM.
++
++config RETAINED_MEM_ZEPHYR_BBRAM_CLEAR_CHUNK_SIZE
++	int "Number of BBRAM bytes to clear at a time"
++	default 128
++	depends on RETAINED_MEM_ZEPHYR_BBRAM
++	help
++	  Dictates the size of stack allocation and number of writes performed by
++	  each retained memory clear operation.
++
++	  BBRAMs do not have a clear operation; to clear one, we must repeatedly
++	  write chunks of zeroes. Each clear operation will stack-allocate this
++	  many bytes, and then make ⌈BBRAM size / clear chunk size⌉ writes.
++
+ config RETAINED_MEM_ZEPHYR_RAM
+ 	bool "Generic Zephyr RAM retained memory driver"
+ 	default y
+diff --git a/drivers/retained_mem/retained_mem_zephyr_bbram.c b/drivers/retained_mem/retained_mem_zephyr_bbram.c
+new file mode 100644
+index 0000000000..bf82f50c50
+--- /dev/null
++++ b/drivers/retained_mem/retained_mem_zephyr_bbram.c
+@@ -0,0 +1,168 @@
++/*
++ * Copyright (c) 2025, Nordic Semiconductor ASA, RBR Ltd
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#define DT_DRV_COMPAT zephyr_retained_bbram
++
++#include <string.h>
++
++#include <zephyr/device.h>
++#include <zephyr/devicetree.h>
++#include <zephyr/drivers/bbram.h>
++#include <zephyr/drivers/retained_mem.h>
++#include <zephyr/kernel.h>
++#include <zephyr/logging/log.h>
++
++LOG_MODULE_REGISTER(retained_mem_zephyr_bbram, CONFIG_RETAINED_MEM_LOG_LEVEL);
++
++#ifdef CONFIG_RETAINED_MEM_MUTEXES
++struct retained_bbram_data {
++	struct k_mutex lock;
++};
++#endif
++
++struct retained_bbram_config {
++	const struct device *bbram;
++};
++
++static inline void retained_bbram_lock(const struct device *dev)
++{
++#ifdef CONFIG_RETAINED_MEM_MUTEXES
++	struct retained_bbram_data *data = dev->data;
++
++	if (!k_is_pre_kernel()) {
++		k_mutex_lock(&data->lock, K_FOREVER);
++	}
++#else
++	ARG_UNUSED(dev);
++#endif
++}
++
++static inline void retained_bbram_unlock(const struct device *dev)
++{
++#ifdef CONFIG_RETAINED_MEM_MUTEXES
++	struct retained_bbram_data *data = dev->data;
++
++	if (!k_is_pre_kernel()) {
++		k_mutex_unlock(&data->lock);
++	}
++#else
++	ARG_UNUSED(dev);
++#endif
++}
++
++static int retained_bbram_init(const struct device *dev)
++{
++#ifdef CONFIG_RETAINED_MEM_MUTEXES
++	struct retained_bbram_data *data = dev->data;
++
++	k_mutex_init(&data->lock);
++#else
++	ARG_UNUSED(dev);
++#endif
++
++	return 0;
++}
++
++static ssize_t retained_bbram_size(const struct device *dev)
++{
++	const struct retained_bbram_config *config = dev->config;
++	int err;
++	size_t size;
++
++	err = bbram_get_size(config->bbram, &size);
++	if (err < 0) {
++		return (ssize_t)err;
++	}
++
++	return (ssize_t)size;
++}
++
++static int retained_bbram_read(const struct device *dev, off_t offset, uint8_t *buffer, size_t size)
++{
++	const struct retained_bbram_config *config = dev->config;
++	int err;
++
++	retained_bbram_lock(dev);
++
++	err = bbram_read(config->bbram, offset, size, buffer);
++
++	retained_bbram_unlock(dev);
++
++	return err;
++}
++
++static int retained_bbram_write(const struct device *dev, off_t offset, const uint8_t *buffer,
++				size_t size)
++{
++	const struct retained_bbram_config *config = dev->config;
++
++	retained_bbram_lock(dev);
++
++	int err = bbram_write(config->bbram, offset, size, buffer);
++
++	retained_bbram_unlock(dev);
++
++	return err;
++}
++
++static int retained_bbram_clear(const struct device *dev)
++{
++	const struct retained_bbram_config *config = dev->config;
++	uint8_t clear[CONFIG_RETAINED_MEM_ZEPHYR_BBRAM_CLEAR_CHUNK_SIZE];
++	size_t total_size;
++	size_t chunk_size = CONFIG_RETAINED_MEM_ZEPHYR_BBRAM_CLEAR_CHUNK_SIZE;
++	int err = 0;
++
++	memset(clear, 0, CONFIG_RETAINED_MEM_ZEPHYR_BBRAM_CLEAR_CHUNK_SIZE);
++
++	retained_bbram_lock(dev);
++
++	err = bbram_get_size(config->bbram, &total_size);
++	if (err < 0) {
++		return err;
++	}
++
++	for (size_t offset = 0; offset < total_size; offset += chunk_size) {
++		if (offset + chunk_size > total_size) {
++			chunk_size = total_size - offset;
++		}
++
++		err = bbram_write(config->bbram, offset, chunk_size, clear);
++		if (err < 0) {
++			return err;
++		}
++	}
++
++	retained_bbram_unlock(dev);
++
++	return err;
++}
++
++static const struct retained_mem_driver_api retained_bbram_api = {
++	.size = retained_bbram_size,
++	.read = retained_bbram_read,
++	.write = retained_bbram_write,
++	.clear = retained_bbram_clear,
++};
++
++#define RETAINED_BBRAM_DEVICE(inst)                                                      \
++	IF_ENABLED(CONFIG_RETAINED_MEM_MUTEXES, (                                            \
++		static struct retained_bbram_data retained_bbram_data_##inst;                    \
++	))                                                                                   \
++	static const struct retained_bbram_config retained_bbram_config_##inst = {           \
++		.bbram = DEVICE_DT_GET(DT_INST_PARENT(inst)),                                    \
++	};                                                                                   \
++	DEVICE_DT_INST_DEFINE(                                                               \
++		inst,                                                                            \
++		&retained_bbram_init,                                                            \
++		NULL,                                                                            \
++		COND_CODE_1(CONFIG_RETAINED_MEM_MUTEXES, (&retained_bbram_data_##inst), (NULL)), \
++		&retained_bbram_config_##inst,                                                   \
++		POST_KERNEL,                                                                     \
++		CONFIG_RETAINED_MEM_INIT_PRIORITY,                                               \
++		&retained_bbram_api);
++
++DT_INST_FOREACH_STATUS_OKAY(RETAINED_BBRAM_DEVICE)
+diff --git a/dts/bindings/retained_mem/zephyr,retained-bbram.yaml b/dts/bindings/retained_mem/zephyr,retained-bbram.yaml
+new file mode 100644
+index 0000000000..5c84b4f085
+--- /dev/null
++++ b/dts/bindings/retained_mem/zephyr,retained-bbram.yaml
+@@ -0,0 +1,15 @@
++# Copyright (c) 2025 Nordic Semiconductor ASA, RBR Ltd
++# SPDX-License-Identifier: Apache-2.0
++
++description: Uninitialised BBRAM-based retained memory area.
++
++compatible: "zephyr,retained-bbram"
++
++include: base.yaml
++
++properties:
++  "#address-cells":
++    const: 1
++
++  "#size-cells":
++    const: 1
+diff --git a/tests/drivers/retained_mem/api/src/main.c b/tests/drivers/retained_mem/api/src/main.c
+index 1567e77a82..fa49362721 100644
+--- a/tests/drivers/retained_mem/api/src/main.c
++++ b/tests/drivers/retained_mem/api/src/main.c
+@@ -7,7 +7,7 @@
+ #include <zephyr/ztest.h>
+ #include <errno.h>
+ 
+-const static struct device *retained_mem_test_device =	DEVICE_DT_GET(DT_ALIAS(
++static const struct device *retained_mem_test_device =	DEVICE_DT_GET(DT_ALIAS(
+ 									retainedmemtestdevice));
+ 
+ #if CONFIG_RETAINED_MEM_SIZE_LIMITED
+diff --git a/tests/drivers/retained_mem/api/boards/native_sim_bbram.conf b/tests/drivers/retained_mem/api/boards/native_sim_bbram.conf
+new file mode 100644
+index 0000000000..b32bd7ecff
+--- /dev/null
++++ b/tests/drivers/retained_mem/api/boards/native_sim_bbram.conf
+@@ -0,0 +1 @@
++CONFIG_BBRAM=y
+diff --git a/tests/drivers/retained_mem/api/boards/native_sim_bbram.overlay b/tests/drivers/retained_mem/api/boards/native_sim_bbram.overlay
+new file mode 100644
+index 0000000000..39bba95c50
+--- /dev/null
++++ b/tests/drivers/retained_mem/api/boards/native_sim_bbram.overlay
+@@ -0,0 +1,16 @@
++/ {
++	aliases {
++		retainedmemtestdevice = &retainedmem0;
++	};
++
++	bbram: bbram {
++		compatible = "zephyr,bbram-emul";
++		status = "okay";
++		size = <0xff>;
++
++		retainedmem0: retainedmem {
++			compatible = "zephyr,retained-bbram";
++			status = "okay";
++		};
++	};
++};
+diff --git a/tests/drivers/retained_mem/api/boards/nucleo_f411re_bbram.conf b/tests/drivers/retained_mem/api/boards/nucleo_f411re_bbram.conf
+new file mode 100644
+index 0000000000..afce7eefba
+--- /dev/null
++++ b/tests/drivers/retained_mem/api/boards/nucleo_f411re_bbram.conf
+@@ -0,0 +1,2 @@
++CONFIG_BBRAM=y
++CONFIG_RTC=y
+diff --git a/tests/drivers/retained_mem/api/boards/nucleo_f411re_bbram.overlay b/tests/drivers/retained_mem/api/boards/nucleo_f411re_bbram.overlay
+new file mode 100644
+index 0000000000..ceb4162190
+--- /dev/null
++++ b/tests/drivers/retained_mem/api/boards/nucleo_f411re_bbram.overlay
+@@ -0,0 +1,14 @@
++/ {
++	aliases {
++		retainedmemtestdevice = &retainedmem0;
++	};
++};
++
++&bbram {
++	status = "okay";
++
++	retainedmem0: retainedmem {
++		compatible = "zephyr,retained-bbram";
++		status = "okay";
++	};
++};
+diff --git a/tests/drivers/retained_mem/api/boards/nucleo_l452re_bbram.conf b/tests/drivers/retained_mem/api/boards/nucleo_l452re_bbram.conf
+new file mode 100644
+index 0000000000..afce7eefba
+--- /dev/null
++++ b/tests/drivers/retained_mem/api/boards/nucleo_l452re_bbram.conf
+@@ -0,0 +1,2 @@
++CONFIG_BBRAM=y
++CONFIG_RTC=y
+diff --git a/tests/drivers/retained_mem/api/boards/nucleo_l452re_bbram.overlay b/tests/drivers/retained_mem/api/boards/nucleo_l452re_bbram.overlay
+new file mode 100644
+index 0000000000..ceb4162190
+--- /dev/null
++++ b/tests/drivers/retained_mem/api/boards/nucleo_l452re_bbram.overlay
+@@ -0,0 +1,14 @@
++/ {
++	aliases {
++		retainedmemtestdevice = &retainedmem0;
++	};
++};
++
++&bbram {
++	status = "okay";
++
++	retainedmem0: retainedmem {
++		compatible = "zephyr,retained-bbram";
++		status = "okay";
++	};
++};
+diff --git a/tests/drivers/retained_mem/api/tests.yaml b/tests/drivers/retained_mem/api/tests.yaml
+index f4b6969674..e9fc4f87ca 100644
+--- a/tests/drivers/retained_mem/api/tests.yaml
++++ b/tests/drivers/retained_mem/api/tests.yaml
+@@ -1,9 +1,19 @@
++common:
++  tags:
++    - drivers
++    - retained_mem
+ tests:
++  drivers.retained_mem.api.bbram:
++    extra_args:
++      - FILE_SUFFIX="bbram"
++    platform_allow:
++      - native_sim
++      - nucleo_f411re
++      - nucleo_l452re
++    integration_platforms:
++      - native_sim
+   drivers.retained_mem.api.gpregret:
+     platform_allow: nrf52840dk/nrf52840
+-    tags:
+-      - drivers
+-      - retained_mem
+   drivers.retained_mem.api.ram:
+     platform_allow:
+       - esp32_devkitc/esp32/procpu
+@@ -27,9 +37,6 @@ tests:
+       - ophelia4ev/nrf54l15/cpuapp
+     integration_platforms:
+       - qemu_cortex_m3
+-    tags:
+-      - drivers
+-      - retained_mem
+   drivers.retained_mem.api.ram.nrf52840dk_nrf52840:
+     platform_allow: nrf52840dk/nrf52840
+     extra_args:
