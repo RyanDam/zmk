@@ -536,12 +536,17 @@ the tag via `esp-port/apply-zephyr-patches.sh`: idempotent, verifying each patch
 than by `patch(1)` exit codes, and failing loudly on drift.
 
 `west.yml` could now point at that branch instead of the tag + patches: the `cobanfirmware` remote (RyanDam) is
-already declared in the manifest, so the change is two lines — `remote: cobanfirmware`, `revision:
-v4.5.0+coban-fixes`. **Not done deliberately.** The patches stay the source of truth, because the branch and the
-patches are two copies of one thing, and the patches are the copy this repo can verify by content
-(`.verify`) and apply to whatever the pin says next; a branch pin makes the whole build depend on a fork that
-CI cannot see. Switch it if `west update` ever has to carry these for someone else, and keep the patch set
-either way — the applier verifies and no-ops on a tree that already has them.
+already declared in the manifest, so the change is two lines — `remote: cobanfirmware`, `revision:`
+`v4.5.0+coban-fixes` (or its SHA, `1510fe4048`, which is better: a branch name in a manifest is a moving ref,
+and `west update` would then pull whatever the branch has become). **Not switched yet, deliberately, but the
+honest reason is narrower than it first looks.** The case for the patches is that `west update` on a branch pin
+makes every build depend on `RyanDam/zephyr` staying alive and fetchable, and that the patch set is the copy
+which survives the next Zephyr move — 4.6 will need that branch rebased, whereas the patches plus their
+`.verify` probes are what tell you upstream has absorbed a fix (that mechanism already fired once: patch 0001
+retired). The case against is duplication: two copies of the same content, which drift unless the tree diff
+below is run, and it is a manual step. The weak argument sometimes made here — that a fork is invisible to CI —
+is simply false: `RyanDam/zephyr` is public. Keep whichever way you choose, but choose: while both exist, the
+tree diff is not optional.
 
 Two facts from the push, because they were both surprises:
 
@@ -597,6 +602,12 @@ looks like a pass and means nothing.
 | `0011-drivers-retained-mem-bbram` | `zephyr` | the `retained_mem` BBRAM driver and its two tests (`4fcd7d869c`, `2d112e45a0`, `0e3a8abf42`). The subsystem is upstream in 4.5, this driver is not |
 | `0012-pm-restore-always-defined-slots` | `zephyr` | reverts upstream's `pm: only define slots if CONFIG_PM is enabled`, so `Z_PM_DEVICE_DEFINE_SLOT` is defined whatever CONFIG_PM says (`965f68f282`). **The one patch here that touches a header every ZMK build includes** — if a pad build breaks in `pm/device.h`, look here first |
 
+**The branch holds every zephyr-side patch, all of them, checked by file:** for each of `0002` and `0004`–`0012`
+every file the patch touches differs from `v4.5.0` identically on `v4.5.0+coban-fixes` — 49 files across 10
+patches, none missing. The one patch with nothing on the branch is `0003`, and it cannot be there: it changes
+`modules/hal/espressif`, a different repository in the same west workspace, which is why `<patch>.target`
+exists at all and why that half still needs its own fork and branch (§11 checklist).
+
 **Verified, do not re-litigate:** the quad line-mode fix is genuinely in the tree, because v4.5.0 contains
 it. `spi_esp32_get_line_mode()` takes the full `spi_operation_t` and `SPI_LINES_QUAD` survives to the
 controller — the 3.93× measured 1-wire/quad fill ratio in row 22 is the end-to-end proof of that.
@@ -651,6 +662,7 @@ caused by (rows 22, 27).
 - [ ] Restore `CONFIG_ZMK_BLE=y` and drop the `CONFIG_SYS_CLOCK_TICKS_PER_SEC=250000` override.
 - [ ] Raise `mspi-max-frequency` in steps (1 → 8 → 20 → 40 MHz), re-running the fill test at each and checking the measured milliseconds against the floor for that clock. The reference proves 40 MHz on these pads through the GPIO matrix.
 - [ ] Try `CONFIG_MSPI_ESP32_PSRAM_DMA=y` once the framebuffer lives in PSRAM, so a full frame does not bounce through a copy each write.
+- [ ] Pick **one** source of truth for the zephyr side, then delete the other: pin `app/west.yml` at `cobanfirmware` / `v4.5.0+coban-fixes` **by SHA** and delete `0002` + `0004`–`0012`, or keep the patch set and accept the branch as a mirror. Both copies existing is only safe while the tree diff in §11 is actually run, and nothing runs it automatically.
 - [ ] Commit patch 0003 on a branch in `modules/hal/espressif`, the way the zephyr side is now committed (branch `v4.5.0+coban-fixes` on `RyanDam/zephyr`, §11). Needs a fork of `zephyrproject-rtos/hal_espressif` under RyanDam and a new `remotes:` entry in `app/west.yml` — the local clone's only remote is `upstream`, so unlike the zephyr side this one is blocked on a `gh repo fork` as well as the work. Until then, `west update` wipes the MSPI HAL sources and the applier has to put them back.
 - [ ] Fix or drop `axs15231b_prime()` (currently an unused-function warning).
 - [ ] LVGL pixel format: `PIXEL_FORMAT_RGB_565X` does **not** exist in this Zephyr/LVGL (the pin is the ZMK LVGL fork at 9.5.0, which also lacks `LV_COLOR_FORMAT_DEFAULT`) — byte order has to be settled in the driver or the flush, not assumed.
