@@ -258,7 +258,16 @@ void rx_done_cb(struct k_work *work) {
 
 static void serial_cb(const struct device *dev, void *user_data) {
 
-    while (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
+    while (true) {
+        /* uart_irq_update() returns void as of Zephyr 4.5, so it cannot be
+         * used as the loop condition any more. Renew the cached IRQ state
+         * and test pending separately, as Zephyr's own UART ISRs do. */
+        uart_irq_update(dev);
+
+        if (!uart_irq_is_pending(dev)) {
+            break;
+        }
+
         if (uart_irq_rx_ready(dev)) {
             zmk_split_wired_fifo_read(dev, &rx_buf, &publish_events, NULL);
 #if IS_HALF_DUPLEX_MODE

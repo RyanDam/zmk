@@ -6,7 +6,7 @@
 
 /dts-v1/;
 
-#include <espressif/esp32s3/esp32s3_wroom_n4r2.dtsi>
+#include <espressif/esp32s3/esp32s3.dtsi>
 #include "esp32s3_supermini_esp32s3_procpu-pinctrl.dtsi"
 #include <espressif/partitions_0x0_default_4M.dtsi>
 
@@ -25,6 +25,21 @@
  *   left unused (no CONFIG_ESP_SPIRAM) until dedicated memory/boot
  *   validation on the exact FH4R2 board.
  */
+
+/*
+ * Flash and PSRAM geometry for the ESP32-S3 SuperMini (N4R2: 4 MB flash, 2 MB
+ * QSPI PSRAM). Zephyr 4.5 removed the per-module dtsi files under
+ * dts/xtensa/espressif/<soc>/ (esp32s3_wroom_n4r2.dtsi among them), so each
+ * board now states its own geometry; this is what that include used to do.
+ * The PSRAM size is declared but not used - no CONFIG_ESP_SPIRAM here.
+ */
+&flash0 {
+    reg = <0x0 DT_SIZE_M(4)>;
+};
+
+&psram0 {
+    size = <DT_SIZE_M(2)>;
+};
 
 / {
     model = "ESP32-S3 SuperMini PROCPU";

@@ -102,9 +102,9 @@ ZMK_RPC_TRANSPORT(uart, ZMK_TRANSPORT_USB, start_rx, stop_rx, NULL, tx_notify);
  * data to the message queue.
  */
 static void serial_cb(const struct device *dev, void *user_data) {
-    if (!uart_irq_update(uart_dev)) {
-        return;
-    }
+    /* uart_irq_update() returns void as of Zephyr 4.5: it refreshes the cached
+     * IRQ state and cannot report failure, so there is nothing to check. */
+    uart_irq_update(uart_dev);
 
     if (uart_irq_rx_ready(uart_dev)) {
         /* read until FIFO empty */

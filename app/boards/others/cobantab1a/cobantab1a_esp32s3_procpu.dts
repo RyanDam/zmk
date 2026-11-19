@@ -6,7 +6,7 @@
 
 /dts-v1/;
 
-#include <espressif/esp32s3/esp32s3_wroom_n16r8.dtsi>
+#include <espressif/esp32s3/esp32s3.dtsi>
 #include "cobantab1a_esp32s3_procpu-pinctrl.dtsi"
 #include <espressif/partitions_0x0_default_16M.dtsi>
 
@@ -23,10 +23,25 @@
  * - USB-C wired to the internal PHY in USB-Serial/JTAG mode (no external
  *   PHY): console, flashing and recovery.
  * - Recovery console: UART0 on GPIO43/44.
- * - PSRAM: the wroom_n16r8 include describes the 8 MB octal PSRAM node;
- *   the ZMK variant enables it (CONFIG_ESP_SPIRAM) — the display
- *   framebuffer and the LVGL heap live in PSRAM.
+ * - PSRAM: 8 MB octal, sized by &psram0 below; the ZMK variant enables it
+ *   (CONFIG_ESP_SPIRAM) — the display framebuffer and the LVGL heap live
+ *   in PSRAM.
  */
+
+/*
+ * Flash and PSRAM geometry for the ESP32-S3-WROOM-1 N16R8 module.
+ *
+ * Zephyr 4.5 removed the per-module dtsi files under
+ * dts/xtensa/espressif/<soc>/ (esp32s3_wroom_n16r8.dtsi among them), so each
+ * board now states its own geometry. This is what that include used to do.
+ */
+&flash0 {
+    reg = <0x0 DT_SIZE_M(16)>;
+};
+
+&psram0 {
+    size = <DT_SIZE_M(8)>;
+};
 
 / {
     model = "Coban Tab 1a PROCPU";

@@ -673,6 +673,11 @@ endmenu # ZMK
 
 if SOC_FAMILY_NORDIC_NRF
 
+# Zephyr's Nordic binding-header check -includes every dt-bindings header the
+# devicetree pulled in, which collides with ZMK's single-letter HID key macros
+# (they land inside CMSIS register bitfield names). The check can only validate
+# Zephyr's own Nordic bindings, so ZMK builds skip it.
+# Needs esp-port/patches/0005-soc-nordic-optional-binding-header-validation.patch.
 config NRF_SOC_VALIDATE_HEADERS_DISABLED
     default y
 
