@@ -173,6 +173,13 @@ Read this before designing any new experiment. Each row is a hypothesis that has
 | 17 | Wrong lane order / wrong intra-pixel bit order | three fills: D0=first bit, D0=last bit, D0=last bit + bytes exchanged | all three: noise | none of these mappings, inconclusive as a set (see §9) |
 | 18 | Framing: does the stream decode as 320 × 2-byte pixels | three fills of `0xFFFF`/`0x0000` only (invariant to every intra-pixel permutation): white → checkerboard → 4-row bars | build flashed and ran (log confirms all three fills, ~0.56 s each); **the glass was never observed** | **OPEN — this is where we are** |
 | 19 | I²C touch dead indicates the chip is half-dead | `I2C_PROBE`: bus clocks, address scan 0x08–0x77 | nothing ACKs | separate issue; vendor demo logs no touch errors either — the touch node in that demo is I²C at 0x3B and is also not proven |
+| 20 | The whole bring-up read as a dead screen because the backlight was never on | read the callers: `axs15231b_blanking_off()` is the only thing that enables the backlight, and ZMK calls it from `zmk_display_init()`, a later POST_KERNEL step than the blocking fill test — which runs on the init thread, so the panel only lights after the instrument has finished | both bring-up instruments now enable the backlight themselves | that run proved nothing; a dark panel with an unlit backlight is indistinguishable from a dead one |
+| 21 | Anything at all reaches the panel over MSPI | first run with the backlight on: colour noise (row 16's stale GRAM) fades to black over ~10 s, and nothing else visibly happens | **cannot be read**: that build sent DISPLAY_OFF as its first command, and a panel with its output switched off and a panel whose GRAM is all black are the same black screen — so "black, no reaction" is two different faults wearing one face | open; the instrument no longer sends DISPLAY_OFF and ends on DISPLAY_INVERSION, which turns an all-black frame white and is the only thing that separates the two |
+| 22 | The MSPI device runs at the rate the node asks for, and the per-phase line width really changes | timing every full-panel fill: 2457600 bits ÷ (clock × data lines) | 1-wire 2480–2498 ms vs 2457.6 ms theory; quad 629–637 ms vs 614.4 ms theory — a 3.93× ratio | **confirmed** at 1 MHz. The clock divider and the I/O-mode switch are both live; this is the check that must be re-run at every clock step up to 40 MHz |
+| 24 | The fill test's "painted" line means pixels went out | same timing check | a build where all six patterns "succeeded" in 10 ms: `paint_hold`, whose job is to keep LVGL off the glass, sat inside `axs15231b_write_wide()` — which is also the fill test's own entry point — so every pattern returned instantly having sent nothing | caught by timing only. The hold now guards the display API (`axs15231b_write`) and not the write path, and the fill log carries the elapsed ms so this cannot hide again |
+| 25 | The instrument is limited by having to be watched in a specific 35 s window | moved the fills and the command probe off the init thread onto a dedicated looping thread (`axs_bringup`), with LVGL still held off by `paint_hold` | the panel now replays the whole sequence every ~35 s for as long as the board is powered | done. Removes the timing coordination that made every observation in this ledger expensive |
+| 26 | The frame header is in the wrong **phase**: we send it as the MSPI address phase, the reference sends it as an ordinary 1-wire data phase | rewrote `axs15231b_mspi_frame()` to frame exactly as `esp_lcd_panel_io_spi` does — header `[opcode][0x00][cmd][0x00]` as a data phase in a first transfer with `hold_ce`, pixels as a second transfer, no address phase anywhere — which is also how the SPI path in this same file frames it | still nothing at all: no fills, no MADCTL rotation, no inversion, on a lit panel, over several cycles | **ruled out.** Both framings are deaf on MSPI, while the same framing on the SPI path is the build where `DISPLAY_OFF` visibly blanked the panel (row 21's precedent, recorded in `cobantab1a.conf`). The fault is below the framing |
+| 27 | CS on GPIO45 may never be asserted on the MSPI path (`ce_set()` does nothing at all, and logs nothing, if `num_ce_gpios == 0`) | read the built devicetree and the driver: `ce-gpios = <&gpio1 13>` (= GPIO45, active-low, pull-up) is present, `num_ce_gpios` is built from it, and the driver configures each CE `GPIO_OUTPUT_INACTIVE` at init | CS is real and is being driven | ruled out, together with pinctrl (the driver applies `pinctrl-0` at init) and the pin map (row 1) |
 
 ### Fixed bugs, for the record
 
@@ -266,6 +273,72 @@ flowchart TD
    because `spi_esp32_spim.c` was never built for quad LCD writes. The one comment that sums it up, from someone
    who got a 466×466 QSPI AMOLED running on upstream `chipone,co5300` + downstream MSPI: *"the CO5300 SPI backend
    is single-line. Quad writes require MSPI."*
+
+### The instrument as it now stands (2026-11-19)
+
+The MSPI path is up and painted at 1 MHz with no errors, so the remaining questions are all questions about
+the glass. Two instruments run inline on the init thread, in this order, because a work-queue item would land
+in the middle of a multi-second frame write:
+
+1. **Fill test** — the three mapping-invariant patterns (all on, pixel checkerboard, 4-row bars) painted
+   twice: pixels on one data line, then on the bus's wide phase. One flash therefore answers both
+   "does anything reach GRAM" and "is the fault specific to the quad phase", which are indistinguishable in
+   the log.
+2. **Command probe** — MADCTL with the scan axes swapped and restored, then DISPLAY_INVERSION on and off,
+   twice through, acting on the frame the fills just painted.
+
+DISPLAY_OFF/ON is deliberately *out* of the probe. It was the first command in an earlier run, and it made
+the run unreadable: once the output has been switched off, an all-black frame and a dead output are the same
+black screen, so no later observation can be interpreted. Inversion is the discriminator that replaces it —
+black turning white is something only a panel with its output on can do.
+
+| What the glass does | Verdict |
+| --- | --- |
+| bars rotate 90° and back | frame **and** commands both landed; the remaining problem is colour/byte order only |
+| screen stays black, inversion turns it **white** | output is on, pixels are arriving as zeros — suspect the DMA data phase |
+| screen stays black, inversion does nothing | the output is off, or no command of ours has ever been understood |
+| 1-wire fills paint, wide fills do not | framing, geometry and commands are cleared; only the quad data phase is left |
+| nothing changes at all from power-on | nothing reaches the panel; the stale noise of row 16 is the whole picture |
+
+**Result of running it (2026-11-19): the last row.** Across several full cycles, on a lit panel, at 1 MHz, the
+glass never changes once — no fills on one line or four, no 90° rotation, no inversion flip. Whatever was in
+GRAM before this firmware existed is still there, and no command or pixel of ours has ever been understood
+over MSPI.
+
+### What is left, and the one flash that settles it
+
+Everything measurable in software is now known good, and none of it explains the glass:
+
+```mermaid
+flowchart LR
+    A["1 MHz divider applied<br/><i>measured: 2480 ms / 632 ms fills</i>"] --> E
+    B["1-wire ↔ quad per phase<br/><i>measured: 3.93× ratio</i>"] --> E
+    C["CS on GPIO45 asserted<br/><i>DT + driver checked</i>"] --> E
+    D["pinctrl applied, pin map = reference<br/><i>rows 1, 27</i>"] --> E
+    E["bits are clocked out,<br/>at the right rate, to the right pads"] --> F{"the panel<br/>is deaf"}
+    F --> G["framing: address phase vs data phase<br/><b>ruled out, row 26</b>"]
+    F --> H["something below the framing:<br/>clock phase/polarity, sample edge,<br/>idle level, CS setup/hold, or the pads' output enable"]
+    classDef dead fill:#eceff1,stroke:#607d8b,color:#37474f
+    class G dead
+    classDef next fill:#fff8e1,stroke:#b28704
+    class H next
+```
+
+The comparison that has to drive the next move is not us-vs-reference, it is **us-vs-us**: the same driver,
+the same pads, the same panel, on `&spi2` through Zephyr's SPI driver, is the build where `DISPLAY_OFF` made
+the panel go dark. So:
+
+1. **Flip the overlay back to the SPI path and re-run this same instrument.** One flash, and it splits "the
+   ported MSPI controller does not produce a usable waveform" from "the panel, the wiring or the pads are
+   dead". Both bus paths are already implemented and building in `axs15231b.c` — it is a compatible change in
+   `cobantab1a.overlay`, not new code. If the SPI path paints the bars, the product is unblocked and MSPI
+   becomes an optimisation to fix later; the quad line-mode truncation that used to cripple that path is
+   fixed in the v4.5.0 pin, so it now has real quad pixel writes too.
+2. **Logic analyser** — unchanged as the highest-value *measurement*: 8 channels at ≥ 24 MHz on CS/SCLK/D0–D3,
+   capturing `./flash.sh jc3248` and our firmware back to back on the same board. Once framing is eliminated
+   it is the only thing that can see clock phase, sample edge, CS setup/hold and idle levels.
+3. **Bisect from the working side** — take the vendor demo and strip it toward ours one layer at a time
+   (solid fill, then raw `spi_master` quad transfers configured the way Zephyr configures them).
 
 ### The chosen route: adopt the MSPI driver from PR #117188 (step-by-step in §13)
 
@@ -444,59 +517,88 @@ in Zephyr (#102333, 2026-10-02 and 2026-11-14, both "hardware-verified"):
 
 ## 11. State of the tree
 
-Nothing is committed in either repo. `git diff --stat`:
+Committed on `feat/cobantab1a` in both product repos (2026-11-19), and the carried Zephyr work is now a real
+branch rather than a dirty west working tree:
 
-```
-zmk:         Kconfig.axs15231b +121, axs15231b.c +1788/-325,
-             axs,axs15231b.yaml +12, build_cobantab1a.sh +5
-             untracked: esp-port/apply-zephyr-patches.sh, esp-port/patches/
-zmk-config:  cobantab1a.conf +121, cobantab1a.overlay +41
-```
+| Repo | Branch | What it holds |
+| --- | --- | --- |
+| `zmk` | `feat/cobantab1a` | the v4.5.0 pin, the patch set + re-applier, the 4.5 porting fixes, the MSPI path in the panel driver, the binding split, the bring-up instruments |
+| `zmk-config` | `feat/cobantab1a` | the Coban Tab overlay on the MSPI bus, the bring-up `.conf`, the pad `.conf` cleanups |
+| `zephyr/` | `v4.5.0+coban-fixes` | `v4.5.0` with one commit per carried zephyr patch (0002, 0004, 0005, 0006) |
+| `modules/hal/espressif/` | **nothing yet** | patch 0003 (the HAL half of the MSPI port) is still only a working-tree change. It needs the same treatment before `west.yml` can point at branches instead of tags |
 
-Plus a **carried, uncommitted patch inside the gitignored west checkout**,
-`zephyr/drivers/spi/spi_esp32_spim.c`, which `west update` will destroy — re-apply with
-`bash esp-port/apply-zephyr-patches.sh` (automatic from `setup-dev.sh` and `build_cobantab1a.sh`).
+**The pin.** `app/west.yml` moved off the `cobanfirmware` fork's `v4.4.1+zmk-fixes` to upstream
+`zephyrproject-rtos/zephyr` at tag **`v4.5.0`**. No fork is needed for the pin itself: everything ZMK took
+from the old fork is either upstream now (the quad line-mode truncation, `24cc93286`, which is why patch 0001
+was retired — see `esp-port/patches/RETIRED`) or carried as a numbered patch. That is what makes
+`v4.5.0+coban-fixes` a plain stack of commits on a release tag rather than a rebase, and it is what
+`west.yml` can point at as soon as there is a fork remote to push it to. Until then the patches go on top of
+the tag via `esp-port/apply-zephyr-patches.sh`, which is idempotent, verifies each patch by content
+(`.verify`) instead of by `patch(1)` exit codes, and fails loudly on drift.
 
-**Verified, do not re-litigate:** the fix is genuinely in place. `spi_esp32_get_line_mode()` reads
-`spi_operation_t operation` at `spi_esp32_spim.c:502`, byte-equivalent in effect to upstream v4.5.0's line.
+**The patch set** (`esp-port/patches/`):
 
-**Two artifacts to clean up** (found 2026-11-18, both left by `patch(1)` in the west tree):
+| Patch | Target | Why it exists |
+| --- | --- | --- |
+| `0002-mspi-esp32` | `zephyr` | the ESP32 MSPI controller: driver, Kconfig, binding and tests. Carries upstream PR **#121107** (head `2cec3a15c452`), which is stacked on **#117188**, so this one diff is the whole stack. Open and unmerged |
+| `0003-hal-espressif-spi-hal-for-mspi` | `modules/hal/espressif` | hal_espressif PR **#670** (head `a4421388`): compiles the GPSPI HAL sources when `CONFIG_MSPI_ESP32` is on, not only when `CONFIG_ESP32_SPIM` is. Not optional — an MSPI-only build has undefined `spi_hal_*` references without it |
+| `0004-zephyr-post-boards-shields-extension` | `zephyr` | restores the `post_boards_shields` CMake hook ZMK uses to turn a config-repo `.keymap` into a devicetree overlay. Fork-only (was `f50faa7bcb38`); Zephyr 4.5 deleted the include |
+| `0005-soc-nordic-optional-binding-header-validation` | `zephyr` | makes Nordic's `validate_binding_headers.c` compilable-or-skippable: it `-include`s every `dt-bindings` header the tree pulled in, and ZMK's single-letter HID key macros collide with CMSIS register bitfield names. Fork-only (was `ac2504c916f1`) |
+| `0006-usbd-cdc-acm-suspend-resume-and-irq-loop` | `zephyr` | our own CDC-ACM fixes, re-authored against 4.5's rewritten TX path. Replaces the two fork commits that did not cherry-pick |
 
-- `spi_esp32_spim.c.orig` and `spi_esp32_spim.c.rej` sit next to the patched file.
-- The `.rej` is real but harmless: our patch file contains **two hunks for the same one-line change**, at
-  `@@ -502` and at `@@ -732`. The first applies; the second can never match and is rejected every run. So the
-  applier is correct today **and noisy by design** — a future maintainer reading a `.rej` cannot tell whether
-  the fix landed. Collapse the patch to one hunk and delete the artifacts.
+**Verified, do not re-litigate:** the quad line-mode fix is genuinely in the tree, because v4.5.0 contains
+it. `spi_esp32_get_line_mode()` takes the full `spi_operation_t` and `SPI_LINES_QUAD` survives to the
+controller — the 3.93× measured 1-wire/quad fill ratio in row 22 is the end-to-end proof of that.
 
 ### Ops runbook
 
 ```sh
-./build.sh tab1a                     # -> zmk/build/cobantab1a/zephyr/zmk.bin
-./flash.sh tab1a                     # flash our firmware, then reset
-./flash.sh jc3248                    # the positive control (vendor ESP-IDF demo)
-python3 <tmp>/tab1a_log.py 25        # reset + capture from the ROM banner
+./build.sh tab1a                        # -> zmk/build/cobantab1a/zephyr/zmk.bin
+./flash.sh tab1a                        # flash, then hard reset into the app
+./flash.sh jc3248                       # the positive control (vendor ESP-IDF demo, same board)
+cat "$(ls /dev/cu.usbmodem* | head -1)" # console at 115200
 ```
 
-Device `/dev/cu.usbmodem834401`. `tab1a_log.py` opens the port **before** the RTS→EN reset so the ROM banner is
-always present; captured logs land in `tab1a-boot.log`. **Power-cycling the board (unplug/replug USB) is the
-only thing that clears the panel's GRAM.**
+The port name is **not stable** across replugs (`usbmodem834401`, `usbmodem83101` both seen) — list it, do
+not hardcode it. **Power-cycling the board (unplug/replug USB) is the only thing that clears the panel's
+GRAM**; resets and reflashes do not.
+
+The bring-up instrument repeats forever on the `axs_bringup` thread, one cycle ≈ 35 s, so there is no window
+to be early for:
+
+| seconds into a cycle | what runs |
+| --- | --- |
+| 0–11.5 | three fills, pixels on **one** line (white → checkerboard → 4-row bars), 2 s hold each |
+| 11.5–19.4 | the same three, pixels on the **wide** phase |
+| ~21.4 / ~23.5 | MADCTL scan axes swapped / restored — bars should turn through 90° and back |
+| ~25.0 / ~26.5 | DISPLAY_INVERSION on / off — an all-black frame must turn **white** |
+| ~28–32 | those four again |
+
+**Throughput is the sanity check, not decoration.** A full-panel fill is 2 457 600 bits, so at the 1 MHz
+bring-up clock it cannot take less than 2457.6 ms on one line or 614.4 ms on four. The fill log prints the
+measured milliseconds; anything far below the floor means nothing was actually sent (that is how row 24 was
+caught). At 40 MHz the floors become 61 ms and 15 ms.
 
 ### Known-good boot signature
 
-`AXS15231B initialized (320x480)` at ~0.53 s → `gpio qspi:` pad checks all `ok ok` → SCLK sample line with 12
-transitions → three fills at ~1.4 s, ~4.4 s, ~7.5 s → `gpio qspi: done`.
+`mspi_esp32: ESP32 MSPI (peripheral 0) configured at 80000000 Hz` → `AXS15231B initialized (320x480)` at
+~0.54 s → `Bring-up cycle 1: painting` → six `fill test [...] painted in NNNN ms` lines at the floors above →
+eight `Command probe n/8 ... (err 0)` lines → `Bring-up cycle 2` about 35 s after the first. Any `<err>` from
+`mspi_esp32` or `axs15231b` means the bus itself is failing, which is not what the panel's silence is
+caused by (rows 22, 27).
 
 ### Cleanup checklist before this can be merged
 
-- [ ] Remove `COLOR_TEST`, `COMMAND_PROBE`, `QSPI_TOUCH_PROBE`, `WIRE_PROBE`, `PAD_PROBE`, `I2C_PROBE`, `CS_PROBE`, `GPIO_QSPI_PROBE`, `PIXELS_1WIRE`, `color_test_hold`, and their Kconfig entries and `.conf` prose.
-- [ ] Restore `CONFIG_SYS_CLOCK_TICKS_PER_SEC` (drop the 250000 override) and `CONFIG_ZMK_BLE=y`.
-- [ ] Raise `spi-max-frequency` toward 40000000 and decide DMA: `CONFIG_DMA=y` + `dmas` on `&spi2`, GDMA descriptors **4092** bytes.
+- [ ] Settle the bus: SPI path or MSPI (see §9 "What is left"). Whichever loses, delete its half of `axs15231b.c`, the unused binding file and the unused Kconfig branches.
+- [ ] Remove the instruments: `FILL_TEST`, `COMMAND_PROBE`, and the older `COLOR_TEST`, `QSPI_TOUCH_PROBE`, `WIRE_PROBE`, `PAD_PROBE`, `I2C_PROBE`, `CS_PROBE`, `GPIO_QSPI_PROBE`, `PIXELS_1WIRE`, `paint_hold`, the `axs_bringup` thread, and their Kconfig entries and `.conf` prose.
+- [ ] Restore `CONFIG_ZMK_BLE=y` and drop the `CONFIG_SYS_CLOCK_TICKS_PER_SEC=250000` override.
+- [ ] Raise `mspi-max-frequency` in steps (1 → 8 → 20 → 40 MHz), re-running the fill test at each and checking the measured milliseconds against the floor for that clock. The reference proves 40 MHz on these pads through the GPIO matrix.
+- [ ] Try `CONFIG_MSPI_ESP32_PSRAM_DMA=y` once the framebuffer lives in PSRAM, so a full frame does not bounce through a copy each write.
+- [ ] Commit patch 0003 on a branch in `modules/hal/espressif` the way the zephyr patches are now committed, so both halves of the MSPI port are branch-pinnable.
 - [ ] Fix or drop `axs15231b_prime()` (currently an unused-function warning).
-- [ ] Collapse `esp-port/patches/0001-*.patch` to a single hunk and delete `spi_esp32_spim.c.orig` / `.rej` from the west tree.
-- [ ] If the MSPI port happens: keep it as a numbered patch under `esp-port/patches/` with a header naming #117188 + #121107 + hal_espressif#670 as its provenance, so the day it merges upstream, the deletion is mechanical.
-- [ ] Try `CONFIG_LV_Z_AREA_X_ALIGNMENT_WIDTH=2` / `_Y_=2` if dirty-region flushes ever come out smeared or shifted (available in our pin).
-- [ ] LVGL pixel format: `PIXEL_FORMAT_RGB_565X` does **not** exist in this Zephyr/LVGL — byte order must be settled in the driver or the flush, not assumed.
-- [ ] Fix the stranded comment block in `axs15231b_gpio_qspi_probe()` if the probe survives another round.
+- [ ] LVGL pixel format: `PIXEL_FORMAT_RGB_565X` does **not** exist in this Zephyr/LVGL (the pin is the ZMK LVGL fork at 9.5.0, which also lacks `LV_COLOR_FORMAT_DEFAULT`) — byte order has to be settled in the driver or the flush, not assumed.
+- [ ] Try `CONFIG_LV_Z_AREA_X_ALIGNMENT_WIDTH=2` / `_Y_=2` if dirty-region flushes ever come out smeared or shifted.
+- [ ] Re-test the two side issues from §7 once the panel is up: the `Flash write error: 261` storage failure and the BLE `hci_core.c:482` assert.
 - [ ] Record RAM/PSRAM, FPS and current draw in `esp-port/test-results/`, and update `backlogs/b05-cobantab1a-display-module.md`.
 
 ---
@@ -528,6 +630,15 @@ Stated plainly, so the next person does not repeat it:
    is two commits, net one file, on a path the ESP build never touches. A number that was cheap to quote and
    expensive to believe. Every quantitative claim here that came from a tool has since been re-opened and read;
    treat anything that has not been as unverified.
+7. **"It succeeded" without a rate is not a measurement.** Two builds in a row reported every fill as painted
+   while sending nothing at all, because the flag that keeps LVGL off the glass was sitting in the
+   instrument's own entry point (row 24). Only the elapsed time gave it away: 10 ms for a transfer that cannot
+   physically take less than 2457 ms. A probe that can be skipped silently has to print the quantity that
+   proves it ran — the fills now log their duration against that floor.
+8. **An instrument can manufacture the very ambiguity it exists to resolve.** The first MSPI observation was
+   unreadable because the command probe opened with `DISPLAY_OFF`: from then on, an output switched off and a
+   frame that is all black are the same black screen (row 21). Pick the commands whose effects stay
+   distinguishable whatever is in GRAM — inversion is worth exactly that much.
 
 ---
 
@@ -630,3 +741,39 @@ vendor-demo-vs-ours stops being optional and becomes the only way forward.
 It does not retire the SPI path yet, does not start touch (I²C 0x3B has still never ACKed), and does not fix the
 `storage` partition `ESP_ERR_NOT_FOUND` or the BLE `hci_core.c:482` assert. Those stay listed in §7, and must be
 re-tested after the pin move, because 4.5 changes both the flash driver and the Bluetooth controller.
+
+---
+
+## 14. Checkpoint, 2026-11-19 — the 4.5 + MSPI move is in; the panel is still dark
+
+Committed on `feat/cobantab1a` in `zmk` and `zmk-config`, with the carried Zephyr work on `v4.5.0+coban-fixes`
+(§11). Status against the stages in §13:
+
+| §13 stage | State |
+| --- | --- |
+| Stage 0, before touching anything | done — `./flash.sh jc3248` still brings up a working LVGL UI on this very panel, so the hardware is alive and the fault is ours |
+| Pin to upstream `v4.5.0` | done — release tag, no fork needed; `pad12b`, `pad16a` and `tab1a` all build, `tab1a` on the MSPI path |
+| Porting fallout | done — four carried zephyr patches plus the in-tree API fixes; leftovers in the §11 checklist |
+| Adopt the MSPI controller | done — driver, HAL patch, binding split, builds and transfers cleanly |
+| First test: the mapping-invariant fills | **run, and it failed** — the panel is silent to everything (§9) |
+| Then LVGL | not reached |
+
+The gate closing §13 has therefore been met, in the negative direction: the bars do not appear on a bus the
+community has proven working. That gate says the fault is frame content rather than transport, and that the
+logic-analyser capture of vendor-demo-vs-ours stops being optional. Two qualifications worth carrying forward:
+
+- Framing has now been varied and is *not* the variable — address phase and data phase are equally deaf (row
+  26), which narrows "frame content" down to the electrical shape of the transfer: clock phase/polarity,
+  sample edge, CS setup/hold, idle level, or the pads' output enable. An analyser sees all of those in one
+  capture; nothing else available here does.
+- One cheaper experiment goes first, because it is already in this tree and costs one flash: run the same
+  instrument on the **SPI** path (§9). Same driver, same pads, same panel — and that path is the one build
+  this ledger records as making the panel visibly respond. It separates "the ported MSPI controller does not
+  produce a usable waveform" from "the panel or its wiring is dead", and if the SPI path paints the bars, the
+  product is unblocked and MSPI becomes an optimisation to fix with an analyser on the bench.
+
+What is no longer in doubt, each of them measured rather than assumed: the controller runs at the clock the
+node asks for (row 22); the data phase really changes width per phase (same row); CS, pinctrl and the pin map
+are correct (rows 1, 27); the driver's framing matches the reference in both forms it could take (row 26); and
+the panel's GRAM still holds whatever some other firmware wrote, which is why "the screen changed" is only
+ever evidence when the change is one we caused. Every one of those was a live hypothesis three days ago.
