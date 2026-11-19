@@ -6,8 +6,8 @@ manifest:
       url-base: https://github.com/RyanDam
   projects:
     - name: zephyr
-      remote: cobanfirmware
-      revision: v4.4.1+zmk-fixes
+      remote: zephyrproject-rtos
+      revision: v4.5.0
       clone-depth: 1
       import:
         name-blocklist:

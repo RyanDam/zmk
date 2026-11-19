@@ -1,0 +1,68 @@
+CARRIED PATCH - fork content, not upstream. Provenance and why, for whoever
+reads this.
+
+Source: RyanDam/zephyr commit ac2504c916f1, "soc: nordic: Allow disabling
+binding header validation", by Pete Johanson, part of the v4.4.1+zmk-fixes
+fork branch. Not in upstream Zephyr 4.4 or 4.5.
+
+Why we need it: soc/nordic/validate_binding_headers.c is compiled with
+"-include <each dt-bindings header the devicetree pulled in>", to check Zephyr's
+Nordic bindings against the MDK. ZMK's keymap pulls in its own dt-bindings
+headers, and app/include/dt-bindings/zmk/keys.h defines single-letter macros
+(A, B, ... Q) for HID usages. nrfx.h then reaches CMSIS core_cm4.h, which uses
+those letters as register bitfield member names, so the compile dies with, e.g.,
+  dt-bindings/zmk/hid_usage_pages.h:33:24: error: expected identifier or '('
+  before numeric constant
+  note: in expansion of macro 'Q'  (core_cm4.h:279: uint32_t Q:1;)
+The check can only ever validate Zephyr's own bindings, so ZMK turns it off
+(app/Kconfig: NRF_SOC_VALIDATE_HEADERS_DISABLED default y) - which needs this
+Kconfig knob to exist.
+
+Deviation from the fork commit: the Kconfig hunk is re-anchored (in 4.5
+SOC_FAMILY_NORDIC_NRF moved down the file and NRF_SOC_SECURE_SUPPORTED gained a
+SOC_SERIES_NRF92 dependency). Content is the fork's.
+
+Applied to: zephyr/ (paths below are relative to the zephyr tree root).
+Delete when: the knob is upstreamed, or Zephyr stops -including application
+dt-bindings headers into that check.
+
+Verified against: Zephyr v4.5.0 (2026-11-19).
+diff --git a/soc/nordic/CMakeLists.txt b/soc/nordic/CMakeLists.txt
+index 77eaa32210..79f7cda386 100644
+--- a/soc/nordic/CMakeLists.txt
++++ b/soc/nordic/CMakeLists.txt
+@@ -8,10 +8,11 @@ endif()
+ 
+ zephyr_library_sources(
+   validate_base_addresses.c
+-  validate_binding_headers.c
+   validate_enabled_instances.c
+   )
+ 
++zephyr_library_sources_ifdef(CONFIG_NRF_SOC_VALIDATE_HEADERS validate_binding_headers.c)
++
+ # Include dt-bindings headers into the build. This lets us validate all required
+ # DT values against the MDK, without having to conditionally include different
+ # headers for different SoCs.
+diff --git a/soc/nordic/Kconfig b/soc/nordic/Kconfig
+index 555cfe8392..a54a24f7b5 100644
+--- a/soc/nordic/Kconfig
++++ b/soc/nordic/Kconfig
+@@ -56,6 +56,17 @@ if SOC_FAMILY_NORDIC_NRF
+ rsource "common/Kconfig.peripherals"
+ rsource "*/Kconfig"
+ 
++config NRF_SOC_VALIDATE_HEADERS_DISABLED
++	bool "Disable NRF binding header validation"
++
++config NRF_SOC_VALIDATE_HEADERS
++	bool "Validate NRF dt-binding headers"
++	default y
++	depends on !NRF_SOC_VALIDATE_HEADERS_DISABLED
++	help
++	  Build an additional check to validate included dt-binding headers
++	  match the MDK.
++
+ config NRF_SOC_SECURE_SUPPORTED
+ 	def_bool !TRUSTED_EXECUTION_NONSECURE || (BUILD_WITH_TFM && TFM_PARTITION_PLATFORM)
+ 	depends on !SOC_SERIES_NRF54H

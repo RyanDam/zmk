@@ -1,0 +1,11 @@
+# Post-image probe for 0003-hal-espressif-spi-hal-for-mspi.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Keep this list to lines only the *patched* tree contains. The patch replaces
+# the zephyr_sources_ifdef(CONFIG_ESP32_SPIM ...) form outright, so this line
+# appears exactly when the HAL sources are built for MSPI too.
+if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)

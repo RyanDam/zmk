@@ -1,0 +1,15 @@
+# Post-image probe for 0002-mspi-esp32.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in. The re-applier (esp-port/apply-zephyr-patches.sh)
+# uses these to decide "already applied" instead of guessing from patch exit
+# codes, which cannot tell "already applied" from "context drifted".
+#
+# Keep this list to lines only the *patched* tree contains.
+# Driver exists and is wired to the binding.
+#define DT_DRV_COMPAT espressif_esp32_mspi
+static void transfer_setup_cmd_addr(const struct mspi_xfer *xfer,
+# Devicetree binding.
+compatible: "espressif,esp32-mspi"
+# Kconfig entry that gates the driver (also proves drivers/mspi/Kconfig sources it).
+config MSPI_ESP32

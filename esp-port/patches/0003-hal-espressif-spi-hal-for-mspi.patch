@@ -1,0 +1,216 @@
+CARRIED PATCH - upstream content, not ours. Provenance and why, for whoever
+reads this.
+
+Source: zephyrproject-rtos/hal_espressif PR #670, "zephyr: include GPSPI HAL
+sources for ESP32 MSPI", by hitsmaxft, head a4421388, open and unmerged as of
+2026-11-19. It is the companion to Zephyr PR #121107 (carried here as 0002)
+and is not optional: the MSPI controller calls into the ESP-IDF SPI HAL, but
+the per-SoC CMakeLists in this HAL only compiles spi_hal.c and friends when
+CONFIG_ESP32_SPIM is set. An MSPI-enabled build that does not also enable the
+SPI driver therefore links with undefined spi_hal_* references.
+
+What it changes: every per-SoC CMakeLists turns
+  zephyr_sources_ifdef(CONFIG_ESP32_SPIM ...)
+into
+  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32) zephyr_sources(...) endif()
+so the HAL sources are built for either controller.
+
+Applied to: modules/hal/espressif (this file is the whole hal_espressif patch
+series; see 0003-...patch.target for the directory the applier must use).
+Delete when: #670, or a merged equivalent, is in the pinned hal_espressif
+revision that ships with the pinned Zephyr.
+  esp-port/patches/RETIRED lists the file names that must then not come back.
+
+Verified against: the hal_espressif revision pinned by Zephyr v4.5.0
+(git apply --check clean with small line offsets, 2026-11-19).
+diff --git a/zephyr/esp32/CMakeLists.txt b/zephyr/esp32/CMakeLists.txt
+index 205538c38a..81db9fd577 100644
+--- a/zephyr/esp32/CMakeLists.txt
++++ b/zephyr/esp32/CMakeLists.txt
+@@ -223,12 +223,14 @@ if(CONFIG_SOC_SERIES_ESP32)
+     ../../components/esp_hal_gpspi/spi_slave_hal_iram.c
+   )
+ 
+-  zephyr_sources_ifdef(CONFIG_ESP32_SPIM
+-    ../../components/esp_hal_gpspi/spi_hal.c
+-    ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
+-    ../../components/esp_hal_gpspi/spi_hal_iram.c
+-    ../../components/soc/lldesc.c
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
++    zephyr_sources(
++      ../../components/esp_hal_gpspi/spi_hal.c
++      ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
++      ../../components/esp_hal_gpspi/spi_hal_iram.c
++      ../../components/soc/lldesc.c
+     )
++  endif()
+ 
+   zephyr_sources_ifdef(CONFIG_I2C_ESP32
+     ../../components/esp_hal_i2c/i2c_hal_iram.c
+diff --git a/zephyr/esp32c2/CMakeLists.txt b/zephyr/esp32c2/CMakeLists.txt
+index c3b9c0a474..85c7f91f67 100644
+--- a/zephyr/esp32c2/CMakeLists.txt
++++ b/zephyr/esp32c2/CMakeLists.txt
+@@ -179,13 +179,15 @@ if(CONFIG_SOC_SERIES_ESP32C2)
+     ../../components/esp_hal_gpspi/spi_slave_hal_iram.c
+   )
+ 
+-  zephyr_sources_ifdef(CONFIG_ESP32_SPIM
+-    ../../components/esp_hal_gpspi/spi_hal.c
+-    ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
+-    ../../components/esp_hal_gpspi/spi_hal_iram.c
+-    ../../components/esp_hal_dma/gdma_hal_top.c
+-    ../../components/esp_hal_dma/gdma_hal_ahb_v1.c
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
++    zephyr_sources(
++      ../../components/esp_hal_gpspi/spi_hal.c
++      ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
++      ../../components/esp_hal_gpspi/spi_hal_iram.c
++      ../../components/esp_hal_dma/gdma_hal_top.c
++      ../../components/esp_hal_dma/gdma_hal_ahb_v1.c
+     )
++  endif()
+ 
+   if(CONFIG_SOC_FLASH_ESP32 OR NOT CONFIG_BOOTLOADER_MCUBOOT)
+     zephyr_sources(
+diff --git a/zephyr/esp32c3/CMakeLists.txt b/zephyr/esp32c3/CMakeLists.txt
+index 65b1c51f15..7a5b15b81f 100644
+--- a/zephyr/esp32c3/CMakeLists.txt
++++ b/zephyr/esp32c3/CMakeLists.txt
+@@ -185,13 +185,15 @@ if(CONFIG_SOC_SERIES_ESP32C3)
+     ../../components/esp_hal_gpspi/spi_slave_hal_iram.c
+   )
+ 
+-  zephyr_sources_ifdef(CONFIG_ESP32_SPIM
+-    ../../components/esp_hal_gpspi/spi_hal.c
+-    ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
+-    ../../components/esp_hal_gpspi/spi_hal_iram.c
+-    ../../components/esp_hal_dma/gdma_hal_top.c
+-    ../../components/esp_hal_dma/gdma_hal_ahb_v1.c
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
++    zephyr_sources(
++      ../../components/esp_hal_gpspi/spi_hal.c
++      ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
++      ../../components/esp_hal_gpspi/spi_hal_iram.c
++      ../../components/esp_hal_dma/gdma_hal_top.c
++      ../../components/esp_hal_dma/gdma_hal_ahb_v1.c
+     )
++  endif()
+ 
+     if(CONFIG_SOC_FLASH_ESP32 OR NOT CONFIG_BOOTLOADER_MCUBOOT)
+     zephyr_sources(
+diff --git a/zephyr/esp32c5/CMakeLists.txt b/zephyr/esp32c5/CMakeLists.txt
+index eeda8fb75a..040b43e8ad 100644
+--- a/zephyr/esp32c5/CMakeLists.txt
++++ b/zephyr/esp32c5/CMakeLists.txt
+@@ -208,7 +208,7 @@ if(CONFIG_SOC_SERIES_ESP32C5)
+     ../../components/efuse/src/efuse_controller/keys/with_key_purposes/esp_efuse_api_key.c
+   )
+ 
+-  if(CONFIG_ESP32_SPIM)
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
+     zephyr_sources(
+       ../../components/esp_hal_gpspi/spi_hal.c
+       ../../components/esp_hal_gpspi/spi_hal_iram.c
+diff --git a/zephyr/esp32c6/CMakeLists.txt b/zephyr/esp32c6/CMakeLists.txt
+index 34fe76ea0e..ed5d566ac1 100644
+--- a/zephyr/esp32c6/CMakeLists.txt
++++ b/zephyr/esp32c6/CMakeLists.txt
+@@ -208,7 +208,7 @@ if(CONFIG_SOC_SERIES_ESP32C6)
+       )
+   endif()
+ 
+-  if(CONFIG_ESP32_SPIM)
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
+     zephyr_sources(
+       ../../components/esp_hal_gpspi/spi_hal.c
+       ../../components/esp_hal_gpspi/spi_hal_iram.c
+diff --git a/zephyr/esp32h2/CMakeLists.txt b/zephyr/esp32h2/CMakeLists.txt
+index 42ee267d56..7548c45406 100644
+--- a/zephyr/esp32h2/CMakeLists.txt
++++ b/zephyr/esp32h2/CMakeLists.txt
+@@ -345,7 +345,7 @@ if(CONFIG_SOC_SERIES_ESP32H2)
+       )
+   endif()
+ 
+-  if(CONFIG_ESP32_SPIM)
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
+     zephyr_sources(
+       ../../components/esp_hal_gpspi/spi_hal.c
+       ../../components/esp_hal_gpspi/spi_hal_iram.c
+diff --git a/zephyr/esp32p4/CMakeLists.txt b/zephyr/esp32p4/CMakeLists.txt
+index 48eb649fb9..0fbf304cf6 100644
+--- a/zephyr/esp32p4/CMakeLists.txt
++++ b/zephyr/esp32p4/CMakeLists.txt
+@@ -227,13 +227,15 @@ if(CONFIG_SOC_SERIES_ESP32P4)
+     ../../components/esp_hal_gpspi/spi_slave_hal_iram.c
+   )
+ 
+-  zephyr_sources_ifdef(CONFIG_ESP32_SPIM
+-    ../../components/esp_hal_gpspi/spi_hal.c
+-    ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
+-    ../../components/esp_hal_gpspi/spi_hal_iram.c
+-    ../../components/soc/lldesc.c
+-    ../../components/esp_hal_dma/gdma_hal_top.c
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
++    zephyr_sources(
++      ../../components/esp_hal_gpspi/spi_hal.c
++      ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
++      ../../components/esp_hal_gpspi/spi_hal_iram.c
++      ../../components/soc/lldesc.c
++      ../../components/esp_hal_dma/gdma_hal_top.c
+     )
++  endif()
+ 
+   if(CONFIG_SOC_FLASH_ESP32 OR NOT CONFIG_BOOTLOADER_MCUBOOT)
+     zephyr_sources(
+diff --git a/zephyr/esp32s2/CMakeLists.txt b/zephyr/esp32s2/CMakeLists.txt
+index 1a86f9650c..e76b8cf2fc 100644
+--- a/zephyr/esp32s2/CMakeLists.txt
++++ b/zephyr/esp32s2/CMakeLists.txt
+@@ -212,12 +212,14 @@ if(CONFIG_SOC_SERIES_ESP32S2)
+     ../../components/esp_hal_gpspi/spi_slave_hal_iram.c
+   )
+ 
+-  zephyr_sources_ifdef(CONFIG_ESP32_SPIM
+-    ../../components/esp_hal_gpspi/spi_hal.c
+-    ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
+-    ../../components/esp_hal_gpspi/spi_hal_iram.c
+-    ../../components/soc/lldesc.c
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
++    zephyr_sources(
++      ../../components/esp_hal_gpspi/spi_hal.c
++      ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
++      ../../components/esp_hal_gpspi/spi_hal_iram.c
++      ../../components/soc/lldesc.c
+     )
++  endif()
+ 
+   if (CONFIG_ESP_SPIRAM)
+     zephyr_compile_definitions(CONFIG_SPIRAM)
+diff --git a/zephyr/esp32s3/CMakeLists.txt b/zephyr/esp32s3/CMakeLists.txt
+index 87f87682e0..daa2fcd82d 100644
+--- a/zephyr/esp32s3/CMakeLists.txt
++++ b/zephyr/esp32s3/CMakeLists.txt
+@@ -233,13 +233,15 @@ if(CONFIG_SOC_SERIES_ESP32S3)
+     ../../components/esp_hal_gpspi/spi_slave_hal_iram.c
+   )
+ 
+-  zephyr_sources_ifdef(CONFIG_ESP32_SPIM
+-    ../../components/esp_hal_gpspi/spi_hal.c
+-    ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
+-    ../../components/esp_hal_gpspi/spi_hal_iram.c
+-    ../../components/esp_hal_dma/gdma_hal_top.c
+-    ../../components/esp_hal_dma/gdma_hal_ahb_v1.c
++  if(CONFIG_ESP32_SPIM OR CONFIG_MSPI_ESP32)
++    zephyr_sources(
++      ../../components/esp_hal_gpspi/spi_hal.c
++      ../../components/esp_hal_gpspi/${CONFIG_SOC_SERIES}/spi_periph.c
++      ../../components/esp_hal_gpspi/spi_hal_iram.c
++      ../../components/esp_hal_dma/gdma_hal_top.c
++      ../../components/esp_hal_dma/gdma_hal_ahb_v1.c
+     )
++  endif()
+ 
+   zephyr_sources_ifdef(CONFIG_COUNTER_TMR_ESP32
+     ../../components/esp_hal_timg/timer_hal.c

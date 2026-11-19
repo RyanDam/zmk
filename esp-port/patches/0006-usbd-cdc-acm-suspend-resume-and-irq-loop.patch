@@ -1,0 +1,147 @@
+CARRIED PATCH - our own fix, not upstream content. Written 2026-11-19.
+
+What this replaces: the v4.4.1+zmk-fixes fork commits 75d4e3c076 ("Prepare for
+debuging") and 8789b5b8cb ("Fix USB + remove log"). Their whole net delta over
+the upstream merge base was subsys/usb/device_next/class/usbd_cdc_acm.c
+(+87/-17), and they do not cherry-pick onto 4.5: Zephyr 4.5 rewrote that file,
+replacing the ring-buffer FIFOs with k_fifo/net_buf pools and reworking the TX
+path around an "echo mitigation" buffer swap. This is the same four fixes,
+re-authored against the 4.5 structure.
+
+Three of the four are still needed on 4.5.0; one was fixed upstream and is
+deliberately NOT re-applied here:
+
+1. usbd_cdc_acm_suspended()/resumed() were empty apart from the state bit.
+   cdc_acm_tx_fifo_enqueue() and cdc_acm_rx_fifo_handler() both return early
+   while the class is suspended without rescheduling themselves, so a host
+   suspend (macOS suspends an idle port within seconds) left queued TX data in
+   the FIFO and left the OUT endpoint un-armed until unrelated activity
+   happened to trigger them. Suspend now requests remote wakeup when data is
+   pending; resume retriggers TX and re-arms RX.
+
+2. cdc_acm_irq_cb_handler() re-submitted its own work on
+   "IRQ TX enabled && the TX FIFO has room". That is a level, not an edge: the
+   application enables TX once and leaves it on, and the FIFO is nearly always
+   non-full when idle, so the handler called the application callback in a
+   tight loop, starving the work queue - including tx_fifo_work, so nothing was
+   actually transmitted. Removed; TX-ready is reported on the two real edges
+   (uart_irq_tx_enable() and TX completion in usbd_cdc_acm_request()).
+
+3. cdc_acm_fifo_fill() set tx_fifo.altered but never scheduled TX work. That
+   flag is only acted on by cdc_acm_irq_cb_handler(), i.e. it only reaches the
+   wire when the write came from inside the UART IRQ callback. ZMK's Studio RPC
+   transport fills the FIFO from its own work item (app/src/studio/
+   uart_rpc_transport.c), so those writes waited for an unrelated event. Now
+   schedules the TX work; enqueue is a no-op when there is nothing to send.
+
+4. NOT re-applied: the fork replaced the zlp_needed flag with a direct
+   udc_ep_buf_set_zlp() call. 4.5's own mechanism is sound - enqueue records
+   zlp_needed when a transfer ends on an MPS boundary, TX completion then
+   reschedules via cdc_acm_tx_schedule_leftover_locked(), and the next enqueue
+   sends the empty buffer as the ZLP - so re-adding the fork's version would
+   only fight it.
+
+Applied to: zephyr/ (paths below are relative to the zephyr tree root).
+Delete when: upstream fixes the suspend/resume restart and the level-triggered
+irq_cb resubmit (worth reporting; the FIXME in usbd_cdc_acm_suspended() and the
+"( )" TODO in the RX-handler comment show upstream knows).
+
+Verified against: Zephyr v4.5.0. Builds; the USB console + Studio RPC behaviour
+on a CobanPad is the test.
+diff --git a/subsys/usb/device_next/class/usbd_cdc_acm.c b/subsys/usb/device_next/class/usbd_cdc_acm.c
+index 3957daa167..20722506de 100644
+--- a/subsys/usb/device_next/class/usbd_cdc_acm.c
++++ b/subsys/usb/device_next/class/usbd_cdc_acm.c
+@@ -445,6 +445,16 @@ static void usbd_cdc_acm_suspended(struct usbd_class_data *const c_data)
+ 
+ 	/* FIXME: filter stray suspended events earlier */
+ 	atomic_set_bit(&data->state, CDC_ACM_CLASS_SUSPENDED);
++
++	/* Data already queued cannot be sent while the bus is suspended. Ask
++	 * the host to resume so it can complete; the request is a no-op unless
++	 * the host enabled remote wakeup for this device.
++	 */
++	if (data->zlp_needed || data->tx_fifo.enqueued > 0 ||
++	    (data->tx_fifo.current != NULL && data->tx_fifo.current->len > 0)) {
++		LOG_DBG("USB suspended with TX pending, requesting remote wakeup");
++		usbd_wakeup_request(usbd_class_get_ctx(c_data));
++	}
+ }
+ 
+ static void usbd_cdc_acm_resumed(struct usbd_class_data *const c_data)
+@@ -453,6 +463,22 @@ static void usbd_cdc_acm_resumed(struct usbd_class_data *const c_data)
+ 	struct cdc_acm_uart_data *data = dev->data;
+ 
+ 	atomic_clear_bit(&data->state, CDC_ACM_CLASS_SUSPENDED);
++
++	if (!atomic_test_bit(&data->state, CDC_ACM_CLASS_ENABLED)) {
++		return;
++	}
++
++	/* cdc_acm_tx_fifo_enqueue() returns early while suspended without
++	 * rescheduling itself, so data queued at suspend time would otherwise
++	 * sit in the TX FIFO until unrelated TX activity occurs.
++	 */
++	cdc_acm_work_schedule(&data->tx_fifo_work, K_NO_WAIT);
++
++	/* cdc_acm_rx_fifo_handler() likewise returns early while suspended, so
++	 * a re-arm that was pending at suspend time would never be retried and
++	 * the OUT endpoint would silently stop receiving.
++	 */
++	cdc_acm_work_submit(&data->rx_fifo_work);
+ }
+ 
+ static const void *usbd_cdc_acm_get_desc(struct usbd_class_data *const c_data,
+@@ -718,7 +744,13 @@ static void cdc_acm_tx_fifo_enqueue(const struct device *dev)
+ 	}
+ 
+ 	if (atomic_test_bit(&data->state, CDC_ACM_CLASS_SUSPENDED)) {
+-		LOG_INF("USB support is suspended (FIXME: submit rwup)");
++		/* Data is waiting but the bus is suspended, so the transfer
++		 * cannot start. Ask the host to resume instead of dropping it
++		 * on the floor; the request is a no-op unless the host enabled
++		 * remote wakeup.
++		 */
++		LOG_DBG("USB is suspended, requesting remote wakeup");
++		usbd_wakeup_request(usbd_class_get_ctx(c_data));
+ 		return;
+ 	}
+ 
+@@ -920,6 +952,14 @@ static int cdc_acm_fifo_fill(const struct device *dev,
+ 
+ 	if (done) {
+ 		data->tx_fifo.altered = true;
++
++		/* Interrupt-driven writes can be made outside the UART IRQ
++		 * callback (ZMK's RPC transport fills the FIFO from its own
++		 * work item), so the flag above is not enough to guarantee a
++		 * kick: schedule TX work here as well. Enqueueing is a no-op
++		 * when there is nothing left to send.
++		 */
++		cdc_acm_work_schedule(&data->tx_fifo_work, K_MSEC(1));
+ 	}
+ 
+ 	LOG_INF("UART dev %p, len %d, remaining space %u", dev, len,
+@@ -1100,11 +1140,17 @@ static void cdc_acm_irq_cb_handler(struct k_work *work)
+ 		cdc_acm_work_submit(&data->irq_cb_work);
+ 	}
+ 
+-	if (atomic_test_bit(&data->state, CDC_ACM_IRQ_TX_ENABLED) &&
+-	    cdc_acm_tx_fifo_space_get(data)) {
+-		LOG_DBG("tx irq pending, submit irq_cb_work");
+-		cdc_acm_work_submit(&data->irq_cb_work);
+-	}
++	/*
++	 * Do NOT re-submit irq_cb_work based on TX readiness. "TX enabled and
++	 * the FIFO has room" is a level, not an edge: the application enables
++	 * TX once and leaves it enabled, and the FIFO is almost always
++	 * non-full when idle, so re-submitting on it makes this handler invoke
++	 * the application callback in a tight loop forever. That starves the
++	 * shared work queue (including tx_fifo_work, so nothing is actually
++	 * transmitted). TX-ready is already reported on the two real edges:
++	 * uart_irq_tx_enable() and TX transfer completion, which reaches this
++	 * handler through usbd_cdc_acm_request().
++	 */
+ }
+ 
+ static void cdc_acm_irq_callback_set(const struct device *dev,

@@ -1,0 +1,68 @@
+CARRIED PATCH - fork content, not upstream. Provenance and why, for whoever
+reads this.
+
+Source: RyanDam/zephyr commit f50faa7bcb38, "cmake: modules: Add new
+post_boards_shields extension", by Pete Johanson, part of the
+v4.4.1+zmk-fixes fork branch. Not in upstream Zephyr 4.4 or 4.5.
+
+Why we need it: ZMK's own app/boards/post_boards_shields.cmake is what turns
+the config repo's <shield>.keymap into a devicetree overlay, and prepends
+app/app.overlay. Without the hook that file is never included, so the keymap
+and app/dts/behaviors.dtsi never reach the devicetree: no keymap node, no
+behavior nodes, and behavior_dynamic_macro.c fails with
+  "DT_N_INST_0_zmk_behavior_dynamic_macro_FULL_NAME too long"
+because DT_INST() expands to a token that was never generated.
+
+What it does: adds cmake/modules/post_boards_shields.cmake, which includes
+<BOARD_ROOT>/boards/post_boards_shields.cmake for every board root once boards
+and shields are resolved, and appends it to zephyr_cmake_modules after
+"shields" in zephyr_default.cmake.
+
+Deviation from the fork commit: the hunk in zephyr_default.cmake is
+re-anchored, because 4.5's module list around it changed (no zephyr_module /
+arch_v1 entries). The new file is byte-for-byte the fork's.
+
+Applied to: zephyr/ (paths below are relative to the zephyr tree root).
+Delete when: the hook is upstreamed (ZMK carries it in its fork today) or ZMK
+gains another way to inject the keymap overlay.
+
+Verified against: Zephyr v4.5.0 (2026-11-19).
+diff --git a/cmake/modules/post_boards_shields.cmake b/cmake/modules/post_boards_shields.cmake
+new file mode 100644
+index 0000000000..83f9b29859
+--- /dev/null
++++ b/cmake/modules/post_boards_shields.cmake
+@@ -0,0 +1,21 @@
++# SPDX-License-Identifier: Apache-2.0
++#
++# Copyright (c) 2025, Pete Johanson
++
++# Perform any post-processing/customization once details of selected board and shields
++# is fully loaded.
++#
++# This CMake module will TODO.
++#
++include_guard(GLOBAL)
++
++include(python)
++include(extensions)
++
++foreach(root ${BOARD_ROOT})
++  message("Checking ${root}")
++  if (EXISTS ${root}/boards/post_boards_shields.cmake)
++    message("found ${root}")
++    include(${root}/boards/post_boards_shields.cmake)
++  endif()
++endforeach()
+diff --git a/cmake/modules/zephyr_default.cmake b/cmake/modules/zephyr_default.cmake
+index 28727cc5b8..91aaac77bb 100644
+--- a/cmake/modules/zephyr_default.cmake
++++ b/cmake/modules/zephyr_default.cmake
+@@ -80,6 +80,7 @@ list(APPEND zephyr_cmake_modules zephyr_module)
+ 
+ list(APPEND zephyr_cmake_modules boards)
+ list(APPEND zephyr_cmake_modules shields)
++list(APPEND zephyr_cmake_modules post_boards_shields)
+ list(APPEND zephyr_cmake_modules snippets)
+ list(APPEND zephyr_cmake_modules hwm_v2)
+ list(APPEND zephyr_cmake_modules configuration_files)

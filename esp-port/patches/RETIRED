@@ -1,0 +1,12 @@
+# Patches that must NOT exist in this directory any more.
+#
+# One file name per line (bare, no leading comment marker). A bare line is
+# checked; lines starting with # are notes. apply-zephyr-patches.sh fails if a
+# listed file is present: the pinned revision has the fix, so re-applying it
+# would either do nothing or land a stale hunk in a tree nobody looks at.
+#
+#   ESP32 SPI line mode was truncated to 16 bits, so SPI_LINES_QUAD was
+#   silently dropped and every quad transfer went out on D0. Fixed upstream by
+#   24cc93286, which the v4.5.0 pin contains. Retired 2026-11-19 with the pin
+#   move from v4.4.1+zmk-fixes.
+0001-spi-esp32-fix-quad-line-mode-truncated-to-16-bit.patch

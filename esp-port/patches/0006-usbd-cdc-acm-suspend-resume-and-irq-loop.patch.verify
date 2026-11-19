@@ -1,0 +1,9 @@
+# Post-image probe for 0006-usbd-cdc-acm-suspend-resume-and-irq-loop.patch
+#
+# Each non-comment line here is a string that MUST exist in a file the patch
+# touches once the fix is in.
+#
+# Keep this list to lines only the *patched* tree contains.
+USB suspended with TX pending, requesting remote wakeup
+USB is suspended, requesting remote wakeup
+Do NOT re-submit irq_cb_work based on TX readiness
