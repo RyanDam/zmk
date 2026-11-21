@@ -390,6 +390,8 @@ endif # ZMK_BACKLIGHT
 
 endmenu # Display/LED Options
 
+rsource "src/tab1a/Kconfig"
+
 rsource "src/pointing/Kconfig"
 
 menu "Power Management"
