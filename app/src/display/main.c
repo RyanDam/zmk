@@ -129,6 +129,12 @@ void initialize_display(struct k_work *work) {
 
     initialize_theme();
 
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
+    /* Build the style registry from the theme before any screen is created;
+     * screens must reference styles only (src/display/grid.md). */
+    zmk_display_theme_init();
+#endif
+
     screen = zmk_display_status_screen();
 
     if (screen == NULL) {

@@ -54,16 +54,56 @@ config ZMK_DISPLAY_CLOCK_SCREEN
     depends on ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     default y
     select LV_USE_LABEL
-    select ENTROPY_GENERATOR
-    select LV_FONT_MONTSERRAT_48
-    select LV_FONT_MONTSERRAT_20
-    select LV_FONT_MONTSERRAT_12
+    select ENTROPY_GENERATOR if !ZMK_DISPLAY_DESIGN_SYSTEM
+    select LV_FONT_MONTSERRAT_48 if !ZMK_DISPLAY_DESIGN_SYSTEM
+    select LV_FONT_MONTSERRAT_20 if !ZMK_DISPLAY_DESIGN_SYSTEM
+    select LV_FONT_MONTSERRAT_12 if !ZMK_DISPLAY_DESIGN_SYSTEM
     help
       Status screen showing a clock (HH:MM:SS) and the calendar date,
       refreshed once per second. The clock is simulated from a fixed
       reference time plus the system uptime: the supported boards have no
-      RTC and no network time source. Tapping the screen changes the text
-      color to a random bright color, demonstrating that touch input works.
+      RTC and no network time source. Styled through the display design
+      system when enabled (tap cycles theme presets); on boards without
+      the design system it falls back to the original hardcoded styling
+      (tap = random color demo).
+
+menuconfig ZMK_DISPLAY_DESIGN_SYSTEM
+    bool "Display design system (theme model, style registry, tab1a fonts)"
+    depends on ZMK_DISPLAY
+    default y if ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
+    help
+      The shared visual foundation for display-centric boards (workspace
+      backlog a07): a 5-slot theme model persisted via settings, a single
+      style registry that screens must use for colors/fonts/sizes, and the
+      generated 320x480 typography ramp. See src/display/grid.md.
+
+if ZMK_DISPLAY_DESIGN_SYSTEM
+
+if !ZMK_DISPLAY_STATUS_SCREEN_BUILT_IN
+
+config ZMK_DISPLAY_THEME_BACKGROUND
+    hex "Theme background color (RGB888)"
+    default 0x14161C
+
+config ZMK_DISPLAY_THEME_TEXT_PRIMARY
+    hex "Theme primary text color (RGB888)"
+    default 0xE6E6E6
+
+config ZMK_DISPLAY_THEME_TEXT_SECONDARY
+    hex "Theme secondary text color (RGB888)"
+    default 0x8A8F98
+
+config ZMK_DISPLAY_THEME_ACCENT
+    hex "Theme accent color (RGB888)"
+    default 0xE8A33D
+
+config ZMK_DISPLAY_THEME_INACTIVE
+    hex "Theme inactive/track color (RGB888)"
+    default 0x3A3F49
+
+endif # !ZMK_DISPLAY_STATUS_SCREEN_BUILT_IN
+
+endif # ZMK_DISPLAY_DESIGN_SYSTEM
 
 choice ZMK_DISPLAY_WORK_QUEUE
     prompt "Work queue selection for UI updates"

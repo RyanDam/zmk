@@ -10,8 +10,10 @@
  * real time source: the clock is simulated. It starts from a fixed reference
  * time and advances with the system uptime.
  *
- * Tapping the screen (in-cell capacitive touch) changes the text color to a
- * random bright color, demonstrating that touch input works.
+ * With the design system enabled (a07) every color/font/size comes from the
+ * style registry (src/display/styles.h + grid.md) — no hardcoded styling in
+ * this file; tapping the screen cycles the theme preset to demonstrate live
+ * re-theming. Without it, the original hardcoded demo styling remains.
  */
 
 #include <string.h>
@@ -19,13 +21,21 @@
 #include <zephyr/kernel.h>
 #include <zephyr/input/input.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/random/random.h>
 #include <zephyr/sys/util.h>
+
+#if !IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
+#include <zephyr/random/random.h>
+#endif
 
 #include <lvgl.h>
 
 #include <zmk/display.h>
 #include <zmk/display/status_screen.h>
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
+#include "styles.h"
+#include "theme.h"
+#endif
 
 LOG_MODULE_REGISTER(display_clock, CONFIG_ZMK_LOG_LEVEL);
 
@@ -85,6 +95,102 @@ static const char *const month_names[] = {
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 };
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
+
+/* --------------------------------------------------------------------- */
+/* Design-system screen: styling only via zmk_display_style() (a07).     */
+/* --------------------------------------------------------------------- */
+
+static lv_obj_t *clock_label;  /* HH:MM  — ZMK_STYLE_TEXT_HERO     */
+static lv_obj_t *seconds_label;/* :SS    — ZMK_STYLE_TEXT_SUBHERO  */
+static lv_obj_t *date_label;   /* body, secondary color            */
+static lv_obj_t *hint_label;   /* caption                          */
+
+static void clock_update_text(void)
+{
+    struct clock_time t;
+    char buf[32];
+
+    clock_get_time(&t);
+
+    snprintk(buf, sizeof(buf), "%02u:%02u", t.hour, t.minute);
+    lv_label_set_text(clock_label, buf);
+
+    snprintk(buf, sizeof(buf), "%02u", t.second);
+    lv_label_set_text(seconds_label, buf);
+
+    snprintk(buf, sizeof(buf), "%s, %s %u %u", weekday_names[t.weekday], month_names[t.month - 1],
+             t.day, t.year);
+    lv_label_set_text(date_label, buf);
+}
+
+static void clock_timer_cb(lv_timer_t *timer)
+{
+    ARG_UNUSED(timer);
+    clock_update_text();
+}
+
+/*
+ * Touch handling: the input callback runs in the input reporting context, so
+ * the LVGL work is posted to the display work queue.
+ */
+static void clock_theme_cycle_work_cb(struct k_work *work)
+{
+    ARG_UNUSED(work);
+
+    /* The touch controller reports a phantom touch at power-on, so a cycle
+     * work item can run before the screen exists — skip it (the theme
+     * itself is always valid; this guard only orders against boot noise). */
+    if (clock_label == NULL) {
+        return;
+    }
+
+    zmk_display_theme_cycle_preset();
+}
+K_WORK_DEFINE(clock_theme_cycle_work, clock_theme_cycle_work_cb);
+
+static void clock_touch_cb(struct input_event *evt, void *user_data)
+{
+    ARG_UNUSED(user_data);
+
+    if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH && evt->value == 1) {
+        k_work_submit_to_queue(zmk_display_work_q(), &clock_theme_cycle_work);
+    }
+}
+INPUT_CALLBACK_DEFINE(NULL, clock_touch_cb, NULL);
+
+lv_obj_t *zmk_display_status_screen(void)
+{
+    lv_obj_t *screen = lv_obj_create(NULL);
+
+    lv_obj_add_style(screen, zmk_display_style(ZMK_STYLE_SCREEN), 0);
+
+    clock_label = lv_label_create(screen);
+    lv_obj_add_style(clock_label, zmk_display_style(ZMK_STYLE_TEXT_HERO), 0);
+    lv_obj_align(clock_label, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 5);
+
+    seconds_label = lv_label_create(screen);
+    lv_obj_add_style(seconds_label, zmk_display_style(ZMK_STYLE_TEXT_SUBHERO), 0);
+    lv_obj_align(seconds_label, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 4);
+
+    date_label = lv_label_create(screen);
+    lv_obj_add_style(date_label, zmk_display_style(ZMK_STYLE_TEXT_SECONDARY), 0);
+    lv_obj_align(date_label, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 9);
+
+    hint_label = lv_label_create(screen);
+    lv_obj_add_style(hint_label, zmk_display_style(ZMK_STYLE_TEXT_CAPTION), 0);
+    lv_obj_align(hint_label, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN);
+    lv_label_set_text(hint_label, "tap the screen to change theme");
+
+    clock_update_text();
+    lv_timer_create(clock_timer_cb, 1000, NULL);
+
+    LOG_INF("Clock status screen ready (simulated time, base 2026-11-14 12:00 UTC)");
+    return screen;
+}
+
+#else /* !CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM — original hardcoded demo styling */
 
 static lv_obj_t *clock_label;
 static lv_obj_t *date_label;
@@ -175,3 +281,5 @@ lv_obj_t *zmk_display_status_screen(void)
     LOG_INF("Clock status screen ready (simulated time, base 2026-11-14 12:00 UTC)");
     return screen;
 }
+
+#endif /* CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM */
