@@ -1,0 +1,10 @@
+/* Bring-up experiment: run the MSPI panel link at the frequency the vendor
+ * demo PROVES this panel accepts (40 MHz, SPI mode 3). Our tree pinned
+ * mspi-max-frequency to 1 MHz - the one setting our failing path never
+ * shared with the working vendor path. Paired with bringup/blank-probe.conf:
+ * if commands act on the glass at 40 MHz but not at 1 MHz, the panel wants a
+ * faster interface clock and the fix is a frequency floor, not framing. */
+
+&axs15231b {
+	mspi-max-frequency = <40000000>;
+};

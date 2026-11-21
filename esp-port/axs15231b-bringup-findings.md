@@ -180,6 +180,12 @@ Read this before designing any new experiment. Each row is a hypothesis that has
 | 25 | The instrument is limited by having to be watched in a specific 35 s window | moved the fills and the command probe off the init thread onto a dedicated looping thread (`axs_bringup`), with LVGL still held off by `paint_hold` | the panel now replays the whole sequence every ~35 s for as long as the board is powered | done. Removes the timing coordination that made every observation in this ledger expensive |
 | 26 | The frame header is in the wrong **phase**: we send it as the MSPI address phase, the reference sends it as an ordinary 1-wire data phase | rewrote `axs15231b_mspi_frame()` to frame exactly as `esp_lcd_panel_io_spi` does — header `[opcode][0x00][cmd][0x00]` as a data phase in a first transfer with `hold_ce`, pixels as a second transfer, no address phase anywhere — which is also how the SPI path in this same file frames it | still nothing at all: no fills, no MADCTL rotation, no inversion, on a lit panel, over several cycles | **ruled out.** Both framings are deaf on MSPI, while the same framing on the SPI path is the build where `DISPLAY_OFF` visibly blanked the panel (row 21's precedent, recorded in `cobantab1a.conf`). The fault is below the framing |
 | 27 | CS on GPIO45 may never be asserted on the MSPI path (`ce_set()` does nothing at all, and logs nothing, if `num_ce_gpios == 0`) | read the built devicetree and the driver: `ce-gpios = <&gpio1 13>` (= GPIO45, active-low, pull-up) is present, `num_ce_gpios` is built from it, and the driver configures each CE `GPIO_OUTPUT_INACTIVE` at init | CS is real and is being driven | ruled out, together with pinctrl (the driver applies `pinctrl-0` at init) and the pin map (row 1) |
+| 28 | The init table differs from the vendor's after all | scripted parse of both tables and a byte-for-byte compare of every command's parameter list | all entries identical, including the two `0xA4` and two `0xBB` repeats and the trailing `0x13`/`0x11`/`0x2C`; the only "diffs" were the parser's own artifacts where our table uses `NULL` and named delays | **ruled out again**, independently of row 5, and now reproducible rather than eyeballed |
+| 29 | The bit-bang probe's noise result (rows 16, 17) means anything about lanes or framing | read the probe's own sequence against the datasheet: it sent SWRESET, SLPOUT, COLMOD, CASET, DISPON — **never the 32-entry vendor table** — and SWRESET returns every register to its default (datasheet V0.4 §3.2.1/§4.2.2) | the panel was left with default boost, gate, source and gamma settings, so it would have shown garbage on any bus, ours or the vendor's | **withdrawn.** Row 16 is the only fact left (the glass can be changed by hand-built frames); row 17's "none of these mappings" is void, and the probe now replays the whole table (§15) |
+| 30 | The instruments are the only thing that commands the panel during a run | read the callers of `blanking_on`/`blanking_off`: ZMK's display init calls `display_blanking_off()` a POST_KERNEL step after the driver's init, and both of our blanking hooks send panel commands (`SLPOUT`+`DISPON`, `DISPOFF`+`SLPIN`) | every instrument run so far silently received two commands it did not log, right after the sequence it was being tested on — and those two are exactly the pair that can blank a panel | **now held off** while an instrument owns the panel (`paint_hold` also gates the blanking hooks), so the log is the whole conversation. Unproven as a *cause* of anything; it was a hole in the method |
+| 31 | `mspi_esp32.c` re-aligns SCLK before every CS assertion, as ESP-IDF does | read `update_transfer_config()`: it returns early unless `dev_hw_dirty`, and `dev_config_apply()` sets that flag for CPP/endian/frequency but **not** for `MSPI_DEVICE_CONFIG_IO_MODE`, which is the one this driver changes per frame | the mode-3 "one dummy byte with CE released" realign therefore runs once — on the first transfer (SWRESET) — and never again, across every later 1-wire↔quad switch | **suspect, not yet tested.** One-line fix (`dev_hw_dirty` on IO_MODE) is ready; deliberately not applied blind, because row 26 shows both framings deaf and this would be a third guess in the same dark |
+| 32 | "Just re-run the instrument on the SPI path" (§9, §14) is one flash away | `grep CONFIG_SPI build/cobantab1a/zephyr/.config`, then actually built it | not set — `CONFIG_SPI` and `CONFIG_SPI_EXTENDED_MODES` are both absent — **and** with the panel under `&spi2` Kconfig refuses the configuration outright: `AXS15231B select SPI` while depending on `SPI_EXTENDED_MODES`, which depends on `SPI`, is a dependency loop | the experiment was not one flash away, it was not *buildable*; both fixed now — `select SPI` → `depends on SPI` for the SPI-bus case, and `esp-port/bringup/spi-path.{conf,overlay}` builds clean (verified in the generated `zephyr.dts`) |
+| 33 | The panel can only be observed by a person looking at the glass | datasheet V0.4 §5.3.2.2 "Read Sequence" + the command table (p. 23): `RDDID 04h`, `RDDPM 0Ah`, `RDDMADCTL 0Bh`, `RDDIPF 0Ch`, `RDID1 DAh` are readable on SPI/QSPI, and `RAMRD 2Eh`/`RAMRDC 3Eh` read GRAM back | a bit-banged read is possible with the pads already in this tree; §4.2.2.22 warns non-MIPI interfaces return only `par0`, and §4.2.2.35's own table header says the pixel format **defaults to 16 bits/pixel**, so the "maybe it wants 24-bit after reset" worry is weak | **new capability, built** (`AXS15231B_QSPI_READBACK`, §15). The read opcode is disputed — `03h` in the datasheet's figures, `0x0B` in the vendor driver's unused `LCD_OPCODE_READ_CMD` — so the probe tries both, with and without a dummy phase, and the decisive signal is a register that *changes* when its own write command is sent between two reads |
 
 ### Fixed bugs, for the record
 
@@ -893,3 +899,181 @@ BLE-off bring-up config. The two carries worth watching are `0012`, which revert
 touches every ZMK build, and `0009` — both are in the pads above, and neither is exercised at runtime by
 anything on this bench. `c3` and `s3` initially failed on stale Espressif blobs left by the pin move
 (§11 runbook), not on anything in the delta.
+
+---
+
+## 15. 2026-11-20 — a sensor that needs no eyes, and the four things the last five days left unsaid
+
+Two documents arrived in `docs/`: the AXS15231 datasheet (`AXS15231_Datasheet_V0.4_20221108-.1.pdf`, 181 pp.)
+and an outside review of the bring-up (`coban_tab_1a_proposed fixes.md`), which had read the findings doc and the
+driver but **not** `zmk-config`, so its devicetree statements are taken from this file and its hardware statements
+are all inference. Everything below was checked against the PDF or the tree, not accepted from either document.
+Text was extracted from the PDF with a zlib+`Tj` pass (the skill's `pdftext` route needs PyPI, which this machine
+cannot reach): decompress each stream, collect the `(...)` strings, strip the letter-spacing. Waveform figures are
+rasters and were pulled out as XObjects and looked at; the V0.4 read figures (§5.3.2.2.1–3, physical pp. 82–85) are
+the generic 3-line ones and are **not** evidence for the 32-bit QSPI header — that comes from the working demo's own
+bus layer, which is stronger evidence anyway.
+
+### What the new inputs actually changed
+
+| Claim | Verdict | Where it came from |
+| --- | --- | --- |
+| The bit-bang probe reset the panel and never replayed the init table, so its noise result is void | **true, and decisive** — withdrawn from the ledger (row 29) and fixed in the probe | datasheet §4.2.2 (SWRESET → registers to default) × the probe's own five frames |
+| The panel has a documented **read** path, so the loop does not have to be observed by a human | **true** — built as an instrument (row 33) | datasheet §5.3.2.2, command table p. 23 |
+| After reset the QSPI pixel format may be 24-bit, which would explain skew-shaped noise | **not supported**: the format table's own header reads "Default: 16bits/pixel", and `RDDIPF (0Ch)` reads the interface pixel format back, so this is now a question we can ask instead of argue | datasheet §4.2.2.35 area (p. 34) |
+| Read opcode is `03h` | **disputed** — the vendor driver defines the unused `LCD_OPCODE_READ_CMD` as `0x0B`. Both are tried, ± a dummy phase | §5.3.2.2 figures vs `esp_lcd_axs15231b.c:27` |
+| Non-MIPI interfaces read back only `par0` of the ID commands | **true** — the ID registers are read as one byte, and read-back is trusted as *consistency between reads*, not as absolute values | datasheet §4.2.2.22 (p. 30) |
+| "`axs_gpio_fill` … expect about 0.56 s apiece" | **do not use as a floor.** The probe bit-bangs with `k_busy_wait(0)`, so its rate is whatever GPIO writes cost. Every fill in this project is checked against `2457600 bits ÷ (clock × lines)` and nothing else (the same trap as §12.1) | — |
+
+### Four things this file did not say, found by reading rather than testing
+
+1. **`display_blanking_off()` was issuing two panel commands per run, unlogged.** Row 30. Every instrument run
+   since the looping thread landed received `SLPOUT` + `DISPON` from ZMK's display init a moment after its own
+   sequence — the exact pair that can blank a panel. The hooks are now gated on the same `paint_hold` the display
+   API is, so what the log says is what the bus carried.
+2. **The MSPI port re-primes SCLK once, not per transfer.** Row 31. `update_transfer_config()` early-returns
+   unless `dev_hw_dirty`, and nothing sets that flag on an I/O-mode change — so the mode-3 realign byte with CE
+   released happens on SWRESET only. ESP-IDF's equivalent happens every transaction. Not applied blind: row 26
+   already says both framings are deaf, and this would be a third guess in the same dark.
+3. **"Re-run on the SPI path" is not buildable today.** Row 32 — `CONFIG_SPI` is off, so §14's cheap experiment
+   needed a conf change as well as an overlay flip. It now has one: `esp-port/bringup/spi-path.conf`.
+4. **The observation channel was the bottleneck, not the transport.** Every row in §6 is either a register read or
+   a person watching glass. §5.3.2.2 means that stopped being true today.
+
+### Instruments added (none flashed yet — the board is not connected)
+
+`esp-port/bringup/README.md` is the runbook; these are the questions they answer.
+
+| Fragment | Question | Decisive outcome |
+| --- | --- | --- |
+| `readback.conf` | Does the panel hear us *at all*, and can it answer? | `gpio read …: reg 0Bh CHANGED 00h → 80h` proves our bits arrived decoded — no glass, no color mapping, no reference values. Full vendor init is now bit-banged too, which the old probe skipped (row 29) |
+| `init-only.conf` | Is it the *commands* that darken the panel rather than the pixels? | Flash the vendor demo, then this, with no power cycle. The boot path sends nothing; every 15 s the init sequence is re-sent. If the vendor picture fades, darkens, rotates or inverts → commands land and the init path is the fault. If it survives round after round → the transport is the fault, and §9's conclusion stands |
+| `skip-init-fill.conf` | Do our pixels land, given a panel already known to be alive? | Same trick, fills instead of commands: our pattern over the vendor's picture means the pixel path is fine |
+| `spi-path.conf` | Is it the ported MSPI controller or the panel? | Re-runs the identical instrument through `&spi2`, the path whose `DISPLAY_OFF` once visibly blanked the panel (row 21's precedent) |
+
+Supporting changes: the init sequence is now one function (`axs15231b_send_init(dev, reset_first)`) so an
+instrument can re-send it without a reset, and `CONFIG_AXS15231B_INIT_LIMIT` truncates it to a prefix so "which
+entry" is a rebuild rather than an edit; the bars pattern now draws *n* white bars where *n* is the cycle number,
+so one look at the glass identifies which write painted it instead of asking whether something happened.
+
+**And a fifth, found by trying to build the SPI path:** `AXS15231B` used `select SPI`, which is a Kconfig
+dependency loop the moment the panel sits on an SPI bus — `SPI_EXTENDED_MODES` (which the pixel phase needs) depends
+on `SPI`, so a driver that selects one and depends on the other is circular, and Kconfig refuses the whole
+configuration rather than resolving it. It is now `depends on SPI` for the SPI bus case, which means the board (or
+`spi-path.conf`) enables SPI itself. This is why "flip the overlay back" was never one flash: with the panel under
+`&spi2` the build was broken at the configuration step, not at the flashing step.
+
+All four fragments were built against the current tree (each pristine, `--no-blobs`), and the SPI-path build was
+checked in the generated devicetree, not just for exit status: `&spi2` comes out as `espressif,esp32-spi` +
+`half-duplex`, the panel node keeps `cs-gpios`/`spi-cpol`/`spi-cpha`/1 MHz, and no `peripheral-id`, `ce-gpios` or
+`mspi-*` property survives anywhere.
+
+**Nothing here is committed.** The working tree holds the instruments for review; `git diff --stat` in `zmk` is the
+list.
+
+## 16. 2026-11-21 — the panel speaks: two defects, both fixed, everything verified
+
+The dark-panel problem is **solved**. ZMK's MSPI path now paints this panel from a
+virgin power-on and its commands act on the live glass - sleep fades it, wake
+restores it, inversion flips it - in step with the log. It was two independent
+defects, each hiding the other, and neither of them the thing six days of evidence
+pointed at.
+
+### What the vendor firmware settled first (the calibration runs)
+
+The only trustworthy oracle was the vendor demo itself, so `ref/JC3248W535EN` was
+modified to send commands over its *own proven* bus layer (the edit is in
+`src/esp_bsp.c`, `bsp_calib_probe_task`, with a pristine copy under the session's
+ref-backup). Results, each verified on the glass by eye:
+
+- `esp_lcd_panel_io_tx_param(io, 0x02002100, NULL, 0)` flips the picture **now**.
+  The QSPI bus layer takes the whole int as the 32-bit header; the accepted frame
+  is `[02][00][cmd][00]`, **1-wire** - `tx_param` never sets a quad flag on the
+  command phase (`esp_lcd_panel_io_spi.c`: only octal does, and `tx_color` sets
+  `SPI_TRANS_MODE_QIO` on the *color data* phase only).
+- The same header sent on **four lines** is ignored outright - by ZMK's MSPI, and
+  bit-banged, in both nibble lane orders. (This retroactively voids row 31's
+  "MSPI output is what lies" suspicion *and* the quad-header experiment: the
+  framing model, not the controller, was wrong.)
+- Datasheet, in full: "commands 10h, 20h, 21h, 28h, 29h, 36h will be updated only
+  during V-sync periods while the module is in the Sleep-Out mode ... and will be
+  updated immediately in the Sleep-In mode" - which is why a command probe's
+  negative result can be ambiguous about the panel's state, and why sleep
+  commands entered by a mis-framed stream could leave the panel stuck dark and
+  poison later experiments. Never interpret a *missing* effect on this panel
+  without also asking what state its last bad frame left it in.
+
+### The eliminations that made the room small
+
+On a *virgin* panel (unplug/replug - the panel has no reset line, so power is the
+reset, and a polluted panel even made the vendor's own probe misbehave) with the
+golden framing:
+
+| Suspect | Test | Verdict |
+| --- | --- | --- |
+| Clock too slow (1 MHz) | ZMK at 40 MHz (boost-clock.overlay) | innocent - final test paints at both |
+| Header line width | 1-wire vs 4-wire, controller and bit-bang | 1-wire only |
+| Nibble lane order | both, bit-banged | neither (width was the issue) |
+| GDMA corrupting pixels | all frames forced to PIO | innocent |
+| GPIO matrix / pads / wiring | mode 0 painted real pictures through the same pads | innocent |
+| Reset line | ZMK wires none; vendor's `RST = NC` | innocent |
+| Panel health | vendor demo inverts/blanks/fades on command | healthy |
+
+### Root cause 1: the two-transfer frame
+
+`axs15231b_mspi_frame` sent the header and payload as **two `mspi_transceive`
+calls** glued by a software-GPIO CS hold. When CS wavers at that boundary the
+panel sees a header with no payload, then a payload it parses **as** a header -
+which is exactly "commands half-decode (a panel that sleeps and never wakes),
+pixels arrive as edge-to-edge snow, every transfer returns 0". A frame is now
+**one hardware transaction**: header split across the controller's 16-bit command
+and 16-bit address phases (`[opcode][0x00]` + `[cmd][0x00]`, both 1-wire in every
+io_mode), payload as the data phase. No boundary to lose sync at. Note the
+correction this forces on §15: the earlier finding "the address phase never made
+the panel react" was *symptom, not property* - the addr-phase frames were failing
+for root cause 2, and an addr-phase frame carrying the header is what works today.
+
+### Root cause 2: mode 3 is a waveform, not a register pair
+
+Programming the S3's `ck_idle_edge`/`ck_out_edge` pair for mode 3 does **not**
+put a mode-3 waveform on a GPIO-matrix-routed SCLK pad: the clock reaches the
+panel a half-edge out of step. Every negative result of the last six days - on
+both the MSPI and the bit-bang path, at 1 MHz and 40 MHz, on DMA and PIO - was
+this one defect. IDF's spi_master does not rely on the register pair either: for
+CPOL modes it drives the clock through the GPIO matrix **with the matrix inverter
+enabled**, and that is the waveform the panel accepts. Proof on the glass, same
+build, same pins:
+
+| Config | Glass |
+| --- | --- |
+| mode 3, registers only | snow / stuck-dark (all six days of it) |
+| mode 0, registers only | **real pictures** (so pads, framing, DMA all exonerated in one run) |
+| mode 3 + `inv_sel` on the SCLK pad | **real pictures** (the spec-conformant waveform, kept) |
+
+The fix is `axs_mspi_clock_invert()` in the driver: one `func_out_sel_cfg[47].inv_sel = 1`
+write at init when the node asks for `MSPI_CPP_MODE_3`, with the pad number tied
+to the overlay's pinctrl clock group by comment. Zephyr's ESP32 pinctrl has no
+inversion concept; if this is ever upstreamed, that is the hole to fix there.
+
+### Final verification (bench, 2026-11-21, virgin panel)
+
+- full init + fills, 40 MHz, single-transaction, mode 3 + inverter, GDMA: **pictures**;
+- same at the shield's stock 1 MHz: **pictures** (frequency fully exonerated);
+- `blank-probe.conf` over the live picture, every 26 s: sleep-in fades it,
+  sleep-out recovers, 21h/20h flip the colours and restore, **all in step with
+  the log** - the first parameter-less commands this panel has ever obeyed from
+  our firmware, because every one of them was previously one half-clock off.
+
+### Also today
+
+- The kernel livelock fix (1-tick `k_timer` at 250 kHz ticks) and its two raised
+  probe periods; `axs_gpio_clock_check` sampling from its own thread (63/63
+  transitions - the pads were always fine).
+- `gpio-quad.conf` now bit-bangs the **golden 1-wire** frame (`axs_gpio_golden_frame`);
+  kept because it is the only instrument that touches the panel without the
+  controller at all. Its first run predated the mode fix, which is why the
+  hand-driven frames also failed then - mode 0 direct would have moved the glass.
+- Datasheet context recovered: the vsync/deferral sentence quoted above.
+- The vendor repo carries the calibration probe (`CALIB` log tag) for future
+  experiments; restore the pristine `esp_bsp.c` from the backup before any
+  vendor-demo release build.

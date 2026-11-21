@@ -6,7 +6,12 @@ config AXS15231B
 	depends on DT_HAS_AXS_AXS15231B_ENABLED
 	depends on SPI_EXTENDED_MODES if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),spi)
 	select MSPI if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),mspi)
-	select SPI if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),spi)
+	# Not `select SPI`: the line mode this panel needs comes from
+	# SPI_EXTENDED_MODES, which depends on SPI, so a driver that both selects
+	# SPI and depends on SPI_EXTENDED_MODES is a dependency loop. On the SPI
+	# path the board (or a bring-up fragment) enables SPI itself; the MSPI path
+	# keeps the `select` above because MSPI has no such dependency.
+	depends on SPI if $(dt_compat_on_bus,$(DT_COMPAT_AXS_AXS15231B),spi)
 	help
 	  Enable driver for the AXS15231B QSPI LCD controller (e.g. the 3.5"
 	  320x480 panel on the Guition JC3248W535 / cobantab1a module). The panel
@@ -53,6 +58,73 @@ config AXS15231B_FILL_TEST
 	  someone looks at the glass. Sends everything through the same write path
 	  the status screen uses, and holds further writes off while it runs. Say N
 	  for normal builds.
+
+config AXS15231B_INIT_LIMIT
+	int "Send only the first N entries of the panel init table (-1 = all)"
+	depends on AXS15231B
+	default -1
+	range -1 32
+	help
+	  For display bring-up only. Truncates the 32-entry panel init sequence
+	  that follows MADCTL and COLMOD. 0 sends no table entries at all (only
+	  the reset, MADCTL, COLMOD, SLPOUT and DISPLAY_ON around it); N sends the
+	  first N; -1 sends the whole table, which is what the reference bsp does
+	  and what a normal build must use.
+
+	  Exists so "which entry is it" can be answered by rebuilding with a
+	  different number instead of editing the table. The entries are
+	  order-dependent, so the useful granularity is a prefix, and a binary
+	  search over 32 entries is five builds.
+
+config AXS15231B_SKIP_INIT
+	bool "Send no panel commands at all, and paint straight onto whatever is on the glass"
+	depends on AXS15231B
+	help
+	  For display bring-up only. The driver claims the bus, configures the CE
+	  line and the controller, and then sends nothing to the panel: no
+	  SWRESET, no init table, no DISPLAY_ON. The panel keeps the image and the
+	  display state that the firmware before this one left in its GRAM.
+
+	  That is the one thing this hardware offers for free: the panel keeps its
+	  frame memory across reflashes and resets, and only a power cycle clears
+	  it. So flashing the vendor demo (./flash.sh jc3248, known to paint a
+	  working UI on this module) and then flashing this build separates "our
+	  pixel path is broken" from "our init sequence is what darkens the
+	  panel": if the fills below change the vendor's picture, pixels arrive;
+	  if the picture is untouched, nothing of ours reaches the panel at all and
+	  the pixel path is the fault.
+
+	  Useless without an instrument that writes something - pair it with
+	  AXS15231B_FILL_TEST. Say N for normal builds.
+
+config AXS15231B_INIT_ONLY
+	bool "Re-send the panel init sequence on a loop and write no pixels"
+	depends on AXS15231B
+	depends on !AXS15231B_COLOR_TEST
+	depends on !AXS15231B_FILL_TEST
+	depends on !AXS15231B_COMMAND_PROBE
+	help
+	  For display bring-up only. The boot-time init sequence is suppressed (so
+	  whatever is on the glass survives), and then a thread of its own sends
+	  the panel init sequence - reset excluded - every 15 seconds, forever,
+	  logging each round. Nothing writes pixels; nothing else touches the bus.
+
+	  This is the experiment that the previous bring-up never ran: a known-good
+	  image under a known command sequence. Flash the vendor demo first
+	  (./flash.sh jc3248) and confirm its UI is on the glass, then flash this
+	  build and watch. If the picture fades, darkens, rotates or inverts, our
+	  commands do reach the panel and something in the init path is putting it
+	  into a dark state - narrow it down with AXS15231B_INIT_LIMIT.
+
+	  A picture that survives is NOT proof of a deaf panel, which this help
+	  originally claimed and a real run disproved: the sequence re-sent here is
+	  the very one that produced the image, and identical commands on an already
+	  configured panel are legitimately invisible. To separate "not heard" from
+	  "heard and benign", enable AXS15231B_COMMAND_PROBE with this, or use
+	  esp-port/bringup/invert-probe.conf - MADCTL and inversion cannot be
+	  invisible, and if they do not visibly move, the transport is the fault.
+
+	  Say N for normal builds.
 
 config AXS15231B_PIXELS_1WIRE
 	bool "Send pixel data on a single data line (not QIO)"
@@ -145,21 +217,78 @@ config AXS15231B_GPIO_QSPI_PROBE
 	  4-wire pixels, the clock idling high or low, a slow clock or the fastest
 	  the bit-bang can manage. Say N for normal builds.
 
+config AXS15231B_QSPI_READBACK
+	bool "Ask the panel to report its own registers (bit-banged QSPI read)"
+	depends on AXS15231B_GPIO_QSPI_PROBE
+	help
+	  For display bring-up only. Everything this bring-up has measured so far
+	  came from a person looking at the glass, which is slow, subjective, and
+	  cannot see a command that landed without a visible effect. The panel can
+	  answer: datasheet 5.3.2.2 defines a read sequence on the same lines (the
+	  host sends the command, the driver then shifts bytes back; the host samples
+	  on the rising edge of SCL), and 0Ah/0Bh/0Ch are read-backs of the display
+	  power state, MADCTL and the interface pixel format.
+
+	  This makes the bit-bang probe read those, plus RDDID (04h) and RDID1
+	  (DAh), with each read opcode the two sources give - 0x03 from the datasheet,
+	  0x0B from the vendor driver's unused LCD_OPCODE_READ_CMD - before it writes
+	  anything, and again after each command that should change one of them.
+
+	  The interesting value is not the number, it is the difference: read 0Bh,
+	  write MADCTL 0x80, read 0Bh again. Any change proves that this firmware's
+	  bits reached the controller and were decoded, with no glass, no color
+	  mapping and no reference values involved. All 0x00 or all 0xFF means the
+	  read itself is not working yet, which is also worth knowing before a
+	  difference is read into it. Say N for normal builds.
+
 config AXS15231B_COMMAND_PROBE
 	bool "Probe the command path with commands that are visible on the glass"
 	depends on AXS15231B
 	help
 	  For display bring-up only. On a thread of its own, repeating for as
 	  long as the board is powered, send the commands whose effect a person
-	  can see - MADCTL with the scan axes swapped and restored (turns the
-	  painted frame through 90 degrees), DISPLAY_INVERSION_ON/OFF (flips it) -
-	  twice through, logging each one. This is the only way to tell whether
-	  the panel understands our commands at all: if nothing on the glass ever
-	  changes, no command has been understood. DISPLAY_OFF is left out because
-	  a switched-off output and an all-black frame are the same black screen,
-	  and that ambiguity makes the run unreadable. It shares its thread with
-	  the fill test, because a work-queue item would land in the middle of a
-	  frame write. Say N for normal builds.
+	  can see - MADCTL (mirrors the picture), DISPLAY_INVERSION_ON/OFF (flips
+	  colours) - twice through, logging each one. This is the only way to tell
+	  whether the panel understands our commands at all. It shares its thread
+	  with the fill test, because a work-queue item would land in the middle
+	  of a frame write.
+
+	  A real run made one thing clear: no visible change does NOT prove the
+	  panel is deaf here, because a corrupted command stream can fade a panel
+	  to black without ever executing the command it was sent as. If this
+	  probe produces a fade and no flip, run AXS15231B_BLANK_PROBE next - it
+	  asks the question one unambiguous command at a time. Say N for normal
+	  builds.
+
+config AXS15231B_BLANK_PROBE
+	bool "Send wake/sleep/off/invert one command at a time, with what to expect"
+	depends on AXS15231B
+	help
+	  For display bring-up only. Every 4 s, send exactly one command -
+	  SLPOUT, DISPON, SLEEP_IN, SLPOUT again, then inversion on/off - and log
+	  the visible effect each one must produce if it was decoded: a faded or
+	  off panel must return instantly, a panel that decodes SLEEP_IN must fade
+	  out over seconds with the backlight still lit, inversion must flip
+	  colours now. A panel that obeys none of these and only fades anyway is
+	  receiving a corrupted stream, not commands, and the transport is what
+	  has to be fixed next. Flash over a still-visible picture (vendor demo,
+	  SKIP_INIT) so there is something for the commands to act on. Say N for
+	  normal builds.
+
+config AXS15231B_GPIO_QUAD_PROBE
+	bool "Bit-bang the calibrated 1-wire-header frames by hand (no controller)"
+	depends on AXS15231B_GPIO_QSPI_PROBE
+	help
+	  For display bring-up only. The vendor build inverts the panel's
+	  colours on command with the 32-bit header sent as 32 clocks on D0
+	  (its tx_param never goes quad on the command phase); the ZMK MSPI
+	  controller sending the same framing changes nothing on the glass.
+	  This removes the controller from the loop entirely: it hand-drives
+	  CS, the 32 header clocks on D0, and release, alternating inversion
+	  and sleep commands. If the glass reacts, the pads are fine and the
+	  MSPI controller's report of what it transmits is what lies; if not,
+	  no hand-built frame can reach this panel under GPIO control. Say N
+	  for normal builds.
 
 config AXS15231B_QSPI_TOUCH_PROBE
 	bool "Poll the controller's touch block over QSPI and log the reply"
