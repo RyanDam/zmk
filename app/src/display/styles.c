@@ -65,6 +65,16 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
     lv_style_set_bg_opa(&styles[ZMK_STYLE_INACTIVE], LV_OPA_COVER);
     lv_style_set_border_width(&styles[ZMK_STYLE_INACTIVE], 0);
 
+    /* progress rings (a10): LVGL 9 draws the track on LV_PART_MAIN and
+     * the progress on LV_PART_INDICATOR, both via arc_color/arc_width */
+    lv_style_reset(&styles[ZMK_STYLE_RING]);
+    lv_style_set_arc_color(&styles[ZMK_STYLE_RING], t->inactive);
+    lv_style_set_arc_width(&styles[ZMK_STYLE_RING], ZMK_GRID_UNIT + ZMK_GRID_UNIT / 2);
+
+    lv_style_reset(&styles[ZMK_STYLE_RING_INDICATOR]);
+    lv_style_set_arc_color(&styles[ZMK_STYLE_RING_INDICATOR], t->accent);
+    lv_style_set_arc_width(&styles[ZMK_STYLE_RING_INDICATOR], ZMK_GRID_UNIT + ZMK_GRID_UNIT / 2);
+
     /* touch targets */
     lv_style_reset(&styles[ZMK_STYLE_TOUCH]);
     lv_style_set_bg_color(&styles[ZMK_STYLE_TOUCH], t->inactive);

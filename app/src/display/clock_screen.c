@@ -50,6 +50,7 @@
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
 #include "styles.h"
 #include "theme.h"
+#include "ui_helpers.h"
 #endif
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
@@ -137,31 +138,8 @@ static int32_t last_date_key; /* yyyymmdd; calendar rebuilds on change */
 
 static void clock_build_layout(void);
 
-static lv_obj_t *mk_label(lv_obj_t *parent, enum zmk_display_style_id style_id) {
-    lv_obj_t *lbl = lv_label_create(parent);
-
-    lv_obj_add_style(lbl, zmk_display_style(style_id), 0);
-    lv_label_set_text(lbl, "");
-    return lbl;
-}
-
-/* Transparent content-sized flex column/row: the layout unit of this
- * screen. Only touched on rebuild (never per tick), so the full-refresh
- * panel pays for it once per settings change. */
-static lv_obj_t *mk_flex(lv_obj_t *parent, lv_flex_flow_t flow, int gap) {
-    lv_obj_t *box = lv_obj_create(parent);
-
-    lv_obj_remove_style_all(box);
-    lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(box, flow);
-    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    if (flow == LV_FLEX_FLOW_COLUMN) {
-        lv_obj_set_style_pad_row(box, gap, 0);
-    } else {
-        lv_obj_set_style_pad_column(box, gap, 0);
-    }
-    return box;
-}
+/* Style-swap helper is clock-specific (registry style ids); the shared
+ * label/flex/tap plumbing lives in ui_helpers.h. */
 
 static void style_swap(lv_obj_t *obj, enum zmk_display_style_id from,
                        enum zmk_display_style_id to) {
@@ -201,14 +179,14 @@ static void clock_apply_dim(bool synced) {
 /* ---------------- style 0: HERO — the a08 default look, refined ------- */
 
 static void build_hero(void) {
-    lv_obj_t *col = mk_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
+    lv_obj_t *col = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
 
     lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 5);
 
-    l_hero = mk_label(col, ZMK_STYLE_TEXT_HERO);
-    l_seconds = mk_label(col, ZMK_STYLE_TEXT_SUBHERO);
-    l_indicator = mk_label(col, ZMK_STYLE_TEXT_CAPTION);
-    l_date = mk_label(col, ZMK_STYLE_TEXT_SECONDARY);
+    l_hero = zmk_ui_label(col, ZMK_STYLE_TEXT_HERO);
+    l_seconds = zmk_ui_label(col, ZMK_STYLE_TEXT_SUBHERO);
+    l_indicator = zmk_ui_label(col, ZMK_STYLE_TEXT_CAPTION);
+    l_date = zmk_ui_label(col, ZMK_STYLE_TEXT_SECONDARY);
 
     hero_style_id = ZMK_STYLE_TEXT_HERO;
     hero_dim_id = ZMK_STYLE_TEXT_HERO_DIM;
@@ -221,17 +199,17 @@ static void build_hero(void) {
 static void build_serif(void) {
     lv_obj_t *top, *col, *row;
 
-    top = mk_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT / 2);
+    top = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT / 2);
     lv_obj_align(top, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
-    l_date = mk_label(top, ZMK_STYLE_TEXT_SECONDARY);
+    l_date = zmk_ui_label(top, ZMK_STYLE_TEXT_SECONDARY);
 
-    col = mk_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
+    col = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
     lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 2);
-    l_hero = mk_label(col, ZMK_STYLE_TEXT_HERO_ALT);
+    l_hero = zmk_ui_label(col, ZMK_STYLE_TEXT_HERO_ALT);
 
-    row = mk_flex(col, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
-    l_seconds = mk_label(row, ZMK_STYLE_TEXT_CAPTION);
-    l_indicator = mk_label(row, ZMK_STYLE_TEXT_CAPTION);
+    row = zmk_ui_flex(col, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
+    l_seconds = zmk_ui_label(row, ZMK_STYLE_TEXT_CAPTION);
+    l_indicator = zmk_ui_label(row, ZMK_STYLE_TEXT_CAPTION);
 
     hero_style_id = ZMK_STYLE_TEXT_HERO_ALT; /* no serif-dim font: hero stays lit */
     hero_dim_id = ZMK_STYLE_TEXT_HERO_ALT;
@@ -244,17 +222,17 @@ static void build_serif(void) {
 static void build_stacked(void) {
     lv_obj_t *col;
 
-    l_weekday = mk_label(clock_root, ZMK_STYLE_TEXT_TITLE);
+    l_weekday = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TITLE);
     lv_obj_align(l_weekday, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT * 2);
 
-    col = mk_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
+    col = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
     lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 3);
-    l_hero = mk_label(col, ZMK_STYLE_TEXT_HERO);     /* hour   */
-    l_hero2 = mk_label(col, ZMK_STYLE_TEXT_SUBHERO); /* minute */
-    l_seconds = mk_label(col, ZMK_STYLE_TEXT_CAPTION);
-    l_indicator = mk_label(col, ZMK_STYLE_TEXT_CAPTION);
+    l_hero = zmk_ui_label(col, ZMK_STYLE_TEXT_HERO);     /* hour   */
+    l_hero2 = zmk_ui_label(col, ZMK_STYLE_TEXT_SUBHERO); /* minute */
+    l_seconds = zmk_ui_label(col, ZMK_STYLE_TEXT_CAPTION);
+    l_indicator = zmk_ui_label(col, ZMK_STYLE_TEXT_CAPTION);
 
-    l_date = mk_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
+    l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
     lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 17);
 
     hero_style_id = ZMK_STYLE_TEXT_HERO;
@@ -285,10 +263,10 @@ static void build_calendar_cells(const struct zmk_time *t) {
 
     /* weekday header row, then 6 week rows; 40 px cells fit the 288 px
      * content width with the safe margins. */
-    lv_obj_t *hrow = mk_flex(cal_box, LV_FLEX_FLOW_ROW, 0);
+    lv_obj_t *hrow = zmk_ui_flex(cal_box, LV_FLEX_FLOW_ROW, 0);
 
     for (int c = 0; c < 7; c++) {
-        lv_obj_t *lbl = mk_label(hrow, ZMK_STYLE_TEXT_CAPTION);
+        lv_obj_t *lbl = zmk_ui_label(hrow, ZMK_STYLE_TEXT_CAPTION);
         char ch[2] = {headers[c], '\0'};
 
         lv_label_set_text(lbl, ch);
@@ -297,7 +275,7 @@ static void build_calendar_cells(const struct zmk_time *t) {
     }
 
     for (int r = 0; r < 6; r++) {
-        lv_obj_t *wrow = mk_flex(cal_box, LV_FLEX_FLOW_ROW, 0);
+        lv_obj_t *wrow = zmk_ui_flex(cal_box, LV_FLEX_FLOW_ROW, 0);
 
         for (int c = 0; c < 7; c++) {
             int day = r * 7 + c - first_wd + 1;
@@ -326,7 +304,7 @@ static void build_calendar_cells(const struct zmk_time *t) {
                 lv_obj_center(lbl);
                 lv_label_set_text_fmt(lbl, "%d", day);
             } else {
-                lv_obj_t *lbl = mk_label(wrow, ZMK_STYLE_TEXT_TABULAR);
+                lv_obj_t *lbl = zmk_ui_label(wrow, ZMK_STYLE_TEXT_TABULAR);
 
                 lv_obj_set_size(lbl, 40, 28);
                 lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
@@ -339,19 +317,19 @@ static void build_calendar_cells(const struct zmk_time *t) {
 static void build_calendar(void) {
     lv_obj_t *trow;
 
-    l_cal_title = mk_label(clock_root, ZMK_STYLE_TEXT_TITLE);
+    l_cal_title = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TITLE);
     lv_obj_align(l_cal_title, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
 
-    trow = mk_flex(clock_root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
+    trow = zmk_ui_flex(clock_root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
     lv_obj_align(trow, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 13);
-    l_hero = mk_label(trow, ZMK_STYLE_TEXT_SUBHERO);
-    l_seconds = mk_label(trow, ZMK_STYLE_TEXT_CAPTION);
-    l_indicator = mk_label(trow, ZMK_STYLE_TEXT_CAPTION);
+    l_hero = zmk_ui_label(trow, ZMK_STYLE_TEXT_SUBHERO);
+    l_seconds = zmk_ui_label(trow, ZMK_STYLE_TEXT_CAPTION);
+    l_indicator = zmk_ui_label(trow, ZMK_STYLE_TEXT_CAPTION);
 
-    cal_box = mk_flex(clock_root, LV_FLEX_FLOW_COLUMN, 0);
+    cal_box = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, 0);
     lv_obj_align(cal_box, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 5);
 
-    l_date = mk_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
+    l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
     lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 24);
 
     hero_style_id = ZMK_STYLE_TEXT_SUBHERO;
@@ -366,18 +344,18 @@ static void build_calendar(void) {
 static void build_desk(void) {
     lv_obj_t *trow;
 
-    l_weekday = mk_label(clock_root, ZMK_STYLE_TEXT_TITLE);
+    l_weekday = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TITLE);
     lv_obj_align(l_weekday, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT * 2);
 
-    trow = mk_flex(clock_root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
+    trow = zmk_ui_flex(clock_root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
     lv_obj_align(trow, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 5);
-    l_hero = mk_label(trow, ZMK_STYLE_TEXT_HERO);
-    l_seconds = mk_label(trow, ZMK_STYLE_TEXT_SUBHERO);
+    l_hero = zmk_ui_label(trow, ZMK_STYLE_TEXT_HERO);
+    l_seconds = zmk_ui_label(trow, ZMK_STYLE_TEXT_SUBHERO);
 
-    l_indicator = mk_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
+    l_indicator = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
     lv_obj_align(l_indicator, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 4);
 
-    l_date = mk_label(clock_root, ZMK_STYLE_TEXT_TABULAR);
+    l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TABULAR);
     lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 15);
 
     hero_style_id = ZMK_STYLE_TEXT_HERO;
@@ -414,11 +392,11 @@ static void clock_build_layout(void) {
     }
 
     /* Shared bottom furniture, above the page dots. */
-    l_unsync = mk_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
+    l_unsync = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
     lv_obj_align(l_unsync, LV_ALIGN_BOTTOM_MID, 0, -(ZMK_GRID_MARGIN * 3 + ZMK_GRID_UNIT * 2));
     lv_label_set_text(l_unsync, "unsynced");
 
-    l_hint = mk_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
+    l_hint = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
     lv_obj_align(l_hint, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 3);
 
     /* Fresh labels carry the base styles; dim them now if the time source
@@ -638,7 +616,14 @@ static void clock_cycle_field_work_cb(struct k_work *work) {
 /* Page registration / standalone screen                                 */
 /* --------------------------------------------------------------------- */
 
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+ZMK_UI_TAP_STATE(clock_tap);
+#endif
+
 static lv_obj_t *clock_attach(lv_obj_t *parent) {
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+    zmk_ui_tap_init(&clock_tap, "clock", &clock_cycle_field_work);
+#endif
     clock_root = lv_obj_create(parent);
 
     lv_obj_remove_style_all(clock_root);
@@ -662,70 +647,9 @@ ZMK_DISPLAY_DEFINE_SCREEN(clock, "clock", clock_page_create, 10);
  * callback runs in the input reporting context; the LVGL work is posted to
  * the display work queue. Swipes travel far, so requiring near-zero
  * movement keeps the manager's page navigation untouched. */
-#define CLOCK_TAP_MAX_MOVE 24
-
-static struct {
-    bool pressed;
-    uint16_t x, y, start_x, start_y;
-} tap;
-
 static void clock_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
-
-    switch (evt->type) {
-    case INPUT_EV_ABS:
-        if (evt->code == INPUT_ABS_X) {
-            tap.x = evt->value;
-        } else if (evt->code == INPUT_ABS_Y) {
-            tap.y = evt->value;
-        } else {
-            return;
-        }
-        if (!tap.pressed) {
-            tap.start_x = tap.x;
-            tap.start_y = tap.y;
-        }
-        break;
-
-    case INPUT_EV_KEY: {
-        int32_t dx, dy;
-        int page;
-
-        if (evt->code != INPUT_BTN_TOUCH) {
-            return;
-        }
-        if (evt->value) {
-            tap.pressed = true;
-            tap.start_x = tap.x;
-            tap.start_y = tap.y;
-            return;
-        }
-        if (!tap.pressed) {
-            return;
-        }
-        tap.pressed = false;
-
-        dx = (int32_t)tap.x - (int32_t)tap.start_x;
-        dy = (int32_t)tap.y - (int32_t)tap.start_y;
-        if (dx < 0) {
-            dx = -dx;
-        }
-        if (dy < 0) {
-            dy = -dy;
-        }
-        if (dx > CLOCK_TAP_MAX_MOVE || dy > CLOCK_TAP_MAX_MOVE) {
-            return; /* a swipe: the manager owns it */
-        }
-
-        /* The power-on phantom touch lands before the registry exists. */
-        page = zmk_display_screen_find("clock");
-        if (page < 0 || zmk_display_screen_current() != page) {
-            return;
-        }
-        k_work_submit_to_queue(zmk_display_work_q(), &clock_cycle_field_work);
-        break;
-    }
-    }
+    zmk_ui_tap_input(&clock_tap, evt);
 }
 INPUT_CALLBACK_DEFINE(NULL, clock_touch_cb, NULL);
 

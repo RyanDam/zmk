@@ -10,7 +10,17 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_CLOCK_SCREEN app PRIVATE
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_SCREEN_MGR app PRIVATE
     screen_mgr.c
     boot_screen.c
+    ui_helpers.c
 )
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_POMODORO_SCREEN app PRIVATE
+    pomodoro_screen.c
+)
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATS_SCREEN app PRIVATE
+    stats_screen.c
+)
+if(CONFIG_ZMK_DISPLAY_SCREEN_MGR AND CONFIG_ZMK_NOTIFY)
+target_sources(app PRIVATE notify_visual.c)
+endif()
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM app PRIVATE
     theme.c
     styles.c

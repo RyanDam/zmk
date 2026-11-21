@@ -190,6 +190,29 @@ config ZMK_DISPLAY_DIM_LEVEL
 
 endif # ZMK_DISPLAY_SCREEN_MGR
 
+config ZMK_DISPLAY_POMODORO_SCREEN
+    bool "Pomodoro screen (ring, sets, touch controls)"
+    depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_POMODORO
+    default y
+    select LV_USE_ARC
+    select LV_USE_LABEL
+    help
+      Page rendering the pomodoro engine at 1 Hz: progress ring, set
+      pips, Start/Pause/Cancel in the reach band, and a settings strip
+      whose tap dev-cycles sets/work/rest/notification mode (persisted
+      in settings "pomodoro/config").
+
+config ZMK_DISPLAY_STATS_SCREEN
+    bool "Hardware stats screen (feed seam + layouts)"
+    depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_STATS
+    default y
+    select LV_USE_LABEL
+    help
+      Page rendering four zmk/stats slots in 2x1 / 2x2 / hybrid / 2x4
+      layouts; tapping a cell cycles that slot's metric, tapping the
+      background cycles layouts (persisted in settings
+      "display/stats/config").
+
 choice ZMK_DISPLAY_WORK_QUEUE
     prompt "Work queue selection for UI updates"
 

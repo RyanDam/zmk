@@ -300,6 +300,73 @@ menu "Display/LED Options"
 
 rsource "src/display/Kconfig"
 
+# --- Tab 1a feature subsystems (workspace backlog a10/a11) ---
+# Product logic deliberately NOT under src/display/: the pomodoro engine
+# and the stats feed are protocol-agnostic (a13/a14 drive them without
+# LVGL), and the notify seam is what the h03/h04 backends attach to.
+
+config ZMK_NOTIFY
+    bool "Notify seam (feature announcements with pluggable backends)"
+    default y if ZMK_POMODORO
+    help
+      zmk_notify() channels (beep/light) with registerable backends.
+      v1 ships the visual backend (screen banner) only; the NS4168
+      audio (h03) and WS2812 light bar (h04) items register the rest.
+
+menuconfig ZMK_POMODORO
+    bool "Pomodoro session engine"
+    select ZMK_NOTIFY
+    help
+      Self-hosted work/rest session timer (backlog a10) with deadline
+      arithmetic, settings-persisted config, and blank-lock handling;
+      the screen lives in the display module.
+
+if ZMK_POMODORO
+
+config ZMK_POMODORO_SETS
+    int "Default sets per session"
+    range 1 8
+    default 4
+
+config ZMK_POMODORO_WORK_S
+    int "Default work phase (seconds)"
+    range 30 3600
+    default 1500
+
+config ZMK_POMODORO_REST_S
+    int "Default rest phase (seconds)"
+    range 10 3600
+    default 300
+
+config ZMK_POMODORO_NOTI_MODE
+    int "Default notification mode (0 none, 1 beep, 2 light, 3 both)"
+    range 0 3
+    default 3
+
+endif # ZMK_POMODORO
+
+menuconfig ZMK_STATS
+    bool "Hardware stats feed seam"
+    help
+      Slot table of machine vitals (backlog a11) fed via
+      zmk_stats_update(); screens only ever read it. a14's RPC becomes
+      another writer; the optional mock feed powers the demo today.
+
+if ZMK_STATS
+
+config ZMK_STATS_STALE_MS
+    int "Age after which a reading greys out (ms)"
+    default 5000
+
+config ZMK_STATS_MOCK
+    bool "Mock feed (1 Hz demo values for all metrics)"
+    help
+      Scripts a sine/walk through every metric id so the screen has
+      data before a14's host push exists. Off in product builds once
+      the RPC feed lands.
+
+endif # ZMK_STATS
+
 menuconfig ZMK_RGB_UNDERGLOW
     bool "RGB Addressable LED Underglow"
     select LED_STRIP
