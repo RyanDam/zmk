@@ -21,9 +21,25 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_TYPE_ESPPSRAM64=y
 CONFIG_SPIRAM_SPEED_80M=y
 
+# The QSPI flush path (PSRAM framebuffer, bounce vs PSRAM-DMA, heap size)
+# is a display-stack decision documented in the shield conf
+# (zmk-config/boards/shields/cobantab1a/cobantab1a.conf), not here.
+
+# The settings load / GATT store path runs on bt_long_wq; at the 1400-byte
+# default it blew its context under only slightly noisier logging than the
+# product's (c02 bench run 2026-11-21: FATAL restoring into bt_long_wq).
+# 640 B of headroom, verified by the v2/v3 repro runs.
+CONFIG_BT_LONG_WQ_STACK_SIZE=2048
+
 # Settings support (NVS on the storage partition of the 16 MB flash layout)
 CONFIG_NVS=y
 CONFIG_SETTINGS_NVS=y
 CONFIG_FLASH=y
 CONFIG_FLASH_PAGE_LAYOUT=y
 CONFIG_FLASH_MAP=y
+
+# c02: the esptool image header must agree with the 16 MB geometry
+# (&flash0 in cobantab1a_esp32s3_procpu.dts and
+# partitions_0x0_default_16M.dtsi). Without this the build silently kept
+# the SoC default "2MB" (see zmk/esp-port/tab1a-hardware-map.md / c02).
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
