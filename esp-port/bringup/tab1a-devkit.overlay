@@ -1,0 +1,130 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ *
+ * Coban Tab 1a DEV HARNESS overlay (backlog h01) — prototype-board bring-up
+ * of the final board's peripherals BEFORE the drivers exist (h02-h04, p01).
+ * Applied AFTER the cobantab1a shield's own overlay.
+ *
+ *   sh zmk/esp-port/build_cobantab1a.sh -O zmk/esp-port/bringup/tab1a-devkit.overlay -C zmk/esp-port/bringup/tab1a-devkit.conf
+ *
+ * Pin authority: ../tab1a-hardware-map.md. Bench wiring + probe expectations:
+ * ../tab1a-bench-runbook.md. Probes live in app/src/tab1a/ (Kconfig
+ * CONFIG_ZMK_TAB1A_HARNESS).
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <dt-bindings/led/led.h>
+
+/* Row/col → matrix item, same expansion as zmk's matrix_transform.h RC(),
+ * renamed because the shield keymap puts the modifiers.h RC (right-ctrl)
+ * macro into this preprocessing chain. */
+#define TRC(row, col) (((row) << 8) + (col))
+
+&kscan0 {
+    /* Replace the phantom cell with the harness 2x2 key matrix on P2.
+     * Diodes row -> col, key to GND. Never IO5 (VBAT) or IO9 (BOOT).
+     * IO16 doubles as SPI3 SCLK for the light bar (see below). */
+    row-gpios
+        = <&gpio0 7  GPIO_ACTIVE_HIGH>
+        , <&gpio0 14 GPIO_ACTIVE_HIGH>
+        ;
+
+    col-gpios
+        = <&gpio0 15 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+        , <&gpio0 16 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+        ;
+};
+
+&keymap_transform0 {
+    columns = <2>;
+    rows = <2>;
+    map = <
+        TRC(0,0) TRC(0,1)
+        TRC(1,0) TRC(1,1)
+    >;
+};
+
+&physical_layout0 {
+    keys  //                     w   h    x    y     rot    rx    ry
+        = <&key_physical_attrs 100 100    0    0       0     0     0>
+        , <&key_physical_attrs 100 100  100    0       0     0     0>
+        , <&key_physical_attrs 100 100    0  100       0     0     0>
+        , <&key_physical_attrs 100 100  100  100       0     0     0>
+        ;
+};
+
+/ {
+    /* VBAT sense for the harness probe (p01 will add the battery model).
+     * ADC1 ch 4 = GPIO5 (soc/adc_channel.h). Divider ratio is measured at
+     * the bench and recorded in tab1a-hardware-map.md. */
+    tab1a_vbat: tab1a-vbat {
+        compatible = "zephyr,user";
+        io-channels = <&adc1 4>;
+    };
+
+    /* DS1302 deliberately has NO node here: the in-tree maxim,ds1302 driver
+     * is SPI-API based and this tree has no bit-bang SPI; h02 ports the
+     * pad10a GPIO bit-bang instead. Proposed signals: SCLK=IO17, IO=IO18,
+     * CE=IO6 — CE PENDING R1 (board designer). Wire the breakout per the
+     * runbook; readback probe arrives with h02. */
+};
+
+&pinctrl {
+    i2s0_default: i2s0_default {
+        group1 {
+            pinmux = <I2S0_O_WS_GPIO2>,   /* LRCLK */
+                     <I2S0_O_BCK_GPIO42>, /* BCLK  */
+                     <I2S0_O_SD_GPIO41>;  /* DATA -> amp DIN */
+        };
+    };
+
+    spim3_default: spim3_default {
+        group1 {
+            /* Light bar: DIN on IO46, clock borrowed from the unused panel
+             * TE pin IO38 — DEVKIT ONLY wiring (h04 will settle final
+             * pins; the GPIO-bit-bang ws2812 driver is nRF-only in this
+             * Zephyr, hence SPI, mirroring cobanpad16a). */
+            pinmux = <SPIM3_MOSI_GPIO46>,
+                     <SPIM3_SCLK_GPIO38>;
+        };
+    };
+};
+
+&spi3 {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+    pinctrl-0 = <&spim3_default>;
+    pinctrl-names = "default";
+
+    /* WS2812 light bar on IO46 = SPI3 MOSI (S3 split: gpio1 covers IO32-48,
+     * so IO46 is &gpio1 14 in GPIO context). IO46 is a strapping pin (ROM
+     * message output) — idling low at reset changes ROM log behaviour only;
+     * see hardware map trap 5. */
+    indicator_strip: ws2812@0 {
+        compatible = "worldsemi,ws2812-spi";
+        reg = <0>;
+        spi-max-frequency = <4000000>;
+        chain-length = <8>;
+        spi-one-frame = <0x70>;
+        spi-zero-frame = <0x40>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+    };
+};
+
+&i2s0 {
+    /* GDMA 2/3 by default — free (spi2 holds 0/1; spi3 DMA comes from the
+     * shared pool). */
+    status = "okay";
+    pinctrl-0 = <&i2s0_default>;
+    pinctrl-names = "default";
+};
+
+&adc1 {
+    status = "okay";
+};

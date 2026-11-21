@@ -10,6 +10,7 @@ board's `reference-boards/` file) before it is worked around in firmware.
 | [C3 #2](fixtures/reference-boards/esp32c3-supermini-generic-02.md) | `FN4P` (as reported; transcribe at intake) | — | — | — | — | n/a (C3) | — | — | not yet tested | — | — |
 | [S3 #1](fixtures/reference-boards/esp32s3-supermini-generic-01.md) | `FH4R2P` (as reported; transcribe at intake); rev v0.2 per esptool 2026-09-26 | 4 MB XMC (confirmed 2026-09-26) | 2 MB AP_3v3 (confirmed 2026-09-26) | native USB-Serial/JTAG (confirmed 2026-09-26) | no | dump pending | — | — | OK 2026-09-26 (unit 01) | — | — |
 | [S3 #2](fixtures/reference-boards/esp32s3-supermini-generic-02.md) | `FH4R2P` (as reported; transcribe at intake) | — | — | — | — | — | — | — | not yet tested | — | — |
+| [Tab 1a proto #1](tab1a-hardware-map.md) | JC3248W535EN-S3 (SoM marking to transcribe at next bench session) | 16 MB | 8 MB octal | native USB-Serial/JTAG (19/20) | no | n/a (native PHY in use) | panel BL IO1 | breakout | display+touch OK 2026-11-21 (b05, [findings §16](axs15231b-bringup-findings.md)); BLE-on flash pending | n/a (no matrix yet; devkit keys pending h01 bench) | [c02] BLE assert + storage 261; [h01] R1 P3 third signal open |
 
 ## Conventions
 

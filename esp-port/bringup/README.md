@@ -22,6 +22,22 @@ Still useful without any instrument code:
 
     sh zmk/esp-port/build_cobantab1a.sh --no-blobs -O zmk/esp-port/bringup/boost-clock.overlay
 
+- `tab1a-devkit.overlay` + `tab1a-devkit.conf` — **active** (h01): dev harness
+  for the final-board peripherals (4-key matrix, WS2812 chase, I2S tone, VBAT
+  ADC). Probes: `app/src/tab1a/tab1a_harness.c`. Wiring + expectations:
+  [`../tab1a-bench-runbook.md`](../tab1a-bench-runbook.md). Validated on the
+  bare board 2026-11-21 (all four probes pass driver-side, no wiring).
+
+    sh zmk/esp-port/build_cobantab1a.sh -O zmk/esp-port/bringup/tab1a-devkit.overlay -C zmk/esp-port/bringup/tab1a-devkit.conf
+
+- `tab1a-devkit-i2sdbg.conf` — same overlay, `I2S`/`DMA` modules at DBG.
+  Diagnostic only; built once to pin the `trigger(START) -> -EIO` cause
+  (queue must be primed by `i2s_write` first — see runbook trap note).
+
+- `c02-ble-repro.conf` — **active** (c02): BLE-on repro build for the two §7
+  side issues (storage error 261 + HCI timeout assert). See
+  [`../tab1a-bench-runbook.md`](../tab1a-bench-runbook.md).
+
 Remember the one rule these experiments ran on: the panel has no reset line, so
 **a USB unplug is its only reset** — a picture surviving a reflash is a picture
 the new firmware did not touch, and a polluted panel (stray sleep commands)
