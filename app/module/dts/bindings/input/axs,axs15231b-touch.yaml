@@ -4,10 +4,10 @@
 description: |
   AXS15231B integrated capacitive touch controller.
 
-  The touch controller is integrated in the AXS15231B LCD chip and is
-  reachable over I2C at address 0x3B. The node is a child of an I2C
-  controller. No interrupt or reset line is required; the controller is
-  polled.
+  The touch controller is integrated in the AXS15231B LCD chip but has its
+  own host interface, wired on the cobantab1a module to an I2C bus at
+  address 0x3B. The node is a child of an I2C controller. No interrupt or
+  reset line is required; the controller is polled.
 
 compatible: "axs,axs15231b-touch"
 

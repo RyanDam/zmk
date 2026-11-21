@@ -1077,3 +1077,58 @@ inversion concept; if this is ever upstreamed, that is the hole to fix there.
 - The vendor repo carries the calibration probe (`CALIB` log tag) for future
   experiments; restore the pristine `esp_bsp.c` from the backup before any
   vendor-demo release build.
+
+## 17. 2026-11-21 (later the same day) — production cleanup
+
+The panel painting, the instruments that did the digging were removed: the driver
+is now MSPI-only production code (no SPI path, no probes, no test fills, no
+`CONFIG_AXS15231B_*` symbols beyond the driver itself), and the shield's conf lost
+its instrument lines and the 250 kHz tick the pad probe needed. Everything
+stripped out is preserved in commit `cd01099` - code, fragments and this file as
+it stood at the solve - and `esp-port/bringup/README.md` says how to get it back.
+
+What survived the cut, because the bench proved each one load-bearing:
+
+- the single-transaction frame (`axs15231b_mspi_frame`: header in the command +
+  address phases, payload as the data phase);
+- `axs_mspi_clock_invert()` - mode 3 needs the GPIO-matrix inverter on the SCLK
+  pad, and Zephyr's ESP32 pinctrl cannot express that;
+- the GDMA-for-large-payloads split (DMA pixel streams paint clean);
+- the backlight pulse one short of full period;
+- skipping RASET in QSPI mode, and the RAMWR/RAMWRC choice by row.
+
+## 18. 2026-11-21 (evening) — touch: closed as hardware; colour: it was the byte order
+
+Two loose ends from the production bring-up, both settled on the bench.
+
+**Touch is dead hardware on this unit, not our firmware.** The first touch
+build (I2C, 0x3B, SDA GPIO4 / SCL GPIO8, the vendor bsp's numbers) NACKed
+forever, so the driver was switched to poll through the display QSPI bus
+(the datasheet's own touch-request frame). It "answered" with all-`ff` and
+the status screen disco'd on phantom touches - a floating D1, i.e. nothing
+driving, i.e. touch is not on the QSPI bus. Back on I2C with a proper
+20-second full-bus scan (0x08-0x77, logging every ACK): zero addresses
+answer, and the swapped pairing (SDA GPIO8 / SCL GPIO4, the datasheet's
+chip-side SCL=GPIO0 / SDA=GPIO1 reading) also gets zero ACKs. The decisive
+control was flashing the untouched vendor demo (`firmware/jc3248w535.bin`,
+its `bsp_touch_new` + `touch_axs15231b` init included): the panel paints,
+but its UI shows no touch response either. Verdict: the touch host
+interface - a separate I2C/SPI slave port inside the AXS15231B, with its
+own firmware boot (datasheet 5.7) - never comes up on this module; either
+the carrier does not wire the pads to the FPC or the panel's flash carries
+no touch firmware. Driver and devicetree node stay (I2C flavour, disabled,
+with the evidence in their comments); CONFIG_AXS15231B_TOUCH flips back on
+when a carrier rev brings the pads out. Action for hardware: check the
+Tab 1a schematic's touch I2C routing against the JC3248W535EN FPC pinout.
+
+**The coloured speckle on anti-aliased text was RGB565 byte order.** Every
+bring-up fill had been 0x0000/0xFFFF, and those are byte-order-invariant,
+so the panel's 565 endianness had never actually been tested. The symptom
+gave it away: white cores crisp, grey AA edges as coloured noise - a
+swapped grey is a saturated colour. The panel consumes pixels
+big-endian like any MIPI DDI part; the LVGL flush passes VDB bytes through
+unchanged. Fix is one line in the driver's capabilities: declare
+`PIXEL_FORMAT_RGB_565X` ("byte-swapped 565") instead of `PIXEL_FORMAT_RGB_565`,
+which makes zephyr/modules/lvgl map the colour format to
+LV_COLOR_FORMAT_RGB565_SWAPPED and LVGL render wire-order bytes natively -
+no swap pass anywhere. Bench: speckle gone, greys grey, hues correct.

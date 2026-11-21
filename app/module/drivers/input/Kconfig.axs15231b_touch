@@ -3,10 +3,12 @@
 
 config AXS15231B_TOUCH
 	bool "AXS15231B integrated touch controller driver"
+	depends on AXS15231B
 	depends on I2C
 	select INPUT_TOUCH
 	help
 	  Enable driver for the capacitive touch controller integrated in the
 	  AXS15231B LCD chip (e.g. the 3.5" 320x480 panel on the Guition
-	  JC3248W535 / cobantab1a module). The controller is polled over I2C;
-	  no interrupt or reset line is required.
+	  JC3248W535 / cobantab1a module). The controller shares the display
+	  die but has its own I2C host interface (address 0x3B); no interrupt
+	  or reset line is required, the driver polls it.
