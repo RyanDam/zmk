@@ -14,12 +14,17 @@
  * uses (its EXAMPLE_PIN_NUM_QSPI_TOUCH_SDA/SCL). There is no INT or RST
  * line wired, so the driver polls.
  *
- * Bring-up note: on the cobantab1a unit this interface never answers - a
- * full-bus scan gets zero ACKs on both pad pairings, and the vendor demo
- * shows no touch response on the same module either. The carrier rev in
- * hand does not wire the pads, so the node is disabled; the driver waits
- * for the rev that does. See the devicetree node's comment and
- * esp-port/axs15231b-bringup-findings.md section 18.
+ * Bring-up note (findings §19): an earlier verdict (§18) that this interface
+ * never answers was WRONG. The bus never left the ESP32-S3: the i2c pinctrl
+ * group lacked drive-open-drain, so the pads stayed push-pull with output
+ * always on and the master fought every slave's ACK low - a guaranteed NACK
+ * at every address, at every speed. With drive-open-drain on GPIO4/GPIO8 the
+ * controller ACKs and reports touch points on the very first boot. Bench
+ * 2026-11-21: 320x480 coordinates, ~4 polls/s of clean data while swiping.
+ *
+ * Occasional glitch frames (all 0xFF, or a shifted frame) come back from the
+ * controller roughly once a second while touching; the point-count sanity
+ * check below drops them.
  *
  * Read protocol (ported from the reference bsp):
  *   1. Write 11 bytes:
@@ -49,6 +54,9 @@ LOG_MODULE_REGISTER(axs15231b_touch, CONFIG_INPUT_LOG_LEVEL);
 
 #define AXS_TOUCH_REQUEST_LEN 11
 #define AXS_TOUCH_DATA_LEN 8
+
+/* The panel reports at most two touch points per frame. */
+#define AXS_TOUCH_MAX_POINTS 2
 
 static const uint8_t axs_touch_request[AXS_TOUCH_REQUEST_LEN] = {
     0xB5, 0xAB, 0xA5, 0x5A, 0x00, 0x00,
@@ -105,7 +113,21 @@ static void axs15231b_touch_process(const struct device *dev) {
     data->last_ok = true;
     data->errors_logged = 0;
 
-    if (resp[1] > 0) {
+    if (resp[1] == 0) {
+        if (data->touched) {
+            data->touched = false;
+
+            /* Report the last position with the touch button released. */
+            input_touchscreen_report_pos(dev, data->last_x, data->last_y, K_NO_WAIT);
+            input_report_key(dev, INPUT_BTN_TOUCH, 0, true, K_NO_WAIT);
+        }
+    } else if (resp[1] > AXS_TOUCH_MAX_POINTS) {
+        /* Glitch frame - all 0xFF (a bogus 255-point count) or byte-shifted,
+         * roughly once a second while the finger moves (bench 2026-11-21).
+         * The panel reports at most two points, so a bigger count is never
+         * real data. Ignore the frame entirely: the press, if any, stays
+         * alive rather than getting a spurious release. */
+    } else {
         uint16_t x = ((resp[2] & 0x0F) << 8) | resp[3];
         uint16_t y = ((resp[4] & 0x0F) << 8) | resp[5];
 
@@ -115,12 +137,6 @@ static void axs15231b_touch_process(const struct device *dev) {
 
         input_touchscreen_report_pos(dev, x, y, K_NO_WAIT);
         input_report_key(dev, INPUT_BTN_TOUCH, 1, true, K_NO_WAIT);
-    } else if (data->touched) {
-        data->touched = false;
-
-        /* Report the last position with the touch button released. */
-        input_touchscreen_report_pos(dev, data->last_x, data->last_y, K_NO_WAIT);
-        input_report_key(dev, INPUT_BTN_TOUCH, 0, true, K_NO_WAIT);
     }
 }
 

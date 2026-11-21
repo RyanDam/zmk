@@ -1132,3 +1132,79 @@ unchanged. Fix is one line in the driver's capabilities: declare
 which makes zephyr/modules/lvgl map the colour format to
 LV_COLOR_FORMAT_RGB565_SWAPPED and LVGL render wire-order bytes natively -
 no swap pass anywhere. Bench: speckle gone, greys grey, hues correct.
+
+## 19. 2026-11-21 (night) — touch retracted, touch revived: one missing pinctrl property
+
+**§18's "dead hardware" verdict was wrong, and the whole story was one
+missing line in a devicetree overlay.** The counter-evidence that reopened
+it: the reference firmware *does* answer touch on this very unit (bench,
+user-confirmed) - the earlier "vendor demo shows no touch either"
+observation was a misread of what the demo UI does with touches. With the
+hardware cleared, every datum in §18 had to have a software explanation.
+
+**The audit narrowed it fast.** My driver/overlay vs the vendor bsp: same
+pins (SDA 4 / SCL 8), same address 0x3B, same 11-byte request and 8-byte
+reply, no init commands, pure polling (-1/-1 INT/RST). Remaining suspects:
+my read uses `i2c_write_read()` (repeated START) where the vendor sends
+two separate transactions, and my 400 kHz symmetric clock vs the datasheet
+5.7.1 requirement of SCL low >= 1300 ns. So a probe build (a temporary
+`CONFIG_AXS15231B_TOUCH_PROBE` thread) ran, after a mandatory USB
+power-cycle of the module, at 100 kHz: pad dump, full-bus scan before and
+after GPIO bit-banged bus recovery, both read shapes side by side, then a
+logged live-read loop.
+
+**Probe run 1 was a wall of almost-rights.** Fresh power-up: bus idle-high,
+pads routed to the I2C signals (out_sel 89/90), output enabled - and still
+zero ACKs across 0x08-0x77, both transaction shapes, 100 kHz. The probe
+thread then "died" mid-run twice; that too was an artifact: my console
+capture script reopened the serial port every 90 s and opening it with
+pyserial's default DTR asserted resets the ESP32-S3 (`rst:0x15
+USB_UART_CHIP_RESET`). The driver never crashed; every capture tool that
+toggles line states will reboot this board.
+
+**The datum nobody had checked was the input side.** The pad dump logged
+out_sel (pad -> controller signal, what drives the bus) but not whether the
+pads were *open-drain*, and ESP32 I2C needs exactly that. Reading
+Zephyr's `pinctrl_esp32.c` line by line: with an `espressif,esp32-i2c`
+pinctrl group, it runs `gpio_ll_od_disable()` - explicitly disabling
+open-drain - unless the group carries `drive-open-drain`; the reference
+bsp's IDF driver does `gpio_set_direction(GPIO_MODE_INPUT_OUTPUT_OD)`,
+which sets the same `pad_driver` bit. My overlay set `bias-pull-up` only.
+So both pads sat push-pull with output always enabled: the master drove
+high in every ninth bit while a real slave pulled low for its ACK, and
+sampled its own driver. NACK at every address, at every speed, in every
+transaction shape - forever. It is the one failure mode that looks
+completely healthy from the master's registers, and it had been poisoning
+every scan since Day 1.
+
+**One line of overlay, A/B'd on the same probe build:** add
+`drive-open-drain` to both groups. Run 2, same boot, no other change:
+`od=1` in the pad dump, `0x3b ACKed a read`, `0x3b ACKed the 11-byte
+request`, scan 1 = exactly one device on the bus (0x3B), both read shapes
+err 0 - the repeated START was never the problem, the vendor's split
+write+read was never needed. The live loop then answered a swiping finger
+with 72 reports in ~30 s, e.g. `raw 00 01 40 86 00 9a 0a 0b` - 1 point,
+coords parsing cleanly into the 320x480 box; byte 2's top nibble is the
+event state (0x40/0x80 = down/move, matching the vendor struct's bitfield
+layout), bytes 6/7 are a controller frame counter, and roughly once a
+second a frame comes back all-`ff` (a bogus 255-point count) or
+byte-shifted.
+
+**Production integration, probes stripped:** the probe block and its
+Kconfig symbol are gone; the driver polls with the 20 ms timer again. It
+keeps `i2c_write_read()` (proven fine) and drops glitch frames with a
+point-count sanity check (the panel reports at most 2 points; >2 is never
+real data). `zephyr,touch = &axs15231b_touch` joins the chosen and
+`CONFIG_LV_Z_POINTER_FROM_CHOSEN_TOUCH=y` hands LVGL its pointer; the
+clock screen's tap-to-cycle-colour listener rides the same events. The
+bus stays at 100 kHz by decision: 400 kHz symmetric clocks only 1.25 us
+of SCL low against the datasheet's 1300 ns floor, and the vendor's 400 kHz
+works only because IDF tunes asymmetric timing - not worth ~1 ms per poll.
+
+**Lessons.** (1) On ESP32, `drive-open-drain` on I2C pinctrl groups is
+load-bearing, not decoration; a push-pull I2C master NACKs the entire
+world while every status register says green. (2) A zero-ACK bus scan is
+evidence only once the pad's open-drain and input routing are shown, not
+assumed. (3) Serial monitors that open ports with DTR asserted reboot
+ESP32-S3s - and a capture script that cycles the port looks exactly like
+a firmware crash every N seconds.
