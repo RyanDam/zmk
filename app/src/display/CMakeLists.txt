@@ -4,6 +4,10 @@
 target_sources_ifdef(CONFIG_ZMK_DISPLAY app PRIVATE main.c)
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_BUILT_IN app PRIVATE status_screen.c)
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_CLOCK_SCREEN app PRIVATE clock_screen.c)
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_SCREEN_MGR app PRIVATE
+    screen_mgr.c
+    boot_screen.c
+)
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM app PRIVATE
     theme.c
     styles.c

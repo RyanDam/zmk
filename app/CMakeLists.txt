@@ -14,6 +14,7 @@ find_package(Zephyr REQUIRED HINTS ../zephyr)
 project(zmk)
 
 zephyr_linker_sources(SECTIONS include/linker/zmk-behaviors.ld)
+zephyr_linker_sources(SECTIONS include/linker/zmk-display-screens.ld)
 zephyr_linker_sources(RODATA include/linker/zmk-events.ld)
 
 if(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS)

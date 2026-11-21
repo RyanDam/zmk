@@ -37,6 +37,10 @@
 #include "theme.h"
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+#include <zmk/display/screens.h>
+#endif
+
 LOG_MODULE_REGISTER(display_clock, CONFIG_ZMK_LOG_LEVEL);
 
 /*
@@ -133,8 +137,12 @@ static void clock_timer_cb(lv_timer_t *timer)
 
 /*
  * Touch handling: the input callback runs in the input reporting context, so
- * the LVGL work is posted to the display work queue.
+ * the LVGL work is posted to the display work queue. With the screen manager
+ * (a08) this global tap handler is off: every tap AND swipe press would
+ * cycle the theme, so theme switching waits for its own control (h04 keys /
+ * d05 overlay / a14 RPC).
  */
+#if !IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
 static void clock_theme_cycle_work_cb(struct k_work *work)
 {
     ARG_UNUSED(work);
@@ -159,13 +167,13 @@ static void clock_touch_cb(struct input_event *evt, void *user_data)
     }
 }
 INPUT_CALLBACK_DEFINE(NULL, clock_touch_cb, NULL);
+#endif /* !CONFIG_ZMK_DISPLAY_SCREEN_MGR */
 
-lv_obj_t *zmk_display_status_screen(void)
+/* Build the clock widgets into `screen`, which must already carry the
+ * ZMK_STYLE_SCREEN style. Shared by the standalone status screen and the
+ * screen-manager page registration below. */
+static lv_obj_t *clock_build_content(lv_obj_t *screen)
 {
-    lv_obj_t *screen = lv_obj_create(NULL);
-
-    lv_obj_add_style(screen, zmk_display_style(ZMK_STYLE_SCREEN), 0);
-
     clock_label = lv_label_create(screen);
     lv_obj_add_style(clock_label, zmk_display_style(ZMK_STYLE_TEXT_HERO), 0);
     lv_obj_align(clock_label, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 5);
@@ -180,15 +188,41 @@ lv_obj_t *zmk_display_status_screen(void)
 
     hint_label = lv_label_create(screen);
     lv_obj_add_style(hint_label, zmk_display_style(ZMK_STYLE_TEXT_CAPTION), 0);
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+    /* Above the page dots. */
+    lv_obj_align(hint_label, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 3);
+    lv_label_set_text(hint_label, "swipe \xe2\x86\x90 \xe2\x86\x92 to change screens");
+#else
     lv_obj_align(hint_label, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN);
     lv_label_set_text(hint_label, "tap the screen to change theme");
+#endif
 
     clock_update_text();
     lv_timer_create(clock_timer_cb, 1000, NULL);
 
+    return screen;
+}
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+
+static lv_obj_t *clock_page_create(lv_obj_t *parent) { return clock_build_content(parent); }
+
+ZMK_DISPLAY_DEFINE_SCREEN(clock, "clock", clock_page_create, 10);
+
+#else /* standalone status screen (no screen manager) */
+
+lv_obj_t *zmk_display_status_screen(void)
+{
+    lv_obj_t *screen = lv_obj_create(NULL);
+
+    lv_obj_add_style(screen, zmk_display_style(ZMK_STYLE_SCREEN), 0);
+    clock_build_content(screen);
+
     LOG_INF("Clock status screen ready (simulated time, base 2026-11-14 12:00 UTC)");
     return screen;
 }
+
+#endif /* CONFIG_ZMK_DISPLAY_SCREEN_MGR */
 
 #else /* !CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM — original hardcoded demo styling */
 

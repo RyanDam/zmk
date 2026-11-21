@@ -22,6 +22,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/events/activity_state_changed.h>
 #include <zmk/display/status_screen.h>
 
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+#include <zmk/display/screens.h>
+#endif
+
 static const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 
 #if DT_HAS_CHOSEN(zmk_display_led)
@@ -33,7 +37,9 @@ static const uint8_t display_led_idx = DT_NODE_CHILD_IDX(DT_CHOSEN(zmk_display_l
 
 static bool initialized = false;
 
+#if !IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
 static lv_obj_t *screen;
+#endif
 
 __attribute__((weak)) lv_obj_t *zmk_display_status_screen() { return NULL; }
 
@@ -72,7 +78,7 @@ void unblank_display_cb(struct k_work *work) {
 #endif // !IS_ENABLED(CONFIG_ARCH_POSIX)
 }
 
-#if IS_ENABLED(CONFIG_ZMK_DISPLAY_BLANK_ON_IDLE)
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_BLANK_ON_IDLE) || IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
 
 void blank_display_cb(struct k_work *work) {
 #if !IS_ENABLED(CONFIG_ARCH_POSIX)
@@ -86,7 +92,13 @@ void blank_display_cb(struct k_work *work) {
 K_WORK_DEFINE(blank_display_work, blank_display_cb);
 K_WORK_DEFINE(unblank_display_work, unblank_display_cb);
 
-static void start_display_updates() {
+/*
+ * Start/stop LVGL ticking and panel blanking. Public (zmk/display/screens.h)
+ * because the screen manager's idle backlight policy (a08) drives the same
+ * pair the BLANK_ON_IDLE activity listener uses; features should prefer
+ * zmk_display_blank_lock() over calling these.
+ */
+void zmk_display_updates_start(void) {
     if (display == NULL) {
         return;
     }
@@ -94,7 +106,7 @@ static void start_display_updates() {
     k_work_submit_to_queue(zmk_display_work_q(), &unblank_display_work);
 }
 
-static void stop_display_updates() {
+void zmk_display_updates_stop(void) {
     if (display == NULL) {
         return;
     }
@@ -135,6 +147,9 @@ void initialize_display(struct k_work *work) {
     zmk_display_theme_init();
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+    zmk_display_screen_mgr_init();
+#else
     screen = zmk_display_status_screen();
 
     if (screen == NULL) {
@@ -143,6 +158,7 @@ void initialize_display(struct k_work *work) {
     }
 
     lv_scr_load(screen);
+#endif
 
     unblank_display_cb(work);
 }
@@ -180,11 +196,11 @@ int display_event_handler(const zmk_event_t *eh) {
 
     switch (ev->state) {
     case ZMK_ACTIVITY_ACTIVE:
-        start_display_updates();
+        zmk_display_updates_start();
         break;
     case ZMK_ACTIVITY_IDLE:
     case ZMK_ACTIVITY_SLEEP:
-        stop_display_updates();
+        zmk_display_updates_stop();
         break;
     default:
         LOG_WRN("Unhandled activity state: %d", ev->state);
