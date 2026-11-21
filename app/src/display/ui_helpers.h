@@ -53,3 +53,17 @@ void zmk_ui_tap_init(struct zmk_ui_tap *tap, const char *page_name, struct k_wor
 
 /** Feed one input event; call from an INPUT_CALLBACK_DEFINE. */
 void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt);
+
+/**
+ * @brief Wire touch input into LVGL as a pointer indev.
+ *
+ * Without this, clickable LVGL objects (a10's pomodoro buttons, the a13
+ * key tiles) never receive PRESSED/CLICKED events — the screen-manager
+ * swipe handler and the tap detectors read raw input events, and nothing
+ * fed lv_indev. Called once by the screen manager on the display work
+ * queue, after LVGL init. Raw consumers (swipes, tap bands) keep seeing
+ * the same events independently, so the >= 64 px swipe contract still
+ * holds: a swipe that ends where it started on a clickable still reads
+ * as a click, everything else is PRESS_LOST.
+ */
+void zmk_ui_indev_init(void);

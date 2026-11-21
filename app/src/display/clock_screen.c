@@ -51,6 +51,9 @@
 #include "styles.h"
 #include "theme.h"
 #include "ui_helpers.h"
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+#include "anim.h"
+#endif
 #endif
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
@@ -371,6 +374,15 @@ static void clock_build_layout(void) {
     l_weekday = l_cal_title = l_hero = l_hero2 = l_seconds = NULL;
     l_indicator = l_date = l_unsync = l_hint = cal_box = NULL;
     hero_dimmed = false;
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+    /* a12: animated background (pad10a parity). Created before any
+     * widget so it paints underneath; not clickable, so the tap
+     * detector and swipes are untouched. */
+    if (zmk_anim_bg_enabled() && zmk_anim_available("animbg")) {
+        zmk_anim_create(clock_root, "animbg");
+    }
+#endif
 
     switch (fmt.style) {
     case CLOCK_STYLE_SERIF:

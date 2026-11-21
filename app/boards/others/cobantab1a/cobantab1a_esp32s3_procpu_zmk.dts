@@ -18,8 +18,27 @@
  * - PSRAM (8 MB octal on the N16R8 module) is enabled: the AXS15231B
  *   display streams through it and the LVGL heap is placed there
  * - Wi-Fi is disabled: this is a BLE keyboard, not a Wi-Fi device
+ * - assets (a12): image-1 (the MCUboot OTA slot, unused on the bench
+ *   prototype) is shrunk by 2 MB to make room for a raw `assets`
+ *   partition at 0xda8000 — manifest + blobs, packed by
+ *   app/scripts/display-assets/pack_assets.py. Reconcile this carve
+ *   with the real OTA layout when a05 lands.
  */
 
 &wifi {
     status = "disabled";
+};
+
+&slot1_partition {
+    reg = <0x7e0000 DT_SIZE_K(5936)>;
+};
+
+&flash0 {
+    partitions {
+        assets_partition: partition@da8000 {
+            compatible = "zephyr,mapped-partition";
+            label = "assets";
+            reg = <0xda8000 DT_SIZE_K(2048)>;
+        };
+    };
 };

@@ -202,6 +202,45 @@ config ZMK_DISPLAY_POMODORO_SCREEN
       whose tap dev-cycles sets/work/rest/notification mode (persisted
       in settings "pomodoro/config").
 
+menuconfig ZMK_DISPLAY_ANIM
+    bool "Asset-backed animations (boot splash + animated clock bg)"
+    depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_ASSETS
+    default y
+    select LV_USE_GIF
+    # lv_gif derives from lv_image
+    select LV_USE_IMAGE
+    help
+      Plays GIF/Lottie assets from the flash asset store (a12): a boot
+      animation ("boot" asset over the splash) and an animated
+      background behind the clock ("animbg", toggle persisted at
+      display/anim/bg). Frame buffer canvases need the PSRAM LVGL heap
+      sized in the board conf.
+
+if ZMK_DISPLAY_ANIM
+
+config ZMK_DISPLAY_ANIM_LOTTIE
+    bool "Lottie playback (ThorVG vector renderer)"
+    select LV_USE_VECTOR_GRAPHIC
+    select LV_USE_CANVAS
+    select LV_USE_LOTTIE
+    help
+      Renders .json Lottie assets through LVGL's bundled ThorVG. The
+      ThorVG flavor is a Kconfig choice, so the board conf must also
+      set CONFIG_LV_USE_THORVG=y and CONFIG_LV_USE_THORVG_INTERNAL=y.
+      Bigger code footprint; GIF-only builds work without it.
+
+endif # ZMK_DISPLAY_ANIM
+
+config ZMK_DISPLAY_KEYMAP_SCREEN
+    bool "Virtual key matrix screen (4x4 soft-key grid)"
+    depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_VKEYMAP
+    default y
+    select LV_USE_LABEL
+    help
+      Page rendering the vkeymap model: 4x4 touch tiles with press
+      flash (LVGL indev), soft-layer chips, and the live keymap layer
+      in the footer. Talks only to the zmk/vkeymap.h seam.
+
 config ZMK_DISPLAY_STATS_SCREEN
     bool "Hardware stats screen (feed seam + layouts)"
     depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_STATS

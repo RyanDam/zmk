@@ -367,6 +367,33 @@ config ZMK_STATS_MOCK
 
 endif # ZMK_STATS
 
+menuconfig ZMK_ASSETS
+    bool "Flash asset store (manifest-backed animation assets)"
+    help
+      Reads the packed `assets` flash partition (manifest + blobs,
+      built by app/scripts/display-assets/pack_assets.py). Players and
+      the a15 upload path both speak only this API (backlog a12).
+
+menuconfig ZMK_VKEYMAP
+    bool "Virtual key matrix model (soft-key grid firing ZMK bindings)"
+    help
+      N x M grid of cells, each holding a ZMK behavior binding
+      (dynamic macros by default), fired through
+      zmk_behavior_invoke_binding() like a hardware key. Lives outside
+      the display module so a14's Studio RPC edits the same model
+      (backlog a13); the page lives in the display module.
+
+if ZMK_VKEYMAP
+
+config ZMK_VKEYMAP_SHELL
+    bool "Dev shell (vkeymap show/macro/bind/clear)"
+    depends on SHELL
+    help
+      Bench/dev hook to assign names and bindings to cells without a
+      rebuild; the screen redraws via the model's change listener.
+
+endif # ZMK_VKEYMAP
+
 menuconfig ZMK_RGB_UNDERGLOW
     bool "RGB Addressable LED Underglow"
     select LED_STRIP

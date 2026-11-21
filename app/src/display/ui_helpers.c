@@ -9,6 +9,8 @@
  */
 
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/logging/log.h>
 
 #include <lvgl.h>
 
@@ -16,6 +18,65 @@
 #include <zmk/display/screens.h>
 
 #include "ui_helpers.h"
+
+LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+
+/* ------------------------------------------------------------------ */
+/* LVGL pointer indev (feeds clickable widgets)                        */
+/* ------------------------------------------------------------------ */
+
+static atomic_t pt_x;
+static atomic_t pt_y;
+static atomic_t pt_down;
+
+static void indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
+    ARG_UNUSED(indev);
+    data->point.x = (lv_coord_t)atomic_get(&pt_x);
+    data->point.y = (lv_coord_t)atomic_get(&pt_y);
+    data->state = atomic_get(&pt_down) ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+static void ui_input_cb(struct input_event *evt, void *user_data) {
+    ARG_UNUSED(user_data);
+
+    switch (evt->type) {
+    case INPUT_EV_ABS:
+        if (evt->code == INPUT_ABS_X) {
+            atomic_set(&pt_x, evt->value);
+        } else if (evt->code == INPUT_ABS_Y) {
+            atomic_set(&pt_y, evt->value);
+        }
+        break;
+    case INPUT_EV_KEY:
+        if (evt->code == INPUT_BTN_TOUCH) {
+            atomic_set(&pt_down, evt->value);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+INPUT_CALLBACK_DEFINE(NULL, ui_input_cb, NULL);
+
+void zmk_ui_indev_init(void) {
+    static bool done;
+
+    if (done) {
+        return;
+    }
+    done = true;
+
+    lv_indev_t *indev = lv_indev_create();
+
+    if (indev == NULL) {
+        LOG_ERR("ui: out of memory for LVGL indev");
+        return;
+    }
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, indev_read_cb);
+    LOG_INF("ui: LVGL pointer indev wired to touch input");
+}
 
 lv_obj_t *zmk_ui_label(lv_obj_t *parent, enum zmk_display_style_id style_id) {
     lv_obj_t *lbl = lv_label_create(parent);

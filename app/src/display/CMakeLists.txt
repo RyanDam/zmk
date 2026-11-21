@@ -18,6 +18,12 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_POMODORO_SCREEN app PRIVATE
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATS_SCREEN app PRIVATE
     stats_screen.c
 )
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_KEYMAP_SCREEN app PRIVATE
+    keymap_screen.c
+)
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_ANIM app PRIVATE
+    anim.c
+)
 if(CONFIG_ZMK_DISPLAY_SCREEN_MGR AND CONFIG_ZMK_NOTIFY)
 target_sources(app PRIVATE notify_visual.c)
 endif()

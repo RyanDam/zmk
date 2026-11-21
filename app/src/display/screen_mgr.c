@@ -38,6 +38,7 @@
 #include <zmk/display/screens.h>
 
 #include "styles.h"
+#include "ui_helpers.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -106,8 +107,8 @@ int zmk_display_screen_find(const char *name) { return screen_find_locked(name);
 /* ------------------------------------------------------------------ */
 
 struct page {
-    lv_obj_t *obj;                    /* NULL until the page is first shown */
-    lv_obj_t *dots[MAX_SCREENS];      /* page-dot pips, NULL if count == 1  */
+    lv_obj_t *obj;               /* NULL until the page is first shown */
+    lv_obj_t *dots[MAX_SCREENS]; /* page-dot pips, NULL if count == 1  */
 };
 
 static struct page pages[MAX_SCREENS];
@@ -119,8 +120,8 @@ static struct k_work nav_work;
 
 static void build_dots(struct page *page, int index) {
     int n = registry_count;
-    int dot = ZMK_GRID_UNIT;      /* 8 px pips                        */
-    int gap = ZMK_GRID_UNIT;      /* one grid unit between them       */
+    int dot = ZMK_GRID_UNIT; /* 8 px pips                        */
+    int gap = ZMK_GRID_UNIT; /* one grid unit between them       */
     int hor_res = lv_display_get_horizontal_resolution(lv_display_get_default());
     int total = n * dot + (n - 1) * gap;
     int x = (hor_res - total) / 2;
@@ -135,8 +136,9 @@ static void build_dots(struct page *page, int index) {
          * keeps them pixel-exact on the full-refresh panel. */
         lv_obj_align(pip, LV_ALIGN_BOTTOM_MID, x + i * (dot + gap) + dot / 2 - hor_res / 2,
                      -ZMK_GRID_MARGIN / 2);
-        lv_obj_add_style(pip, i == index ? zmk_display_style(ZMK_STYLE_ACCENT)
-                                         : zmk_display_style(ZMK_STYLE_INACTIVE),
+        lv_obj_add_style(pip,
+                         i == index ? zmk_display_style(ZMK_STYLE_ACCENT)
+                                    : zmk_display_style(ZMK_STYLE_INACTIVE),
                          0);
         page->dots[i] = pip;
     }
@@ -512,6 +514,8 @@ K_TIMER_DEFINE(splash_timer, splash_timer_cb, NULL);
 
 int zmk_display_screen_mgr_init(void) {
     int home_idx = 0;
+
+    zmk_ui_indev_init(); /* clickable widgets need LVGL pointer events */
 
     registry_collect();
     if (registry_count == 0) {
