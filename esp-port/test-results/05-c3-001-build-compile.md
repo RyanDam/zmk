@@ -62,5 +62,5 @@
 
 - Next: flash to the C3 SuperMini + matrix fixture and run the Phase 5
   functional tests (boot, matrix scan over BLE, pairing on 5 hosts, profile
-  ops, NVS durability, 24 h soak) — see `backlogs/b02-esp32c3-supermini-ble-board.md`.
+  ops, NVS durability, 24 h soak) — see `../../../backlogs/b02-esp32c3-supermini-ble-board.md`.
 - C3 stays marked experimental until Phase 7 (d03) power criteria are met.

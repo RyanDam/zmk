@@ -5,7 +5,8 @@ ZMK keyboard firmware (Zephyr RTOS). This is a fork: `origin` = RyanDam/zmk, `up
 ## Workflow (user preferences)
 
 - Always start work in the main workspace (the current checkout/folder), unless the user explicitly requests isolation — in that case, spawn a git worktree from the current branch.
-- If the work is about a backlog item (see `backlogs/`), always present a detailed implementation plan first and wait for the user's confirmation before implementing.
+- If the work is about a backlog item (see the workspace backlog
+  [`../backlogs/`](../backlogs/)), always present a detailed implementation plan first and wait for the user's confirmation before implementing.
 - If the user gives a topic or goal they want to achieve, also present a detailed implementation plan first and wait for confirmation.
 - During implementation, do NOT commit or push anything. When the implementation is done, ask the user to review the changes.
 - After review, the user may commit or discard (fully or partially) the changes themselves. Don't be surprised by that — just double-check with git history afterwards.

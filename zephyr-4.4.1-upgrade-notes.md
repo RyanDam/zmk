@@ -111,7 +111,7 @@ Phase 1 restored a temporary shim in the ZMK tree:
 - **DT compat names are intentionally unchanged** (`zmk,kscan-*`, `zmk,kscan`
   chosen, `kscan` property) so existing board/shield devicetrees (incl. the
   zmk-config coban pads) keep building. A future rename to `zmk,input-*` is tracked
-  in the backlog (see `backlogs/`).
+  in the backlog (see `../backlogs/`).
 - Kconfig: the `KSCAN` symbol and its `select`s are gone (the "Deprecated symbol
   KSCAN is enabled" warning is removed); the drivers now `select INPUT` instead,
   and `ZMK_KSCAN_INIT_PRIORITY` (default 90) replaces `KSCAN_INIT_PRIORITY`.
@@ -436,7 +436,7 @@ same state the class forces at runtime anyway.)
 
 ### a02 (legacy USB stack → `device_next`) validation
 
-Design (details in `backlogs/a02-legacy-usb-stack-migration.md`):
+Design (details in `../backlogs/a02-legacy-usb-stack-migration.md`):
 
 - `app/src/usb.c` owns one explicit `usbd_context`
   (`USBD_DEVICE_DEFINE(zmk_usbd, …, zephyr_udc0)`) with FS+HS configurations,

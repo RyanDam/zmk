@@ -1,117 +1,17 @@
-# Backlogs
+# Backlogs — moved
 
-Improvement backlog for ZMK ESP32-C3 / ESP32-S3 support (Zephyr 4.4.1 upgrade + ESP port).
-Each file is one self-contained milestone item. Source documents: [`../report.md`](../report.md)
-and [`../implement_plan.md`](../implement_plan.md).
+The backlog for this workspace (this `zmk/` repo, `../zmk-config/`, and the
+workspace tooling) now lives at the **workspace root**: [`../../backlogs/`](../../backlogs/).
 
-## Naming convention
+This merge happened because product work routinely spans both repos and the old
+repo-local backlog couldn't cover `zmk-config/` or the tooling. All ESP-port
+items and their history were moved unchanged; ESP-port context remains in
+[`../report.md`](../report.md) and [`../implement_plan.md`](../implement_plan.md).
 
-`<category><NN>-<kebab-slug>.md`
+Use the helper script from the workspace root:
 
-- `<category>` is a single letter (see table below).
-- `<NN>` is a two-digit number, **per category** (resets per letter), zero-padded.
-- `<kebab-slug>` is a short descriptive slug.
+```sh
+python3 ../.agents/skills/backlog-manager/scripts/backlog.py list --backlogs ../backlogs --open
+```
 
-Example: `c01-fix-race-condition.md` = Correctness, item 01.
-
-## Category prefixes
-
-| Prefix | Category |
-|--------|----------|
-| `c` | Correctness & reliability |
-| `a` | Architecture & maintainability |
-| `t` | Type safety |
-| `d` | Testing & CI |
-| `b` | Build, deploy & config |
-| `f` | Cleanup & i18n |
-
-## Status rule
-
-- **Open** items live in `backlogs/` with `Status: TODO`.
-- **Done** items are moved to `backlogs/done/` (keep the filename) with
-  `Status: DONE`.
-- **Won't implement** items stay in `backlogs/` with `Status: WON'T (intended)`
-  and a `> **Decision:**` note.
-
-## How to parse (for tooling / agents)
-
-- Filename → category (first char) + sequence (next two digits) + slug (rest).
-- Each file has a fixed front-matter block of `- **Key:** value` lines:
-  `Category`, `Severity` (High/Medium/Low), `Status` (TODO/DONE/WON'T (intended)),
-  `Effort (est)` (S/M/L).
-- Open items: `ls backlogs/*.md` (everything not in `backlogs/done/`).
-- By category: `ls backlogs/<prefix>*.md` (e.g. `backlogs/c*.md`).
-- High-severity open items: grep `- **Severity:** High` in `backlogs/*.md`.
-
-## Suggested order
-
-Work the categories in this order: **c → d → a/t → b → f**.
-
-Note: for this backlog the items are also an ordered delivery sequence — follow the
-phase numbers in `implement_plan.md` (Phase 0 → Phase 10) rather than the generic
-category order.
-
-## Phase 0 note (closed 2026-09-26)
-
-Phase 0 ([d01](done/d01-esp-port-baseline-hardware-fixtures.md)) is closed with the
-exit gate met: baseline builds/tests archived (`esp-port/baseline/`), test-results
-format in use (`esp-port/test-results/`), and flash/monitor proven on unit 01 of
-both chips (C3 + S3 SuperMini, records in `esp-port/test-results/`). Skipped by
-owner decision — revisit when the dependent phase starts:
-
-- physical **matrix fixture** (pin map documented, not built) → before Phase 5/6
-- full **reference board intake** (photos, marking transcription, PCB revision,
-  continuity evidence, S3 eFuse dump, unit 02 flash/monitor) → before Phase 5/6
-- **power-measurement setup** (3.3 V supply + current meter) → before Phase 7
-
-## Phase 4 note (closed 2026-10-02)
-
-Phase 4 ([d02](done/d02-zephyr-upgrade-regression-gate.md)) is closed with the
-automated gate green (tests 247/0/2, build matrix 1083/1083 all final-code
-builds, metadata/formatting/static checks pass) and cobanpad16a verified
-working by the owner. Skipped by owner decision — revisit when the dependent
-work starts:
-
-- **stack high-water marks** (ferris priority: 92.8% RAM, deliberately shrunk
-  stacks) → before relying on ferris or cutting a release
-- **physical smoke tests for non-coban combinations** (BLE-only, splits,
-  display) → covered by the build matrix only
-- **settings downgrade cycle** (4.4.1 → 4.1) → upgrade path verified in place
-
-## Index
-
-### c — Correctness & reliability
-| File | Title | Severity | Effort | Status |
-|------|-------|----------|--------|--------|
-| [c01](done/c01-indicator-led-dt-requirement-breaks-builds.md) | indicator.c requires LED devicetree unconditionally, breaking all test and upstream board builds | High | S | DONE |
-
-### a — Architecture & maintainability
-| File | Title | Severity | Effort | Status |
-|------|-------|----------|--------|--------|
-| [a01](done/a01-kscan-to-matrix-input-migration.md) | Phase 2: Migrate legacy kscan to matrix input | High | L | DONE |
-| [a02](done/a02-legacy-usb-stack-migration.md) | Phase 3: Migrate legacy USB device/HID stack | High | L | DONE |
-| [a03](a03-esp-wireless-split-ble.md) | Phase 9a: ESP wireless split BLE (experimental) | Low | L | TODO |
-| [a04](a04-esp-battery-display-rgb-peripherals.md) | Phase 9b: ESP battery, display, RGB, sensors, pointing (experimental) | Low | M | TODO |
-| [a05](a05-esp-mcuboot-secure-boot-ota.md) | Phase 9c: ESP MCUboot / secure boot / OTA | Low | L | TODO |
-| [a06](a06-rename-kscan-compat-names.md) | Rename zmk,kscan-* compat names to zmk,input-* | Low | M | TODO |
-
-### d — Testing & CI
-| File | Title | Severity | Effort | Status |
-|------|-------|----------|--------|--------|
-| [d01](done/d01-esp-port-baseline-hardware-fixtures.md) | Phase 0: Establish reproducible baseline and hardware fixtures | Medium | M | DONE |
-| [d02](done/d02-zephyr-upgrade-regression-gate.md) | Phase 4: Whole-project Zephyr upgrade regression gate | High | M | DONE |
-| [d03](d03-esp-ble-power-reliability-qualification.md) | Phase 7: ESP BLE reliability and power qualification | High | L | TODO |
-
-### b — Build, deploy & config
-| File | Title | Severity | Effort | Status |
-|------|-------|----------|--------|--------|
-| [b01](done/b01-zephyr-4-4-1-baseline-upgrade.md) | Phase 1: Upgrade Zephyr baseline to 4.4.1 | High | L | DONE |
-| [b02](b02-esp32c3-supermini-ble-board.md) | Phase 5: Add ESP32-C3 SuperMini BLE board variant | High | M | TODO |
-| [b03](b03-esp32s3-supermini-ble-board.md) | Phase 6: Add ESP32-S3 SuperMini BLE board variant | High | L | TODO |
-| [b04](b04-esp32s3-usb-hid-conditional.md) | Phase 8: ESP32-S3 SuperMini USB HID (conditional, USB-PHY gate) | Medium | L | TODO |
-| [b05](b05-cobantab1a-display-module.md) | cobantab1a: ESP32-S3 display module board + AXS15231B QSPI display/touch shield | Medium | L | TODO |
-
-### f — Cleanup & i18n
-| File | Title | Severity | Effort | Status |
-|------|-------|----------|--------|--------|
-| [f01](f01-esp-docs-ci-release-policy.md) | Phase 10: Documentation, CI policy, and support declaration | Medium | M | TODO |
+Do not add new items here.

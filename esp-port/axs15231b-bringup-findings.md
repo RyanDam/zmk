@@ -476,7 +476,7 @@ comment at `axs15231b.c:143`.
 | `zmk-config/boards/shields/cobantab1a/cobantab1a.conf` | Which probe is live and why, in prose, plus the temporary `CONFIG_SYS_CLOCK_TICKS_PER_SEC=250000` and `CONFIG_ZMK_BLE=n`. |
 | `zmk-config/boards/shields/cobantab1a/cobantab1a.overlay` | `&spi2` pinctrl (CLK 47, D0 21, D1 48, D2 40, D3 39 — note D1 also needs `FSPIQ_IN` for reads), `half-duplex`, deliberately no bus `cs-gpios`; `axs15231b@0` `cs-gpios = <&gpio1 13 …>`, `spi-max-frequency = <1000000>` with a TODO to go to 40 MHz; `&i2c0` on GPIO4/GPIO8 with `axs15231b_touch` enabled. |
 | `zmk/esp-port/patches/` + `apply-zephyr-patches.sh` | The carried Zephyr quad fix and its verification checksum. |
-| `zmk/backlogs/b05-cobantab1a-display-module.md` | The backlog item, with the original plan and phase table. Should get a link to this document. |
+| `backlogs/b05-cobantab1a-display-module.md` (workspace root) | The backlog item, with the original plan and phase table. Should get a link to this document. |
 | `zmk/app/module/drivers/input/axs15231b_touch.c` | The touch driver, written against I²C — currently unproven because the panel has never displayed anything. |
 
 ### Upstream Zephyr: the full register (checked 2026-11-18 against the GitHub API)
@@ -674,7 +674,7 @@ caused by (rows 22, 27).
 - [ ] LVGL pixel format: `PIXEL_FORMAT_RGB_565X` does **not** exist in this Zephyr/LVGL (the pin is the ZMK LVGL fork at 9.5.0, which also lacks `LV_COLOR_FORMAT_DEFAULT`) — byte order has to be settled in the driver or the flush, not assumed.
 - [ ] Try `CONFIG_LV_Z_AREA_X_ALIGNMENT_WIDTH=2` / `_Y_=2` if dirty-region flushes ever come out smeared or shifted.
 - [ ] Re-test the two side issues from §7 once the panel is up: the `Flash write error: 261` storage failure and the BLE `hci_core.c:482` assert.
-- [ ] Record RAM/PSRAM, FPS and current draw in `esp-port/test-results/`, and update `backlogs/b05-cobantab1a-display-module.md`.
+- [ ] Record RAM/PSRAM, FPS and current draw in `esp-port/test-results/`, and update `../../backlogs/b05-cobantab1a-display-module.md`.
 
 ---
 

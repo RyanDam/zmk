@@ -2,7 +2,7 @@
 
 Working records for the ZMK ESP32-C3/S3 SuperMini port (see
 [`../implement_plan.md`](../implement_plan.md) for the phase plan and
-[`../backlogs/`](../backlogs/) for tracked items).
+[`../../backlogs/`](../../backlogs/) for tracked items).
 
 This directory holds **records, fixtures, and results** — not user-facing
 documentation. User-facing hardware-integration pages are added in Phase 10
