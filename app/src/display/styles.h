@@ -50,6 +50,9 @@ enum zmk_display_style_id {
     ZMK_STYLE_TEXT_HERO,     /* 72 baijamjuree  (clock digits)  */
     ZMK_STYLE_TEXT_HERO_ALT, /* 48 dmserif      (clock style 2) */
     ZMK_STYLE_TEXT_SUBHERO,  /* 48 baijamjuree  (seconds etc)   */
+    ZMK_STYLE_TEXT_HERO_DIM, /* hero ramp, secondary color: the a09
+                              * "unsynced time" affordance        */
+    ZMK_STYLE_TEXT_SUBHERO_DIM,
     ZMK_STYLE_TEXT_TITLE,    /* 28 inter        (screen titles) */
     ZMK_STYLE_TEXT_BODY,     /* 20 inter        (body/date)     */
     ZMK_STYLE_TEXT_CAPTION,  /* 16 inter        (hints/labels)  */

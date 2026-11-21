@@ -38,6 +38,8 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
         {ZMK_STYLE_TEXT_HERO, &lv_font_tab1a_baijamjuree_72, t->text_primary},
         {ZMK_STYLE_TEXT_HERO_ALT, &lv_font_tab1a_dmserif_48, t->text_primary},
         {ZMK_STYLE_TEXT_SUBHERO, &lv_font_tab1a_baijamjuree_48, t->text_primary},
+        {ZMK_STYLE_TEXT_HERO_DIM, &lv_font_tab1a_baijamjuree_72, t->text_secondary},
+        {ZMK_STYLE_TEXT_SUBHERO_DIM, &lv_font_tab1a_baijamjuree_48, t->text_secondary},
         {ZMK_STYLE_TEXT_TITLE, &lv_font_tab1a_inter_28, t->text_primary},
         {ZMK_STYLE_TEXT_BODY, &lv_font_tab1a_inter_20, t->text_primary},
         {ZMK_STYLE_TEXT_CAPTION, &lv_font_tab1a_inter_16, t->text_secondary},

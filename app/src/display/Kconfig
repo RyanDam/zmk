@@ -54,18 +54,65 @@ config ZMK_DISPLAY_CLOCK_SCREEN
     depends on ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     default y
     select LV_USE_LABEL
+    select LV_USE_FLEX if ZMK_DISPLAY_DESIGN_SYSTEM
     select ENTROPY_GENERATOR if !ZMK_DISPLAY_DESIGN_SYSTEM
     select LV_FONT_MONTSERRAT_48 if !ZMK_DISPLAY_DESIGN_SYSTEM
     select LV_FONT_MONTSERRAT_20 if !ZMK_DISPLAY_DESIGN_SYSTEM
     select LV_FONT_MONTSERRAT_12 if !ZMK_DISPLAY_DESIGN_SYSTEM
     help
-      Status screen showing a clock (HH:MM:SS) and the calendar date,
-      refreshed once per second. The clock is simulated from a fixed
-      reference time plus the system uptime: the supported boards have no
-      RTC and no network time source. Styled through the display design
-      system when enabled (tap cycles theme presets); on boards without
-      the design system it falls back to the original hardcoded styling
-      (tap = random color demo).
+      Status screen showing a clock and the calendar date, refreshed once
+      per second, fed by the display time-source seam (a09): a simulated
+      epoch plus system uptime until an RTC (h02) or the host (a14) marks
+      the time synced — while unsynced the clock shows a visible mark.
+      With the design system it offers five 320x480 layout styles plus
+      12/24 h, AM/PM and date format/visibility settings, tap-cycled on
+      the touchscreen; on boards without the design system it falls back
+      to the original hardcoded styling (tap = random color demo).
+
+if ZMK_DISPLAY_CLOCK_SCREEN
+
+config ZMK_DISPLAY_CLOCK_EPOCH_S
+    int "Simulated clock reference epoch (seconds since 1970-01-01 UTC)"
+    default 1794657600
+    help
+      Wall-clock start of the simulated time source (default
+      2026-11-14 12:00:00 UTC, the historical CLOCK_BASE_EPOCH_S). The
+      clock screen shows this + uptime, flagged unsynced, until h02's
+      RTC driver or a14's host sync takes over.
+
+if ZMK_DISPLAY_DESIGN_SYSTEM
+
+# Defaults for the pad10a-pported format options; the live values live in
+# settings ("display/clock/format") and are tap-cycled on screen.
+# Enum values match pad10a screen_time.h so the a14 RPC can reuse them.
+
+config ZMK_DISPLAY_CLOCK_STYLE
+    int "Default clock layout (0 hero, 1 serif, 2 stacked, 3 calendar, 4 desk)"
+    range 0 4
+    default 0
+
+config ZMK_DISPLAY_CLOCK_FORMAT
+    int "Default time format (0 = 12 h, 1 = 24 h)"
+    range 0 1
+    default 1
+
+config ZMK_DISPLAY_CLOCK_INDICATOR
+    int "Default time indicator (0 = none, 1 = AM/PM)"
+    range 0 1
+    default 0
+
+config ZMK_DISPLAY_CLOCK_DATE_FORMAT
+    int "Default date format (0 DD/MM/YYYY, 1 MM/DD/YYYY, 2 YYYY/MM/DD)"
+    range 0 2
+    default 0
+
+config ZMK_DISPLAY_CLOCK_DATE_VISIBLE
+    bool "Show the date by default"
+    default y
+
+endif # ZMK_DISPLAY_DESIGN_SYSTEM
+
+endif # ZMK_DISPLAY_CLOCK_SCREEN
 
 menuconfig ZMK_DISPLAY_DESIGN_SYSTEM
     bool "Display design system (theme model, style registry, tab1a fonts)"
