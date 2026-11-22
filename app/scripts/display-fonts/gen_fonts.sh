@@ -12,10 +12,11 @@
 # git so builds never need network.
 #
 # Size ramp (see app/src/display/grid.md):
-#   baijamjuree  72 hero clock      48 sub-hero      (digits/punct subset)
+#   baijamjuree 144 hero clock (wave-1: doubled)  72 legacy hero  48 sub-hero
+#                (all three: digits/punct subset)
 #   dmserif      48 display serif   (clock style alt, a09)
 #   inter        28 title  20 body  16 caption       (full ASCII)
-#   barlow       20 tabular UI alt  (stats, a11)
+#   barlow       24 calendar days  20 tabular UI alt (stats, a11)
 #
 set -euo pipefail
 
@@ -65,12 +66,14 @@ for face in baijamjuree:ofl/baijamjuree dmserif:ofl/dmserifdisplay inter:ofl/int
     curl -fsSL --retry 3 -o "$OUT/LICENSES/$name-OFL.txt" "$GOOGLE/$dir/OFL.txt"
 done
 
+gen baijamjuree 144 --symbols "$HERO_SYMBOLS"
 gen baijamjuree 72 --symbols "$HERO_SYMBOLS"
 gen baijamjuree 48 --symbols "$HERO_SYMBOLS"
 gen dmserif     48 --symbols "$HERO_SYMBOLS"
 gen inter       28 -r 0x20-0x7e
 gen inter       20 -r 0x20-0x7e
 gen inter       16 -r 0x20-0x7e
+gen barlow      24 -r 0x20-0x7e
 gen barlow      20 -r 0x20-0x7e
 
 echo "done -> $OUT"

@@ -31,8 +31,11 @@ rotation if the panel ever proves it (see the driver's notes).
 - **Columns:** 60 unit-columns. The extra width is the landscape gift:
   prefer side-by-side splits (clock+calendar, ring+controls, cell grids)
   over tall stacks.
-- **Bottom furniture:** page dots at `-MARGIN/2`, captions (hints, unsync)
-  at `-MARGIN*2` and `-MARGIN*4 - UNIT`. Content ends by y≈240.
+- **Bottom furniture:** page dots at `-MARGIN/2` (pips occupy y 308..316),
+  captions (hints, unsync) at `-MARGIN*2` and `-MARGIN*4 - UNIT` on pages
+  that still use them. The clock page shows no captions (wave-1 audit);
+  its calendar lattice is exactly the 288 px content band, running down to
+  y 304 with the 7 px gap clear of the dots.
 
 ## Touch
 
@@ -49,17 +52,26 @@ rotation if the panel ever proves it (see the driver's notes).
 
 | Role | Size | Face | Style id |
 |---|---:|---|---|
-| Hero (clock) | 72 | Bai Jamjuree Medium | `ZMK_STYLE_TEXT_HERO` |
+| Hero XL (clock) | 144 | Bai Jamjuree Medium | `ZMK_STYLE_TEXT_HERO_XL` |
+| Hero (fusion stacked clock) | 72 | Bai Jamjuree Medium | `ZMK_STYLE_TEXT_HERO` |
 | Hero alt | 48 | DM Serif Display | `ZMK_STYLE_TEXT_HERO_ALT` |
-| Sub-hero (seconds, timers) | 48 | Bai Jamjuree Medium | `ZMK_STYLE_TEXT_SUBHERO` |
+| Sub-hero (side clock, timers) | 48 | Bai Jamjuree Medium | `ZMK_STYLE_TEXT_SUBHERO` |
 | Title | 28 | Inter | `ZMK_STYLE_TEXT_TITLE` |
+| Title, secondary (calendar year) | 28 | Inter | `ZMK_STYLE_TEXT_TITLE_SEC` |
 | Body | 20 | Inter | `ZMK_STYLE_TEXT_BODY` |
 | Caption / hint | 16 | Inter | `ZMK_STYLE_TEXT_CAPTION` |
 | Tabular (stats) | 20 | Barlow Medium | `ZMK_STYLE_TEXT_TABULAR` |
+| Calendar day | 24 | Barlow Medium | `ZMK_STYLE_TEXT_DAY` |
+| Calendar day, adjacent month (50 %) | 24 | Barlow Medium | `ZMK_STYLE_TEXT_DAY_DIM` |
+
+Fills: the calendar today pip is `ZMK_STYLE_TODAY` (white at 25 %,
+circle) — a fixed whisper-white, deliberately not a theme slot.
 
 Line height = 1.4× size, rounded to the unit where practical. Never call
 `lv_obj_set_style_text_font()` with a font outside this table. The hero
-72 fits the 320-tall canvas; a 640-px hero would not — keep the ramp.
+XL 144 (line height 108) fills the clock-only page beside the caption
+band without touching the page dots; a 640-px hero would not — keep the
+ramp.
 
 ## Theme
 

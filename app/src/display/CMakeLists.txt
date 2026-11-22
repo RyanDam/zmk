@@ -7,6 +7,14 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_CLOCK_SCREEN app PRIVATE
     clock_screen.c
     time_src.c
 )
+# The widget modules need the design system (style registry + ui helpers);
+# the legacy clock path (no design system) does not build them.
+if(CONFIG_ZMK_DISPLAY_CLOCK_SCREEN AND CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
+target_sources(app PRIVATE
+    clock_widget.c
+    calendar_widget.c
+)
+endif()
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_SCREEN_MGR app PRIVATE
     screen_mgr.c
     boot_screen.c
@@ -30,12 +38,14 @@ endif()
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM app PRIVATE
     theme.c
     styles.c
+    fonts/lv_font_tab1a_baijamjuree_144.c
     fonts/lv_font_tab1a_baijamjuree_72.c
     fonts/lv_font_tab1a_baijamjuree_48.c
     fonts/lv_font_tab1a_dmserif_48.c
     fonts/lv_font_tab1a_inter_28.c
     fonts/lv_font_tab1a_inter_20.c
     fonts/lv_font_tab1a_inter_16.c
+    fonts/lv_font_tab1a_barlow_24.c
     fonts/lv_font_tab1a_barlow_20.c
 )
 

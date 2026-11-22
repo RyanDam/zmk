@@ -35,15 +35,17 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
         const lv_font_t *font;
         lv_color_t color;
     } texts[] = {
+        {ZMK_STYLE_TEXT_HERO_XL, &lv_font_tab1a_baijamjuree_144, t->text_primary},
         {ZMK_STYLE_TEXT_HERO, &lv_font_tab1a_baijamjuree_72, t->text_primary},
         {ZMK_STYLE_TEXT_HERO_ALT, &lv_font_tab1a_dmserif_48, t->text_primary},
         {ZMK_STYLE_TEXT_SUBHERO, &lv_font_tab1a_baijamjuree_48, t->text_primary},
-        {ZMK_STYLE_TEXT_HERO_DIM, &lv_font_tab1a_baijamjuree_72, t->text_secondary},
-        {ZMK_STYLE_TEXT_SUBHERO_DIM, &lv_font_tab1a_baijamjuree_48, t->text_secondary},
         {ZMK_STYLE_TEXT_TITLE, &lv_font_tab1a_inter_28, t->text_primary},
+        {ZMK_STYLE_TEXT_TITLE_SEC, &lv_font_tab1a_inter_28, t->text_secondary},
         {ZMK_STYLE_TEXT_BODY, &lv_font_tab1a_inter_20, t->text_primary},
         {ZMK_STYLE_TEXT_CAPTION, &lv_font_tab1a_inter_16, t->text_secondary},
         {ZMK_STYLE_TEXT_TABULAR, &lv_font_tab1a_barlow_20, t->text_primary},
+        {ZMK_STYLE_TEXT_DAY, &lv_font_tab1a_barlow_24, t->text_primary},
+        {ZMK_STYLE_TEXT_DAY_DIM, &lv_font_tab1a_barlow_24, t->text_primary},
         {ZMK_STYLE_TEXT_SECONDARY, &lv_font_tab1a_inter_20, t->text_secondary},
         {ZMK_STYLE_TEXT_ON_ACCENT, &lv_font_tab1a_inter_20, on_accent},
     };
@@ -53,6 +55,10 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
         lv_style_set_text_font(&styles[texts[i].id], texts[i].font);
         lv_style_set_text_color(&styles[texts[i].id], texts[i].color);
     }
+
+    /* Adjacent-month days read as one dim style instead of a per-object
+     * opacity poke (the a07 rule: styling lives in the registry). */
+    lv_style_set_text_opa(&styles[ZMK_STYLE_TEXT_DAY_DIM], LV_OPA_50);
 
     /* fills */
     lv_style_reset(&styles[ZMK_STYLE_ACCENT]);
@@ -64,6 +70,14 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
     lv_style_set_bg_color(&styles[ZMK_STYLE_INACTIVE], t->inactive);
     lv_style_set_bg_opa(&styles[ZMK_STYLE_INACTIVE], LV_OPA_COVER);
     lv_style_set_border_width(&styles[ZMK_STYLE_INACTIVE], 0);
+
+    /* calendar today pip: a whisper-white disc behind the date (owner
+     * wave-1 pass) — theme-independent, so no t-> slot */
+    lv_style_reset(&styles[ZMK_STYLE_TODAY]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_TODAY], lv_color_white());
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_TODAY], (lv_opa_t)(255 * 25 / 100)); /* exactly 25 % */
+    lv_style_set_radius(&styles[ZMK_STYLE_TODAY], LV_RADIUS_CIRCLE);
+    lv_style_set_border_width(&styles[ZMK_STYLE_TODAY], 0);
 
     /* progress rings (a10): LVGL 9 draws the track on LV_PART_MAIN and
      * the progress on LV_PART_INDICATOR, both via arc_color/arc_width */

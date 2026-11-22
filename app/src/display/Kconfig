@@ -60,14 +60,18 @@ config ZMK_DISPLAY_CLOCK_SCREEN
     select LV_FONT_MONTSERRAT_20 if !ZMK_DISPLAY_DESIGN_SYSTEM
     select LV_FONT_MONTSERRAT_12 if !ZMK_DISPLAY_DESIGN_SYSTEM
     help
-      Status screen showing a clock and the calendar date, refreshed once
-      per second, fed by the display time-source seam (a09): a simulated
-      epoch plus system uptime until an RTC (h02) or the host (a14) marks
-      the time synced — while unsynced the clock shows a visible mark.
-      With the design system it offers five 320x480 layout styles plus
-      12/24 h, AM/PM and date format/visibility settings, tap-cycled on
-      the touchscreen; on boards without the design system it falls back
-      to the original hardcoded styling (tap = random color demo).
+      Status screen showing a clock and the calendar, refreshed once per
+      second, fed by the display time-source seam (a09): a simulated
+      epoch plus system uptime until an RTC (h02) or the host (a14)
+      takes over — the screen shows the time unconditionally (the a09
+      "unsynced" mark was removed in the wave-1 audit).
+      With the design system the page composes the clock and calendar
+      widget modules in one of three layouts (clock only, calendar only,
+      fusion) with a per-widget style; the live layout/style config
+      persists via settings ("display/clock/config") and the seam in
+      <zmk/display/clock_screen.h> is the host (a14 RPC) entry point.
+      On boards without the design system it falls back to the original
+      hardcoded styling (tap = random color demo).
 
 if ZMK_DISPLAY_CLOCK_SCREEN
 
@@ -82,33 +86,26 @@ config ZMK_DISPLAY_CLOCK_EPOCH_S
 
 if ZMK_DISPLAY_DESIGN_SYSTEM
 
-# Defaults for the pad10a-pported format options; the live values live in
-# settings ("display/clock/format") and are tap-cycled on screen.
-# Enum values match pad10a screen_time.h so the a14 RPC can reuse them.
+# Boot defaults for the layout + widget style knobs; the live values live
+# in settings ("display/clock/config"), are tap-cycled on the glass (bench
+# seam) and set from the host through zmk_display_clock_config_set()
+# (a14). Enum values match <zmk/display/clock_screen.h> and the widget
+# headers, so the RPC ids cannot drift (BUILD_ASSERTs in clock_screen.c).
 
-config ZMK_DISPLAY_CLOCK_STYLE
-    int "Default clock layout (0 hero, 1 serif, 2 stacked, 3 calendar, 4 desk)"
-    range 0 4
-    default 0
-
-config ZMK_DISPLAY_CLOCK_FORMAT
-    int "Default time format (0 = 12 h, 1 = 24 h)"
-    range 0 1
-    default 1
-
-config ZMK_DISPLAY_CLOCK_INDICATOR
-    int "Default time indicator (0 = none, 1 = AM/PM)"
-    range 0 1
-    default 0
-
-config ZMK_DISPLAY_CLOCK_DATE_FORMAT
-    int "Default date format (0 DD/MM/YYYY, 1 MM/DD/YYYY, 2 YYYY/MM/DD)"
+config ZMK_DISPLAY_CLOCK_LAYOUT
+    int "Default clock screen layout (0 clock only, 1 calendar only, 2 fusion)"
     range 0 2
     default 0
 
-config ZMK_DISPLAY_CLOCK_DATE_VISIBLE
-    bool "Show the date by default"
-    default y
+config ZMK_DISPLAY_CLOCK_STYLE
+    int "Default clock widget style (0 sans; serif/tabular cut in wave 1)"
+    range 0 0
+    default 0
+
+config ZMK_DISPLAY_CLOCK_CALENDAR_STYLE
+    int "Default calendar widget style (0 month grid)"
+    range 0 0
+    default 0
 
 endif # ZMK_DISPLAY_DESIGN_SYSTEM
 

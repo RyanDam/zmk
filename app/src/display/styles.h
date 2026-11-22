@@ -37,12 +37,14 @@
 /* Typography ramp (sizes baked into the generated fonts)              */
 /* ------------------------------------------------------------------ */
 
+extern const lv_font_t lv_font_tab1a_baijamjuree_144;
 extern const lv_font_t lv_font_tab1a_baijamjuree_72;
 extern const lv_font_t lv_font_tab1a_baijamjuree_48;
 extern const lv_font_t lv_font_tab1a_dmserif_48;
 extern const lv_font_t lv_font_tab1a_inter_28;
 extern const lv_font_t lv_font_tab1a_inter_20;
 extern const lv_font_t lv_font_tab1a_inter_16;
+extern const lv_font_t lv_font_tab1a_barlow_24;
 extern const lv_font_t lv_font_tab1a_barlow_20;
 
 /* ------------------------------------------------------------------ */
@@ -50,21 +52,23 @@ extern const lv_font_t lv_font_tab1a_barlow_20;
 /* ------------------------------------------------------------------ */
 
 enum zmk_display_style_id {
-    ZMK_STYLE_SCREEN,        /* page background                 */
-    ZMK_STYLE_TEXT_HERO,     /* 72 baijamjuree  (clock digits)  */
-    ZMK_STYLE_TEXT_HERO_ALT, /* 48 dmserif      (clock style 2) */
-    ZMK_STYLE_TEXT_SUBHERO,  /* 48 baijamjuree  (seconds etc)   */
-    ZMK_STYLE_TEXT_HERO_DIM, /* hero ramp, secondary color: the a09
-                              * "unsynced time" affordance        */
-    ZMK_STYLE_TEXT_SUBHERO_DIM,
+    ZMK_STYLE_SCREEN,         /* page background                 */
+    ZMK_STYLE_TEXT_HERO_XL,   /* 144 baijamjuree (hero clock, wave 1) */
+    ZMK_STYLE_TEXT_HERO,      /* 72 baijamjuree  (fusion stacked clock) */
+    ZMK_STYLE_TEXT_HERO_ALT,  /* 48 dmserif      (clock style 2) */
+    ZMK_STYLE_TEXT_SUBHERO,   /* 48 baijamjuree  (side clock, timers) */
     ZMK_STYLE_TEXT_TITLE,     /* 28 inter        (screen titles) */
+    ZMK_STYLE_TEXT_TITLE_SEC, /* 28 inter, secondary color (calendar year) */
     ZMK_STYLE_TEXT_BODY,      /* 20 inter        (body/date)     */
     ZMK_STYLE_TEXT_CAPTION,   /* 16 inter        (hints/labels)  */
     ZMK_STYLE_TEXT_TABULAR,   /* 20 barlow       (stats numbers) */
+    ZMK_STYLE_TEXT_DAY,       /* 24 barlow       (calendar day cells) */
+    ZMK_STYLE_TEXT_DAY_DIM,   /* 24 barlow, 50 % text (adjacent months) */
     ZMK_STYLE_TEXT_SECONDARY, /* body color override: secondary  */
     ZMK_STYLE_TEXT_ON_ACCENT, /* primary text on accent fill     */
     ZMK_STYLE_ACCENT,         /* accent fill (bars, indicators)  */
     ZMK_STYLE_INACTIVE,       /* inactive fill (bar bg, idle)    */
+    ZMK_STYLE_TODAY,          /* calendar today pip: white 25 % circle */
     ZMK_STYLE_RING,           /* arc track (bg) part             */
     ZMK_STYLE_RING_INDICATOR, /* arc progress (indicator part)   */
     ZMK_STYLE_TOUCH,          /* interactive target base state   */
