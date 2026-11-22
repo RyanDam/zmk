@@ -18,6 +18,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <lvgl.h>
 
 #include "theme.h"
+#include "debug_layout.h"
 
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
@@ -201,6 +202,7 @@ void initialize_display(struct k_work *work) {
         return;
     }
 
+    zmk_display_debug_layout_watch(screen);
     lv_scr_load(screen);
 #endif
 

@@ -207,6 +207,34 @@ config ZMK_DISPLAY_TOUCH_DEBUG
 
 endif # ZMK_DISPLAY_SCREEN_MGR
 
+config ZMK_DISPLAY_DEBUG_LAYOUT
+    bool "Layout debug borders on every container (bench harness)"
+    default n
+    help
+      Development aid only: draws a colored outline on every plain LVGL
+      container — the tiles, chips, boxes and tracks of every page — so
+      page boxes, the reach band and flex padding are visible on the glass
+      while debugging layout. Labels, arcs and scrollbars stay clean, the
+      border draws inside the object box (nothing moves), and containers
+      created after boot (widget rebuilds) are outlined too.
+
+      Always off in product builds — it frames the whole UI. Complements
+      the CONFIG_ZMK_DISPLAY_TOUCH_DEBUG harness (A06); backlog d05 may
+      fold it under one debug-overlay toggle later.
+
+if ZMK_DISPLAY_DEBUG_LAYOUT
+
+config ZMK_DISPLAY_DEBUG_LAYOUT_PX
+    int "Debug border width (px)"
+    range 1 8
+    default 1
+
+config ZMK_DISPLAY_DEBUG_LAYOUT_COLOR
+    hex "Debug border color (RGB888)"
+    default 0xFF0000
+
+endif # ZMK_DISPLAY_DEBUG_LAYOUT
+
 config ZMK_DISPLAY_POMODORO_SCREEN
     bool "Pomodoro screen (ring, sets, touch controls)"
     depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_POMODORO

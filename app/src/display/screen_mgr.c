@@ -39,6 +39,7 @@
 
 #include "styles.h"
 #include "ui_helpers.h"
+#include "debug_layout.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -349,6 +350,7 @@ static lv_obj_t *page_get(int index) {
             build_dots(page, index);
         }
         touch_dbg_overlay_create(page->obj);
+        zmk_display_debug_layout_watch(page->obj);
     } else if (registry_count > 1 && page->dots[0] != NULL) {
         restyle_dots(index);
     }
@@ -746,6 +748,7 @@ int zmk_display_screen_mgr_init(void) {
     if (CONFIG_ZMK_DISPLAY_BOOT_SPLASH_MS > 0) {
         splash_page = zmk_display_boot_screen_create();
         touch_dbg_overlay_create(splash_page); /* TEMP debug overlay (A06) */
+        zmk_display_debug_layout_watch(splash_page);
         splash_home_idx = home_idx;
         /* nav_apply() loads the home page (and frees the splash) when the
          * splash expires. */
