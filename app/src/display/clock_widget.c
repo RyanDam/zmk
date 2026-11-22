@@ -83,9 +83,10 @@ zmk_clock_widget_t *zmk_clock_widget_create(lv_obj_t *parent, enum zmk_clock_siz
     w->applied = ZMK_STYLE_COUNT; /* nothing added yet */
 
     if (size == ZMK_CLOCK_SIZE_STACKED) {
-        /* Hour above minute (owner wave-1 pass): two centred rows, the
-         * line height already carries the visual spacing. */
-        w->obj = zmk_ui_flex(parent, LV_FLEX_FLOW_COLUMN, 0);
+        /* Hour above minute (owner wave-1 pass): two centred rows with a
+         * grid-unit gap — at 72 px the line height alone left the digits
+         * visually glued (bench pass 2026-11-22). */
+        w->obj = zmk_ui_flex(parent, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT * 2);
         w->labels[0] = lv_label_create(w->obj);
         w->labels[1] = lv_label_create(w->obj);
         lv_label_set_text(w->labels[0], "--");

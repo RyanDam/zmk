@@ -155,6 +155,10 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
         lv_obj_t *row = zmk_ui_flex(w->root, LV_FLEX_FLOW_ROW, 0);
 
         lv_obj_set_width(row, w->header_w);
+        /* Year/month off the page edge: SPACE_BETWEEN distributes within
+         * the padded span, so the header sits a grid unit in from the
+         * flush grid columns (standalone pass 2026-11-22). */
+        lv_obj_set_style_pad_hor(row, ZMK_GRID_UNIT, 0);
         lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
                               LV_FLEX_ALIGN_CENTER);
 

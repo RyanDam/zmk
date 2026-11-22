@@ -152,11 +152,12 @@ static void add_clock(lv_obj_t *parent, enum zmk_clock_size size, lv_align_t ali
     }
 }
 
-static void add_calendar(uint16_t header_w, uint16_t grid_w, uint16_t cell_w, lv_align_t align,
-                         int x, int y) {
+static void add_calendar(bool header, uint16_t header_w, uint16_t grid_w, uint16_t cell_w,
+                         lv_align_t align, int x, int y) {
     struct zmk_calendar_opts opts = {
         .style = cfg.calendar_style,
-        .header = true,
+        .header = header, /* false: grid only (fusion: the clock carries
+                           * the time context, owner pass 2026-11-22) */
         .header_w = header_w,
         .grid_w = grid_w,
         /* 0 = no band stretch: rows stay exactly CAL_GAP apart at the
@@ -191,9 +192,10 @@ static void build_calendar_only(void) {
      * CAL_GAP col air (no SPACE_BETWEEN spread), header_w 0 -> the
      * widget sizes the header to the packed lattice (7*cell + 6*gap),
      * so year/month sit flush with the first and last column. The
-     * whole block is content-sized and centred by TOP_MID. Revert
-     * note: CAL_HEADER_W x2 restored the full-bleed SPACE_BETWEEN. */
-    add_calendar(0, 0, CAL_CELL_W, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN);
+     * whole block is content-sized and dead-centred on the page.
+     * Revert note: CAL_HEADER_W x2 restored the full-bleed
+     * SPACE_BETWEEN. */
+    add_calendar(true, 0, 0, CAL_CELL_W, LV_ALIGN_CENTER, 0, 0);
 }
 
 /* ---------------- layout 2: FUSION ----------------------------------- */
@@ -211,8 +213,7 @@ static void build_fusion(void) {
     lv_obj_align(zone, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
 
     add_clock(zone, ZMK_CLOCK_SIZE_STACKED, LV_ALIGN_CENTER, 0, 0);
-    add_calendar(CAL_FUSION_W, CAL_FUSION_W, 0, LV_ALIGN_TOP_RIGHT, -ZMK_GRID_MARGIN,
-                 ZMK_GRID_MARGIN);
+    add_calendar(false, CAL_FUSION_W, CAL_FUSION_W, 0, LV_ALIGN_RIGHT_MID, -ZMK_GRID_MARGIN, 0);
 }
 
 static void clock_build_layout(void) {
