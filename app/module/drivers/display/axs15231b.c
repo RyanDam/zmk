@@ -39,6 +39,8 @@
 #include <zephyr/sys/util.h>
 #include <soc/gpio_struct.h> /* gpio_dev_t, for the GPIO-matrix clock inverter */
 
+#include <zmk/axs15231b_recovery.h>
+
 #define DT_DRV_COMPAT axs_axs15231b
 
 LOG_MODULE_REGISTER(axs15231b, CONFIG_DISPLAY_LOG_LEVEL);
@@ -710,6 +712,34 @@ static int axs15231b_init(const struct device *dev) {
 
     LOG_INF("AXS15231B initialized (%ux%u)", AXS_WIDTH, AXS_HEIGHT);
 
+    return 0;
+}
+
+int zmk_axs15231b_recover(const struct device *dev, bool hard) {
+    int err;
+
+    if (dev != DEVICE_DT_INST_GET(0)) {
+        return -ENODEV;
+    }
+
+    LOG_WRN("recovering panel (%s reset)", hard ? "hard" : "soft");
+
+    if (hard) {
+        /* Sleep-in first: gives the touch engine a second, deeper edge to
+         * fall out of the latched mailbox state on. */
+        (void)axs15231b_tx_cmd(dev, AXS_CMD_SLPIN, NULL, 0);
+        k_msleep(AXS_SLPOUT_DELAY_MS);
+    }
+
+    /* send_init performs the reset itself (HW pin when wired, SWRESET
+     * otherwise), wakes the panel, and replays the vendor table + DISPON. */
+    err = axs15231b_send_init(dev);
+    if (err) {
+        LOG_ERR("panel recovery failed: %d", err);
+        return err;
+    }
+
+    LOG_INF("panel recovered; GRAM is black until the UI repaints");
     return 0;
 }
 
