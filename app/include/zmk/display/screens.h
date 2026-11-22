@@ -12,10 +12,10 @@
  *
  *   - the swipe left/right navigation (touch is the activity signal),
  *   - the page-dot indicator, the boot splash, and the persisted home page,
- *   - the idle backlight policy (full → dim → blank, wake on touch) and the
- *     blank-lock seam later features (a10 pomodoro, a12 ambient art) use to
- *     keep the screen alive, replacing pad10a's
- *     screen_pomodoro_session_running() check in housekeeping_task_user.
+ *   - the idle backlight policy (full → dim, then blank unless the blank
+ *     timeout is 0; wake on touch), and the blank-lock seam later features
+ *     (a10 pomodoro, a12 ambient art) use to keep the screen alive, replacing
+ *     pad10a's screen_pomodoro_session_running() check in housekeeping_task_user.
  *
  * All LVGL touching happens on the display work queue; the public calls are
  * safe from any thread.

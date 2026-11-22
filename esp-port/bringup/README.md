@@ -34,6 +34,14 @@ Still useful without any instrument code:
   Diagnostic only; built once to pin the `trigger(START) -> -EIO` cause
   (queue must be primed by `i2s_write` first — see runbook trap note).
 
+- `tab1a-touchdbg.conf` — **active** (h05): puts the on-glass touch readout back
+  (`CONFIG_ZMK_DISPLAY_TOUCH_DEBUG`): a "touch dbg" chip on every page with raw
+  x,y + the swipe verdict, plus a "dbg" page with a dot under the finger and the
+  controller's watchdog counters. Off in the product shield conf — it covers the
+  UI and adds a page to the swipe order.
+
+    sh zmk/esp-port/build_cobantab1a.sh -C zmk/esp-port/bringup/tab1a-touchdbg.conf
+
 - `c02-ble-repro.conf` — **active** (c02): BLE-on repro build for the two §7
   side issues (storage error 261 + HCI timeout assert). See
   [`../tab1a-bench-runbook.md`](../tab1a-bench-runbook.md).

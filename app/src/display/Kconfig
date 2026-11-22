@@ -160,10 +160,10 @@ menuconfig ZMK_DISPLAY_SCREEN_MGR
       Replaces the single hard-wired status screen with a page system
       (workspace backlog a08): screens self-register, swipe left/right on
       the touch panel changes pages, a boot splash gives way to a
-      persisted home page, and the backlight dims then blanks on touch
-      idle (wake on touch). Other features suppress blanking through
-      zmk_display_blank_lock(). Requires the design system (a07) for
-      styling.
+      persisted home page, and the backlight dims on touch idle, then blanks
+      unless the blank timeout is 0 — any touch brings it back. Other features
+      suppress the idle policy through zmk_display_blank_lock(). Requires the
+      design system (a07) for styling.
 
 if ZMK_DISPLAY_SCREEN_MGR
 
@@ -180,13 +180,33 @@ config ZMK_DISPLAY_DIM_TIMEOUT_MS
     default 60000
 
 config ZMK_DISPLAY_BLANK_TIMEOUT_MS
-    int "Touch-idle time before blanking the backlight (ms)"
+    int "Touch-idle time before blanking the backlight (ms, 0 never blanks)"
     default 120000
+    help
+      Time without touch after which the idle policy stops LVGL ticking and
+      switches the backlight off. Set it to 0 to keep the panel lit: idle then
+      stops at the dim rung (full -> dim, wake on touch) and never goes dark.
+      Boards with a battery should weigh that against their current budget
+      (workspace backlog p01).
 
 config ZMK_DISPLAY_DIM_LEVEL
     int "Backlight duty while dimmed (percent, 1-99)"
     range 1 99
     default 40
+
+config ZMK_DISPLAY_TOUCH_DEBUG
+    bool "On-glass touch readout (bench harness A06)"
+    default n
+    help
+      Development aid only: a translucent "touch dbg" chip on every page (and
+      a full "dbg" page with a dot following the finger plus the controller's
+      watchdog state) showing raw touch coordinates, the swipe verdict and
+      event counters. Always off in product builds — it covers the UI and adds
+      a page to the swipe order.
+
+      Backlog d05 (CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY) is the planned successor
+      with a runtime toggle and more seams; this knob exists so the A06 harness
+      stays reachable for bench sessions without shipping it.
 
 endif # ZMK_DISPLAY_SCREEN_MGR
 

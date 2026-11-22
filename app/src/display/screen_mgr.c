@@ -44,7 +44,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/settings_blob.h>
 
-#if IS_ENABLED(CONFIG_AXS15231B_TOUCH)
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_TOUCH_DEBUG)
+/* Only the debug overlay reads the controller's watchdog counters. */
 #include <zmk/axs15231b_recovery.h>
 #endif
 
@@ -175,7 +176,14 @@ static void restyle_dots(int index) {
 
 /* ------------------------------------------------------------------ */
 /* TEMP debug overlay: on-glass touch readout (bench harness A06)      */
+/*                                                                     */
+/* Behind CONFIG_ZMK_DISPLAY_TOUCH_DEBUG (off in product builds): it   */
+/* paints over every page and registers a page in the swipe order. The */
+/* stubs at the end of the block keep the call sites in page_get(),    */
+/* nav_apply() and mgr_touch_cb() readable either way.                 */
 /* ------------------------------------------------------------------ */
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_TOUCH_DEBUG)
 
 static atomic_t dbg_events;
 static atomic_t dbg_swipes;
@@ -183,17 +191,21 @@ static atomic_t dbg_pressed;
 static atomic_t dbg_x;
 static atomic_t dbg_y;
 static char dbg_verdict[48] = "-";
-#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH)
 static lv_obj_t *dbg_big;
 static lv_obj_t *dbg_dot;
 #endif
 
-/* TEMP debug overlay: one label per page, refreshed in one pass (A06). */
+/* One label per page, refreshed in one pass (A06). */
 #define DBG_LABELS_MAX 8
 static lv_obj_t *dbg_labels[DBG_LABELS_MAX];
 
 static void dbg_refresh_fn(struct k_work *work);
 K_WORK_DEFINE(dbg_overlay_work, dbg_refresh_fn);
+
+/* What the swipe math decided is the whole point of the overlay. */
+#define DBG_VERDICT(...) snprintk(dbg_verdict, sizeof(dbg_verdict), __VA_ARGS__)
+#define DBG_SWIPE() atomic_inc(&dbg_swipes)
 
 static void dbg_overlay_on_delete(lv_event_t *e) {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -206,7 +218,7 @@ static void dbg_overlay_on_delete(lv_event_t *e) {
     }
 }
 
-static void dbg_overlay_create(lv_obj_t *parent) {
+static void touch_dbg_overlay_create(lv_obj_t *parent) {
     for (int i = 0; i < DBG_LABELS_MAX; i++) {
         if (dbg_labels[i] == NULL) {
             dbg_labels[i] = lv_label_create(parent);
@@ -236,7 +248,7 @@ static void dbg_refresh_fn(struct k_work *work) {
         }
     }
 
-#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH)
     if (dbg_big != NULL) {
         bool frozen;
         unsigned int same, stale, rec;
@@ -263,7 +275,7 @@ static void dbg_refresh_fn(struct k_work *work) {
 #endif
 }
 
-#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH)
 static lv_obj_t *dbg_page_create(lv_obj_t *parent) {
     dbg_big = lv_label_create(parent);
     lv_obj_add_style(dbg_big, zmk_display_style(ZMK_STYLE_TEXT_TITLE), 0);
@@ -287,6 +299,45 @@ static lv_obj_t *dbg_page_create(lv_obj_t *parent) {
 ZMK_DISPLAY_DEFINE_SCREEN(touchdbg, "dbg", dbg_page_create, 900);
 #endif
 
+/* Re-print every page's chip after a page change. */
+static void touch_dbg_refresh(void) {
+    k_work_submit_to_queue(zmk_display_work_q(), &dbg_overlay_work);
+}
+
+/* Tap on the raw input stream: position, press state, and a refresh kept to
+ * every 5th event so the readout never adds bus chatter of its own. */
+static void touch_dbg_event(struct input_event *evt) {
+    atomic_inc(&dbg_events);
+    if (evt->type == INPUT_EV_ABS) {
+        if (evt->code == INPUT_ABS_X) {
+            atomic_set(&dbg_x, evt->value);
+        } else if (evt->code == INPUT_ABS_Y) {
+            atomic_set(&dbg_y, evt->value);
+        }
+    } else if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH) {
+        atomic_set(&dbg_pressed, evt->value);
+    }
+    if ((unsigned int)atomic_get(&dbg_events) % 5 == 0) {
+        touch_dbg_refresh();
+    }
+}
+
+#else /* !CONFIG_ZMK_DISPLAY_TOUCH_DEBUG */
+
+/* The overlay is compiled out, and the verdict strings and counters with it. */
+#define DBG_VERDICT(...)                                                                           \
+    do {                                                                                           \
+    } while (0)
+#define DBG_SWIPE()                                                                                \
+    do {                                                                                           \
+    } while (0)
+
+static inline void touch_dbg_overlay_create(lv_obj_t *parent) { ARG_UNUSED(parent); }
+static inline void touch_dbg_refresh(void) {}
+static inline void touch_dbg_event(struct input_event *evt) { ARG_UNUSED(evt); }
+
+#endif /* CONFIG_ZMK_DISPLAY_TOUCH_DEBUG */
+
 static lv_obj_t *page_get(int index) {
     struct page *page = &pages[index];
 
@@ -297,7 +348,7 @@ static lv_obj_t *page_get(int index) {
         if (registry_count > 1) {
             build_dots(page, index);
         }
-        dbg_overlay_create(page->obj);
+        touch_dbg_overlay_create(page->obj);
     } else if (registry_count > 1 && page->dots[0] != NULL) {
         restyle_dots(index);
     }
@@ -336,7 +387,7 @@ static void nav_apply(void) {
      * no easing can pretend otherwise (R5). auto_del frees the splash but
      * keeps the cached pages. */
     lv_screen_load_anim(page, anim, 250, 0, from_splash);
-    k_work_submit_to_queue(zmk_display_work_q(), &dbg_overlay_work);
+    touch_dbg_refresh();
     atomic_set(&current_idx, target);
     restyle_dots(target);
     LOG_INF("screen -> %d (%s)", target, registry[target]->name);
@@ -429,6 +480,10 @@ int zmk_display_screen_set_home(int index) {
 
 /* ------------------------------------------------------------------ */
 /* Idle backlight policy: full → dim → blank, wake on touch            */
+/*                                                                     */
+/* A blank timeout of 0 (CONFIG_ZMK_DISPLAY_BLANK_TIMEOUT_MS) drops    */
+/* the last rung: idle dims and stays dimmed until a touch brings the  */
+/* backlight back to full.                                             */
 /* ------------------------------------------------------------------ */
 
 enum idle_state { IDLE_ACTIVE, IDLE_DIMMED, IDLE_BLANKED };
@@ -509,7 +564,8 @@ static void idle_work_cb(struct k_work *work) {
         return;
     }
 
-    if (idle >= CONFIG_ZMK_DISPLAY_BLANK_TIMEOUT_MS) {
+    /* A blank timeout of 0 means "never go dark": idle stops at the dim rung. */
+    if (CONFIG_ZMK_DISPLAY_BLANK_TIMEOUT_MS > 0 && idle >= CONFIG_ZMK_DISPLAY_BLANK_TIMEOUT_MS) {
         set_state(IDLE_BLANKED);
     } else if (idle >= CONFIG_ZMK_DISPLAY_DIM_TIMEOUT_MS) {
         set_state(IDLE_DIMMED);
@@ -573,19 +629,7 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
 
     /* TEMP debug overlay (A06): live counters + throttled refresh. */
-    atomic_inc(&dbg_events);
-    if (evt->type == INPUT_EV_ABS) {
-        if (evt->code == INPUT_ABS_X) {
-            atomic_set(&dbg_x, evt->value);
-        } else if (evt->code == INPUT_ABS_Y) {
-            atomic_set(&dbg_y, evt->value);
-        }
-    } else if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH) {
-        atomic_set(&dbg_pressed, evt->value);
-    }
-    if ((unsigned int)atomic_get(&dbg_events) % 5 == 0) {
-        k_work_submit_to_queue(zmk_display_work_q(), &dbg_overlay_work);
-    }
+    touch_dbg_event(evt);
 
     switch (evt->type) {
     case INPUT_EV_ABS:
@@ -618,8 +662,8 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
                 touch.pressed = true;
                 touch.start_x = touch.x;
                 touch.start_y = touch.y;
-                snprintk(dbg_verdict, sizeof(dbg_verdict), "press @%d,%d tracking…", touch.start_x,
-                         touch.start_y); /* TEMP debug overlay */
+                DBG_VERDICT("press @%d,%d tracking…", touch.start_x,
+                            touch.start_y); /* TEMP debug overlay */
             }
         } else if (touch.pressed) {
             int32_t dx = (int32_t)touch.x - (int32_t)touch.start_x;
@@ -630,10 +674,9 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
             touch.pressed = false;
             /* TEMP debug overlay (A06): verdict = outcome + deciding math. */
             if (adx >= SWIPE_MIN_DX && adx >= 2 * ady) {
-                atomic_inc(&dbg_swipes);
-                snprintk(dbg_verdict, sizeof(dbg_verdict),
-                         "SWIPE %s dx%ld dy%ld ok(%ld>=64,%ld>%ld)", dx < 0 ? "next>" : "<prev",
-                         (long)dx, (long)dy, (long)adx, (long)adx, (long)(2 * ady));
+                DBG_SWIPE();
+                DBG_VERDICT("SWIPE %s dx%ld dy%ld ok(%ld>=64,%ld>%ld)", dx < 0 ? "next>" : "<prev",
+                            (long)dx, (long)dy, (long)adx, (long)adx, (long)(2 * ady));
                 /* Finger moves right = reveal the page to the left. */
                 if (dx < 0) {
                     zmk_display_screen_next();
@@ -641,13 +684,11 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
                     zmk_display_screen_prev();
                 }
             } else if (adx < 25 && ady < 25) {
-                snprintk(dbg_verdict, sizeof(dbg_verdict), "TAP dx%ld dy%ld (<24 each)", (long)dx,
-                         (long)dy);
+                DBG_VERDICT("TAP dx%ld dy%ld (<24 each)", (long)dx, (long)dy);
             } else if (adx < SWIPE_MIN_DX) {
-                snprintk(dbg_verdict, sizeof(dbg_verdict), "NO dx%ld<64 dy%ld", (long)dx, (long)dy);
+                DBG_VERDICT("NO dx%ld<64 dy%ld", (long)dx, (long)dy);
             } else {
-                snprintk(dbg_verdict, sizeof(dbg_verdict), "NO vert dx%ld<2*dy%ld", (long)dx,
-                         (long)ady);
+                DBG_VERDICT("NO vert dx%ld<2*dy%ld", (long)dx, (long)ady);
             }
         }
         break;
@@ -704,7 +745,7 @@ int zmk_display_screen_mgr_init(void) {
 
     if (CONFIG_ZMK_DISPLAY_BOOT_SPLASH_MS > 0) {
         splash_page = zmk_display_boot_screen_create();
-        dbg_overlay_create(splash_page); /* TEMP debug overlay (A06) */
+        touch_dbg_overlay_create(splash_page); /* TEMP debug overlay (A06) */
         splash_home_idx = home_idx;
         /* nav_apply() loads the home page (and frees the splash) when the
          * splash expires. */
