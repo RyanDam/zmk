@@ -137,8 +137,10 @@ static void clock_update_text(void);
  * breathes. Rows: only the 4..6 weeks the month occupies, gaps stretched
  * to fill the band. */
 
-#define CAL_CELL 30      /* square day-cell side (barlow 24 line height 26)   */
-#define CAL_GAP 7        /* packed gap floor (band stretch raises it)         */
+#define CAL_CELL 40      /* square day-cell side (barlow 24 line height 26)   */
+#define CAL_GAP 4        /* packed gap floor (band stretch raises it)         */
+#define CAL_CELL_W 62    /* calendar-only wide cell: 7*62 + 6*CAL_GAP = 458,
+                          * + the widget's 2x8 px pad_all = 474 of 480        */
 #define CAL_FUSION_W 288 /* fusion grid width (column pitch ~41 px)           */
 #define CAL_H (ZMK_GRID_SCREEN_H - 2 * ZMK_GRID_MARGIN)        /* content band  */
 #define CAL_HEADER_W (ZMK_GRID_SCREEN_W - 2 * ZMK_GRID_MARGIN) /* 448    */
@@ -150,14 +152,19 @@ static void add_clock(lv_obj_t *parent, enum zmk_clock_size size, lv_align_t ali
     }
 }
 
-static void add_calendar(uint16_t header_w, uint16_t grid_w, lv_align_t align, int x, int y) {
+static void add_calendar(uint16_t header_w, uint16_t grid_w, uint16_t cell_w, lv_align_t align,
+                         int x, int y) {
     struct zmk_calendar_opts opts = {
         .style = cfg.calendar_style,
         .header = true,
         .header_w = header_w,
         .grid_w = grid_w,
-        .band_h = CAL_H,
+        /* 0 = no band stretch: rows stay exactly CAL_GAP apart at the
+         * widget's natural height (was CAL_H, which spread the page
+         * slack into ~20 px row gaps regardless of CAL_GAP). */
+        .band_h = 0,
         .cell = CAL_CELL,
+        .cell_w = cell_w, /* 0 = square CAL_CELL (fusion lattice) */
         .col_gap = CAL_GAP,
         .row_gap = CAL_GAP,
     };
@@ -180,11 +187,13 @@ static void build_clock_only(void) {
 /* ---------------- layout 1: CALENDAR ONLY ---------------------------- */
 
 static void build_calendar_only(void) {
-    /* Full bleed (owner photo pass 2026-11-22): header and every row
-     * span the whole content width, cells SPACE_BETWEEN — the black
-     * side bands are gone. Cells stay square; the extra width becomes
-     * column air, the rows keep their 37 px pitch. */
-    add_calendar(CAL_HEADER_W, CAL_HEADER_W, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN);
+    /* Packed (sizing pass 2026-11-22): grid_w 0 -> rows keep exactly
+     * CAL_GAP col air (no SPACE_BETWEEN spread), header_w 0 -> the
+     * widget sizes the header to the packed lattice (7*cell + 6*gap),
+     * so year/month sit flush with the first and last column. The
+     * whole block is content-sized and centred by TOP_MID. Revert
+     * note: CAL_HEADER_W x2 restored the full-bleed SPACE_BETWEEN. */
+    add_calendar(0, 0, CAL_CELL_W, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN);
 }
 
 /* ---------------- layout 2: FUSION ----------------------------------- */
@@ -202,7 +211,8 @@ static void build_fusion(void) {
     lv_obj_align(zone, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
 
     add_clock(zone, ZMK_CLOCK_SIZE_STACKED, LV_ALIGN_CENTER, 0, 0);
-    add_calendar(CAL_FUSION_W, CAL_FUSION_W, LV_ALIGN_TOP_RIGHT, -ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
+    add_calendar(CAL_FUSION_W, CAL_FUSION_W, 0, LV_ALIGN_TOP_RIGHT, -ZMK_GRID_MARGIN,
+                 ZMK_GRID_MARGIN);
 }
 
 static void clock_build_layout(void) {

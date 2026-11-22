@@ -46,6 +46,7 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
         {ZMK_STYLE_TEXT_TABULAR, &lv_font_tab1a_barlow_20, t->text_primary},
         {ZMK_STYLE_TEXT_DAY, &lv_font_tab1a_barlow_24, t->text_primary},
         {ZMK_STYLE_TEXT_DAY_DIM, &lv_font_tab1a_barlow_24, t->text_primary},
+        {ZMK_STYLE_TEXT_DAY_BOLD, &lv_font_tab1a_barlow_24, t->text_primary},
         {ZMK_STYLE_TEXT_SECONDARY, &lv_font_tab1a_inter_20, t->text_secondary},
         {ZMK_STYLE_TEXT_ON_ACCENT, &lv_font_tab1a_inter_20, on_accent},
     };
@@ -59,6 +60,13 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
     /* Adjacent-month days read as one dim style instead of a per-object
      * opacity poke (the a07 rule: styling lives in the registry). */
     lv_style_set_text_opa(&styles[ZMK_STYLE_TEXT_DAY_DIM], LV_OPA_50);
+
+    /* Fake bold (header year/month + today): no bold face ships in the
+     * generated ramp, so a 1 px outline stroke in the text's own colour
+     * thickens the strokes. Purely paint — glyph boxes and layout do
+     * not move. */
+    lv_style_set_text_outline_stroke_width(&styles[ZMK_STYLE_TEXT_DAY_BOLD], 1);
+    lv_style_set_text_outline_stroke_color(&styles[ZMK_STYLE_TEXT_DAY_BOLD], t->text_primary);
 
     /* fills */
     lv_style_reset(&styles[ZMK_STYLE_ACCENT]);

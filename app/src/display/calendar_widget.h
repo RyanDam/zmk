@@ -7,10 +7,11 @@
  * audit).
  *
  * One module owns the month view: an optional header row (year left,
- * month name right, both the 28 px title face) plus the weekday header
- * and exactly as many week rows as the month occupies (4..6 — never an
- * all-grey extra week). Day cells are SQUARE (`cell` px): the grid reads
- * as an even lattice on the 480x320 panel.
+ * month name right) plus the weekday header and exactly as many week
+ * rows as the month occupies (4..6 — never an all-grey extra week). Day
+ * cells are SQUARE by default (`cell` px); a container that must fill
+ * the page width can pass a wider `cell_w` (boxes wider than tall, day
+ * height unchanged). The grid reads as an even lattice either way.
  * Adjacent-month days render with the 50 % text style, and today sits
  * on a whisper-white pip that is slightly LARGER than the cell.
  *
@@ -45,6 +46,9 @@ struct zmk_calendar_opts {
     bool header;       /* year on the left, month name on the right    */
     uint16_t header_w; /* header row width (0 = the 7-cell grid width) */
     uint16_t cell;     /* SQUARE day cell side, px (>= 26: barlow 24)  */
+    uint16_t cell_w;   /* day cell WIDTH, px (0 = `cell`: square).
+                        * Wider boxes keep the day height; the today
+                        * pip stays a cell+2 disc, centred.            */
     uint16_t col_gap;  /* between week-row cells (when grid_w == 0)    */
     uint16_t row_gap;  /* between header/weekday/week rows             */
     uint16_t grid_w;   /* >0: rows stretch to this width, cells spread

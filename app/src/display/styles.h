@@ -25,7 +25,7 @@
 /* ------------------------------------------------------------------ */
 
 #define ZMK_GRID_UNIT 8                       /* base grid unit, px            */
-#define ZMK_GRID_MARGIN (ZMK_GRID_UNIT * 2)   /* safe margin all sides   */
+#define ZMK_GRID_MARGIN 0                     /* safe margin all sides   */
 #define ZMK_GRID_TOUCH_MIN 44                 /* min touch target, px          */
 #define ZMK_GRID_REACH_H (ZMK_GRID_UNIT * 20) /* bottom-weighted reach zone */
 /* Logical landscape canvas: the 320x480 panel presented at 90° — the node's
@@ -64,6 +64,9 @@ enum zmk_display_style_id {
     ZMK_STYLE_TEXT_TABULAR,   /* 20 barlow       (stats numbers) */
     ZMK_STYLE_TEXT_DAY,       /* 24 barlow       (calendar day cells) */
     ZMK_STYLE_TEXT_DAY_DIM,   /* 24 barlow, 50 % text (adjacent months) */
+    ZMK_STYLE_TEXT_DAY_BOLD,  /* 24 barlow, 1 px fake bold (no bold face
+                               * in the generated ramp): header year/month
+                               * and today's digit */
     ZMK_STYLE_TEXT_SECONDARY, /* body color override: secondary  */
     ZMK_STYLE_TEXT_ON_ACCENT, /* primary text on accent fill     */
     ZMK_STYLE_ACCENT,         /* accent fill (bars, indicators)  */

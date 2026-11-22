@@ -5,8 +5,8 @@
  *
  * Calendar widget implementation (see calendar_widget.h).
  *
- * Wave-1 owner pass: header year + month both on the 28 px title face,
- * square day cells on an even lattice (col_gap == row_gap -> equal pitch
+ * Wave-1 owner pass: header year + month on the 24 px day face, square
+ * day cells on an even lattice (col_gap == row_gap -> equal pitch
  * both ways), adjacent-month days kept at 50 % text, today marked by a
  * white 25 % pip larger than the cell, day digits on barlow 24.
  *
@@ -40,6 +40,7 @@ struct zmk_calendar_widget {
     bool header;
     uint16_t header_w; /* 0 = the 7-cell grid width                   */
     uint16_t cell;
+    uint16_t cell_w; /* resolved: opts->cell_w or cell (square)       */
     uint16_t col_gap;
     uint16_t row_gap;
     uint16_t grid_w;
@@ -79,7 +80,7 @@ static void add_day_cell(zmk_calendar_widget_t *w, lv_obj_t *row, int shown, boo
     lv_obj_t *cell = zmk_ui_flex(row, LV_FLEX_FLOW_ROW, 0);
     lv_obj_t *host = cell;
 
-    lv_obj_set_size(cell, w->cell, w->cell);
+    lv_obj_set_size(cell, w->cell_w, w->cell);
 
     if (today) {
         lv_obj_t *pip = lv_obj_create(cell);
@@ -87,14 +88,17 @@ static void add_day_cell(zmk_calendar_widget_t *w, lv_obj_t *row, int shown, boo
         lv_obj_remove_style_all(pip);
         /* Slightly wider than the cell: a confident disc that still
          * leaves row_gap - 2 px of dark between neighbours. */
-        lv_obj_set_size(pip, w->cell + 2, w->cell + 2);
+        lv_obj_set_size(pip, w->cell, w->cell);
         lv_obj_set_style_pad_all(pip, 0, 0);
         lv_obj_add_style(pip, zmk_display_style(ZMK_STYLE_TODAY), 0);
         lv_obj_center(pip);
         host = pip;
     }
 
-    lv_obj_t *lbl = zmk_ui_label(host, dim ? ZMK_STYLE_TEXT_DAY_DIM : ZMK_STYLE_TEXT_DAY);
+    /* Today's digit gets the bold style too (owner pass). */
+    lv_obj_t *lbl =
+        zmk_ui_label(host, today ? ZMK_STYLE_TEXT_DAY_BOLD
+                                 : (dim ? ZMK_STYLE_TEXT_DAY_DIM : ZMK_STYLE_TEXT_DAY));
 
     if (host != cell) {
         lv_obj_center(lbl); /* inside the plain pip; the flex cell centres itself */
@@ -134,7 +138,7 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
     int pad = w->row_gap;
 
     if (w->header) {
-        natural += style_line_h(ZMK_STYLE_TEXT_TITLE);
+        natural += style_line_h(ZMK_STYLE_TEXT_DAY);
     }
     if (w->band_h > natural) {
         pad += (w->band_h - natural) / (n_children - 1);
@@ -144,19 +148,20 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
     lv_obj_set_style_pad_row(w->root, pad, 0);
 
     if (w->header) {
-        /* Year left, month name right — same 28 px face, the year kept
-         * one shade back by the secondary title style. Spread across
-         * the page (full view) or the grid (fusion). */
+        /* Year left, month name right — on the day-digit face (barlow 24,
+         * size pass 2026-11-22: the 28 px title face towered over the
+         * grid), both bold and the same full primary colour (owner
+         * pass). Spread across the page (full view) or the grid (fusion). */
         lv_obj_t *row = zmk_ui_flex(w->root, LV_FLEX_FLOW_ROW, 0);
 
         lv_obj_set_width(row, w->header_w);
         lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
                               LV_FLEX_ALIGN_CENTER);
 
-        lv_obj_t *year = zmk_ui_label(row, ZMK_STYLE_TEXT_TITLE_SEC);
+        lv_obj_t *year = zmk_ui_label(row, ZMK_STYLE_TEXT_DAY_BOLD);
         lv_label_set_text_fmt(year, "%04u", t->year);
 
-        lv_obj_t *month = zmk_ui_label(row, ZMK_STYLE_TEXT_TITLE);
+        lv_obj_t *month = zmk_ui_label(row, ZMK_STYLE_TEXT_DAY_BOLD);
         lv_label_set_text(month, month_full[t->month - 1]);
     }
 
@@ -167,7 +172,7 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
         lv_obj_t *lbl = zmk_ui_label(hrow, ZMK_STYLE_TEXT_SECONDARY);
         char ch[2] = {headers[c], '\0'};
 
-        lv_obj_set_width(lbl, w->cell);
+        lv_obj_set_width(lbl, w->cell_w);
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_text(lbl, ch);
     }
@@ -221,14 +226,16 @@ zmk_calendar_widget_t *zmk_calendar_widget_create(lv_obj_t *parent,
     memset(w, 0, sizeof(*w));
     w->style = opts->style;
     w->header = opts->header;
-    w->header_w = opts->header_w != 0 ? opts->header_w : (7 * opts->cell + 6 * opts->col_gap);
     w->cell = opts->cell;
+    w->cell_w = opts->cell_w != 0 ? opts->cell_w : opts->cell;
+    w->header_w = opts->header_w != 0 ? opts->header_w : (7 * w->cell_w + 6 * opts->col_gap);
     w->col_gap = opts->col_gap;
     w->row_gap = opts->row_gap;
     w->grid_w = opts->grid_w;
     w->band_h = opts->band_h;
 
     w->root = zmk_ui_flex(parent, LV_FLEX_FLOW_COLUMN, opts->row_gap);
+    lv_obj_set_style_pad_all(w->root, ZMK_GRID_UNIT, 0);
 
     lv_obj_add_event_cb(w->root, calendar_widget_delete_cb, LV_EVENT_DELETE, w);
 
