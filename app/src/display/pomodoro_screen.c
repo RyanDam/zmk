@@ -66,6 +66,16 @@ struct pomo_ui {
     lv_obj_t *btn_label_start;
     lv_obj_t *btn_label_pause;
     lv_obj_t *cfg_label;
+    /* last-drawn state: a tick that changes nothing invalidates nothing
+     * (each invalidation costs a ~61 ms full-frame flush) */
+    char time_cache[8];
+    char phase_cache[8];
+    char cfg_cache[48];
+    char pause_cache[8];
+    int32_t arc_cache;
+    int pips_done_shown;
+    bool idle_shown;
+    bool paused_shown;
 };
 
 static struct pomo_ui ui;
@@ -135,19 +145,23 @@ static void pips_rebuild(uint8_t count) {
         ui.pip_objs[i] = pip;
     }
     ui.pip_count = count;
+    ui.pips_done_shown = -1;
 }
 
 static void pips_style(uint8_t set_idx) {
+    if ((int)set_idx == ui.pips_done_shown) {
+        return; /* restyling all pips every second is pure churn */
+    }
+    ui.pips_done_shown = set_idx;
+
     for (uint8_t i = 0; i < ui.pip_count; i++) {
         if (ui.pip_objs[i] == NULL) {
             continue;
         }
-        lv_obj_remove_style(ui.pip_objs[i], zmk_display_style(ZMK_STYLE_ACCENT), 0);
-        lv_obj_remove_style(ui.pip_objs[i], zmk_display_style(ZMK_STYLE_INACTIVE), 0);
-        lv_obj_add_style(ui.pip_objs[i],
-                         i < set_idx ? zmk_display_style(ZMK_STYLE_ACCENT)
-                                     : zmk_display_style(ZMK_STYLE_INACTIVE),
-                         0);
+        bool done = i < set_idx;
+
+        zmk_ui_style_toggle(ui.pip_objs[i], zmk_display_style(ZMK_STYLE_ACCENT), done);
+        zmk_ui_style_toggle(ui.pip_objs[i], zmk_display_style(ZMK_STYLE_INACTIVE), !done);
     }
 }
 
@@ -158,7 +172,7 @@ static void pips_style(uint8_t set_idx) {
 static void pomo_update(void) {
     struct zmk_pomo_status s;
     int64_t remaining;
-    char buf[24];
+    char buf[48];
 
     zmk_pomo_get_status(&s);
     remaining = zmk_pomo_remaining_ms();
@@ -167,23 +181,30 @@ static void pomo_update(void) {
         const struct zmk_pomo_config *c = zmk_pomo_config_get();
         uint16_t secs = c->work_s; /* idle shows the next session's work length */
         snprintk(buf, sizeof(buf), "%02u:%02u", secs / 60, secs % 60);
-        lv_label_set_text(ui.phase_label, s.paused ? "paused" : "idle");
-        lv_arc_set_value(ui.ring, 0);
+        zmk_ui_set_text(ui.phase_cache, sizeof(ui.phase_cache), ui.phase_label, "idle");
+        if (ui.arc_cache != 0) {
+            lv_arc_set_value(ui.ring, 0);
+            ui.arc_cache = 0;
+        }
     } else {
         uint16_t secs = (uint16_t)((remaining + 999) / 1000);
 
         snprintk(buf, sizeof(buf), "%02u:%02u", secs / 60, secs % 60);
-        lv_label_set_text(ui.phase_label,
-                          s.paused ? "paused" : (s.state == ZMK_POMO_STATE_WORK ? "work" : "rest"));
+        zmk_ui_set_text(ui.phase_cache, sizeof(ui.phase_cache), ui.phase_label,
+                        s.paused ? "paused" : (s.state == ZMK_POMO_STATE_WORK ? "work" : "rest"));
 
         /* progress = elapsed / total of the running phase, 0..1000 */
         int64_t elapsed = (s.paused ? s.pause_at_ms : k_uptime_get()) - s.phase_start_ms;
         int64_t total = (int64_t)s.phase_total_s * 1000;
         int32_t permille = total > 0 ? (int32_t)((elapsed * 1000) / total) : 0;
 
-        lv_arc_set_value(ui.ring, CLAMP(permille, 0, 1000));
+        permille = CLAMP(permille, 0, 1000);
+        if (permille != ui.arc_cache) {
+            lv_arc_set_value(ui.ring, permille);
+            ui.arc_cache = permille;
+        }
     }
-    lv_label_set_text(ui.time_label, buf);
+    zmk_ui_set_text(ui.time_cache, sizeof(ui.time_cache), ui.time_label, buf);
 
     if (s.sets != ui.pip_count) {
         pips_rebuild(s.sets);
@@ -191,14 +212,20 @@ static void pomo_update(void) {
     pips_style(
         s.state == ZMK_POMO_STATE_IDLE ? 0 : s.set_idx - (s.state == ZMK_POMO_STATE_WORK ? 1 : 0));
 
-    /* button visibility per state */
+    /* button visibility per state — flags toggled only on transitions */
     bool idle = s.state == ZMK_POMO_STATE_IDLE;
 
-    lv_obj_set_flag(ui.btn_start, LV_OBJ_FLAG_HIDDEN, idle ? false : true);
-    lv_obj_set_flag(ui.btn_pause, LV_OBJ_FLAG_HIDDEN, idle ? true : false);
-    lv_obj_set_flag(ui.btn_cancel, LV_OBJ_FLAG_HIDDEN, idle ? true : false);
-    if (!idle) {
-        lv_label_set_text(ui.btn_label_pause, s.paused ? "Resume" : "Pause");
+    if (idle != ui.idle_shown) {
+        lv_obj_set_flag(ui.btn_start, LV_OBJ_FLAG_HIDDEN, !idle);
+        lv_obj_set_flag(ui.btn_pause, LV_OBJ_FLAG_HIDDEN, idle);
+        lv_obj_set_flag(ui.btn_cancel, LV_OBJ_FLAG_HIDDEN, idle);
+        ui.idle_shown = idle;
+        ui.pause_cache[0] = '\0'; /* force label refresh after re-show */
+    }
+    if (!idle && s.paused != ui.paused_shown) {
+        zmk_ui_set_text(ui.pause_cache, sizeof(ui.pause_cache), ui.btn_label_pause,
+                        s.paused ? "Resume" : "Pause");
+        ui.paused_shown = s.paused;
     }
 
     /* settings strip text */
@@ -206,14 +233,13 @@ static void pomo_update(void) {
 
     snprintk(buf, sizeof(buf), "%u sets  %u:%02u  %u:%02u  noti %u", c->sets, c->work_s / 60,
              c->work_s % 60, c->rest_s / 60, c->rest_s % 60, c->noti_mode);
-    lv_label_set_text(ui.cfg_label, buf);
+    zmk_ui_set_text(ui.cfg_cache, sizeof(ui.cfg_cache), ui.cfg_label, buf);
 }
 
-static void pomo_timer_cb(lv_timer_t *timer) {
+static void pomo_tick(void) {
     static uint32_t samples, cycle_sum;
     uint32_t start = k_cycle_get_32();
 
-    ARG_UNUSED(timer);
     pomo_update();
     cycle_sum += k_cycle_get_32() - start;
     if (++samples >= 600) {
@@ -226,9 +252,6 @@ static void pomo_timer_cb(lv_timer_t *timer) {
 /* ------------------------------------------------------------------ */
 /* Settings strip dev-cycle                                            */
 /* ------------------------------------------------------------------ */
-
-static void cfg_cycle_work_cb(struct k_work *work);
-K_WORK_DEFINE(cfg_cycle_work, cfg_cycle_work_cb);
 
 static uint8_t cycle_u8(const uint8_t *choices, size_t n, uint8_t cur) {
     for (size_t i = 0; i < n; i++) {
@@ -248,7 +271,7 @@ static uint16_t cycle_u16(const uint16_t *choices, size_t n, uint16_t cur) {
     return choices[0];
 }
 
-static void cfg_cycle_work_cb(struct k_work *work) {
+ZMK_UI_WORK_DEFINE(cfg_cycle_work, cfg_cycle_work_cb) {
     struct zmk_pomo_config c = *zmk_pomo_config_get();
 
     ARG_UNUSED(work);
@@ -275,9 +298,11 @@ static void cfg_cycle_work_cb(struct k_work *work) {
 
 /* Tap in the settings band (below the buttons) cycles one config field;
  * anywhere else is left to the page dots / swipes. */
-#define CFG_BAND_TOP_Y (480 - ZMK_GRID_REACH_H / 2)
+#define CFG_BAND_TOP_Y (ZMK_GRID_SCREEN_H - ZMK_GRID_REACH_H / 2)
 
-ZMK_UI_TAP_STATE(pomo_tap);
+/* Compile-time bound (see stats_screen.c): the global input callback can
+ * fire long before this page is ever created. */
+ZMK_UI_TAP_STATE(pomo_tap) = { .page_name = PAGE_NAME, .work = &cfg_cycle_work };
 
 static void pomo_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
@@ -340,10 +365,8 @@ static lv_obj_t *pomo_build(lv_obj_t *parent) {
     ui.cfg_label = zmk_ui_label(ui.root, ZMK_STYLE_TEXT_CAPTION);
     lv_obj_align(ui.cfg_label, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 3);
 
-    zmk_ui_tap_init(&pomo_tap, PAGE_NAME, &cfg_cycle_work);
-
     pomo_update();
-    lv_timer_create(pomo_timer_cb, 1000, NULL);
+    zmk_ui_page_timer(PAGE_NAME, 1000, pomo_tick);
 
     return parent;
 }

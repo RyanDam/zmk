@@ -22,11 +22,13 @@ lv_obj_t *zmk_display_boot_screen_create(void) {
     lv_obj_add_style(screen, zmk_display_style(ZMK_STYLE_SCREEN), 0);
 
     /* a12: boot animation first child = behind the splash labels */
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
     if (zmk_anim_available("boot")) {
         if (zmk_anim_create(screen, "boot") == NULL) {
             /* keep the static splash; logged once by the store/player */
         }
     }
+#endif
 
     lv_obj_t *title = lv_label_create(screen);
     lv_obj_add_style(title, zmk_display_style(ZMK_STYLE_TEXT_HERO), 0);

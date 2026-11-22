@@ -39,7 +39,7 @@ static const uint32_t assets_size = DT_REG_SIZE(ASSETS_NODE);
  * — keep the two in sync (magic carries the version). */
 #define HEADER_MAGIC "ZMKAS001"
 #define HEADER_SIZE 16
-#define ENTRY_SIZE 40
+#define ENTRY_SIZE 32 /* == sizeof(struct file_entry), asserted below */
 #define ENTRY_MAX 32
 
 struct __packed file_header {
@@ -56,6 +56,12 @@ struct __packed file_entry {
     uint16_t fps;
     uint32_t reserved;
 };
+
+/* Wire format is shared with scripts/display-assets/pack_assets.py; a
+ * layout drift here silently rejects the first blob (manifest_end would
+ * claim the manifest is larger than it is). */
+BUILD_ASSERT(sizeof(struct file_entry) == ENTRY_SIZE);
+BUILD_ASSERT(sizeof(struct file_header) == HEADER_SIZE);
 
 static struct zmk_asset_info table[ENTRY_MAX];
 static int table_count = -1; /* -1 until probed */

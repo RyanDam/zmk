@@ -8,7 +8,7 @@ The image layout must match app/src/assets.c ("keep the two in sync"):
 
     header : b"ZMKAS001" | entry_count u32le | flags u32le          (16 B)
     entry  : name[16] | offset u32 | len u32 | kind u16 | fps u16
-             | reserved u32                                          (40 B)
+             | reserved u32                                          (32 B)
     blobs  : file data, 4-byte aligned, after the manifest
 
 Asset name = filename without extension; an optional "@fps" suffix

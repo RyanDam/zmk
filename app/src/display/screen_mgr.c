@@ -42,6 +42,12 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+#include <zmk/settings_blob.h>
+
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH)
+#include <zmk/axs15231b_recovery.h>
+#endif
+
 #define MAX_SCREENS CONFIG_ZMK_DISPLAY_SCREEN_MGR_MAX_SCREENS
 
 /* A swipe must travel this far horizontally and be mostly horizontal. */
@@ -116,7 +122,10 @@ static lv_obj_t *splash_page;
 
 static atomic_t current_idx = ATOMIC_INIT(0);
 static atomic_t pending_nav = ATOMIC_INIT(-1);
-static struct k_work nav_work;
+/* Statically defined (K_WORK_DEFINE): any submit before manager init must
+ * still find a valid handler — a bare zeroed k_work would jump to 0. */
+static void nav_work_cb(struct k_work *work);
+K_WORK_DEFINE(display_nav_work, nav_work_cb);
 
 static void build_dots(struct page *page, int index) {
     int n = registry_count;
@@ -164,6 +173,115 @@ static void restyle_dots(int index) {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* TEMP debug overlay: on-glass touch readout (bench harness A06)      */
+/* ------------------------------------------------------------------ */
+
+static atomic_t dbg_events;
+static atomic_t dbg_swipes;
+static atomic_t dbg_pressed;
+static atomic_t dbg_x;
+static atomic_t dbg_y;
+static char dbg_verdict[48] = "-";
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+static lv_obj_t *dbg_big;
+static lv_obj_t *dbg_dot;
+#endif
+
+/* TEMP debug overlay: one label per page, refreshed in one pass (A06). */
+#define DBG_LABELS_MAX 8
+static lv_obj_t *dbg_labels[DBG_LABELS_MAX];
+
+static void dbg_refresh_fn(struct k_work *work);
+K_WORK_DEFINE(dbg_overlay_work, dbg_refresh_fn);
+
+static void dbg_overlay_on_delete(lv_event_t *e) {
+    lv_obj_t *obj = lv_event_get_target(e);
+
+    for (int i = 0; i < DBG_LABELS_MAX; i++) {
+        if (dbg_labels[i] == obj) {
+            dbg_labels[i] = NULL;
+            return;
+        }
+    }
+}
+
+static void dbg_overlay_create(lv_obj_t *parent) {
+    for (int i = 0; i < DBG_LABELS_MAX; i++) {
+        if (dbg_labels[i] == NULL) {
+            dbg_labels[i] = lv_label_create(parent);
+            lv_obj_add_event_cb(dbg_labels[i], dbg_overlay_on_delete, LV_EVENT_DELETE, NULL);
+            lv_obj_set_style_text_font(dbg_labels[i], LV_FONT_DEFAULT, 0);
+            lv_obj_set_style_text_color(dbg_labels[i], lv_color_hex(0xFFFFFF), 0);
+            lv_obj_set_style_bg_color(dbg_labels[i], lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(dbg_labels[i], LV_OPA_60, 0);
+            lv_obj_set_style_pad_all(dbg_labels[i], 3, 0);
+            lv_obj_align(dbg_labels[i], LV_ALIGN_TOP_LEFT, 4, 4);
+            lv_label_set_text(dbg_labels[i], "touch dbg");
+            break;
+        }
+    }
+}
+
+static void dbg_refresh_fn(struct k_work *work) {
+    char buf[176];
+
+    ARG_UNUSED(work);
+    snprintk(buf, sizeof(buf), "ev%u sw%u [%s] %d,%d\n%s", (unsigned int)atomic_get(&dbg_events),
+             (unsigned int)atomic_get(&dbg_swipes), atomic_get(&dbg_pressed) ? "TOUCHED" : "idle",
+             (int)atomic_get(&dbg_x), (int)atomic_get(&dbg_y), dbg_verdict);
+    for (int i = 0; i < DBG_LABELS_MAX; i++) {
+        if (dbg_labels[i] != NULL) {
+            lv_label_set_text(dbg_labels[i], buf);
+        }
+    }
+
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+    if (dbg_big != NULL) {
+        bool frozen;
+        unsigned int same, stale, rec;
+        uint8_t fr[8];
+        int x = (int)atomic_get(&dbg_x), y = (int)atomic_get(&dbg_y);
+
+        zmk_axs15231b_touch_status(&frozen, &same, &stale, &rec, fr);
+        snprintk(buf, sizeof(buf),
+                 "%s  ev%u sw%u\nstate: %s  at %d , %d\nverdict: %s\nwd %s same%u stale%u rec%u\n"
+                 "%02x %02x %02x %02x %02x %02x %02x %02x",
+                 frozen ? "CONTROLLER FROZEN" : "controller ok",
+                 (unsigned int)atomic_get(&dbg_events), (unsigned int)atomic_get(&dbg_swipes),
+                 atomic_get(&dbg_pressed) ? "TOUCHED" : "idle", x, y, dbg_verdict,
+                 frozen ? "FRZ" : "ok", same, stale, rec, fr[0], fr[1], fr[2], fr[3], fr[4], fr[5],
+                 fr[6], fr[7]);
+        lv_label_set_text(dbg_big, buf);
+        lv_obj_set_pos(dbg_dot, x - 8, y - 8);
+    }
+#endif
+}
+
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
+static lv_obj_t *dbg_page_create(lv_obj_t *parent) {
+    dbg_big = lv_label_create(parent);
+    lv_obj_add_style(dbg_big, zmk_display_style(ZMK_STYLE_TEXT_TITLE), 0);
+    lv_obj_align(dbg_big, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN);
+    lv_label_set_text(dbg_big, "touch debug\nwaiting…");
+
+    dbg_dot = lv_obj_create(parent);
+    lv_obj_remove_style_all(dbg_dot);
+    lv_obj_set_size(dbg_dot, 16, 16);
+    lv_obj_set_style_radius(dbg_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dbg_dot, lv_color_hex(0xFF4040), 0);
+    lv_obj_set_style_bg_opa(dbg_dot, LV_OPA_COVER, 0);
+
+    lv_obj_t *hint = lv_label_create(parent);
+    lv_obj_add_style(hint, zmk_display_style(ZMK_STYLE_TEXT_CAPTION), 0);
+    lv_label_set_text(hint, "red dot follows raw touch x,y");
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 4);
+    return NULL;
+}
+
+ZMK_DISPLAY_DEFINE_SCREEN(touchdbg, "dbg", dbg_page_create, 900);
+#endif
+
 static lv_obj_t *page_get(int index) {
     struct page *page = &pages[index];
 
@@ -174,6 +292,7 @@ static lv_obj_t *page_get(int index) {
         if (registry_count > 1) {
             build_dots(page, index);
         }
+        dbg_overlay_create(page->obj);
     } else if (registry_count > 1 && page->dots[0] != NULL) {
         restyle_dots(index);
     }
@@ -212,6 +331,7 @@ static void nav_apply(void) {
      * no easing can pretend otherwise (R5). auto_del frees the splash but
      * keeps the cached pages. */
     lv_screen_load_anim(page, anim, 250, 0, from_splash);
+    k_work_submit_to_queue(zmk_display_work_q(), &dbg_overlay_work);
     atomic_set(&current_idx, target);
     restyle_dots(target);
     LOG_INF("screen -> %d (%s)", target, registry[target]->name);
@@ -235,7 +355,7 @@ int zmk_display_screen_goto(int index) {
         index = registry_count - 1;
     }
     atomic_set(&pending_nav, index);
-    k_work_submit_to_queue(zmk_display_work_q(), &nav_work);
+    k_work_submit_to_queue(zmk_display_work_q(), &display_nav_work);
     return 0;
 }
 
@@ -267,18 +387,11 @@ static int32_t persisted_home_idx = -1;
 
 static int screens_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                        void *cb_arg) {
-    if (strcmp(SCREENS_SETTINGS_HOME_KEY, key) != 0) {
-        return 0; /* not ours */
-    }
+    int err =
+        zmk_settings_blob_read(key, len, read_cb, cb_arg, SCREENS_SETTINGS_HOME_KEY,
+                               &persisted_home_idx, sizeof(persisted_home_idx), "home screen");
 
-    if (len != sizeof(persisted_home_idx)) {
-        LOG_WRN("bad home-screen settings size %zu", len);
-        return -EINVAL;
-    }
-
-    int err = read_cb(cb_arg, &persisted_home_idx, sizeof(persisted_home_idx));
     if (err <= 0) {
-        LOG_ERR("Failed to read home screen from settings (err %d)", err);
         return err;
     }
 
@@ -291,11 +404,9 @@ SETTINGS_STATIC_HANDLER_DEFINE(display_screens, SCREENS_SETTINGS_SUBTREE, NULL,
 
 static void screens_settings_save(int index) {
     int32_t value = index;
-    int err = settings_save_one(SCREENS_SETTINGS_SUBTREE "/" SCREENS_SETTINGS_HOME_KEY, &value,
-                                sizeof(value));
-    if (err) {
-        LOG_WRN("Could not persist home screen (err %d) — live apply only", err);
-    }
+
+    zmk_settings_blob_save(SCREENS_SETTINGS_SUBTREE "/" SCREENS_SETTINGS_HOME_KEY, &value,
+                           sizeof(value), "home screen");
 }
 #else
 static int32_t persisted_home_idx = -1;
@@ -320,11 +431,12 @@ enum idle_state { IDLE_ACTIVE, IDLE_DIMMED, IDLE_BLANKED };
 static atomic_t state = ATOMIC_INIT(IDLE_ACTIVE);
 static atomic_t last_activity_ms;
 static atomic_t blank_locks;
-static struct k_work idle_work;
+static void idle_work_cb(struct k_work *work);
+K_WORK_DEFINE(display_idle_work, idle_work_cb);
 
 static void idle_timer_cb(struct k_timer *timer) {
     ARG_UNUSED(timer);
-    k_work_submit_to_queue(zmk_display_work_q(), &idle_work);
+    k_work_submit_to_queue(zmk_display_work_q(), &display_idle_work);
 }
 K_TIMER_DEFINE(idle_timer, idle_timer_cb, NULL);
 
@@ -404,7 +516,7 @@ static void idle_work_cb(struct k_work *work) {
 static void touch_activity(void) {
     atomic_set(&last_activity_ms, (int32_t)(uint32_t)k_uptime_get());
     if (atomic_get(&state) != IDLE_ACTIVE) {
-        k_work_submit_to_queue(zmk_display_work_q(), &idle_work);
+        k_work_submit_to_queue(zmk_display_work_q(), &display_idle_work);
     }
 }
 
@@ -436,6 +548,21 @@ static struct {
 static void mgr_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
 
+    /* TEMP debug overlay (A06): live counters + throttled refresh. */
+    atomic_inc(&dbg_events);
+    if (evt->type == INPUT_EV_ABS) {
+        if (evt->code == INPUT_ABS_X) {
+            atomic_set(&dbg_x, evt->value);
+        } else if (evt->code == INPUT_ABS_Y) {
+            atomic_set(&dbg_y, evt->value);
+        }
+    } else if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH) {
+        atomic_set(&dbg_pressed, evt->value);
+    }
+    if ((unsigned int)atomic_get(&dbg_events) % 5 == 0) {
+        k_work_submit_to_queue(zmk_display_work_q(), &dbg_overlay_work);
+    }
+
     switch (evt->type) {
     case INPUT_EV_ABS:
         if (evt->code == INPUT_ABS_X) {
@@ -460,9 +587,16 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
         }
         touch_activity();
         if (evt->value) {
-            touch.pressed = true;
-            touch.start_x = touch.x;
-            touch.start_y = touch.y;
+            /* BTN_TOUCH=1 arrives on EVERY pressed frame (the driver polls):
+             * latch the start point only on the press edge, or it chases
+             * the finger and dx/dy collapse to the last poll. */
+            if (!touch.pressed) {
+                touch.pressed = true;
+                touch.start_x = touch.x;
+                touch.start_y = touch.y;
+                snprintk(dbg_verdict, sizeof(dbg_verdict), "press @%d,%d tracking…", touch.start_x,
+                         touch.start_y); /* TEMP debug overlay */
+            }
         } else if (touch.pressed) {
             int32_t dx = (int32_t)touch.x - (int32_t)touch.start_x;
             int32_t dy = (int32_t)touch.y - (int32_t)touch.start_y;
@@ -470,13 +604,26 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
             int32_t ady = dy < 0 ? -dy : dy;
 
             touch.pressed = false;
+            /* TEMP debug overlay (A06): verdict = outcome + deciding math. */
             if (adx >= SWIPE_MIN_DX && adx >= 2 * ady) {
+                atomic_inc(&dbg_swipes);
+                snprintk(dbg_verdict, sizeof(dbg_verdict),
+                         "SWIPE %s dx%ld dy%ld ok(%ld>=64,%ld>%ld)", dx < 0 ? "next>" : "<prev",
+                         (long)dx, (long)dy, (long)adx, (long)adx, (long)(2 * ady));
                 /* Finger moves right = reveal the page to the left. */
                 if (dx < 0) {
                     zmk_display_screen_next();
                 } else {
                     zmk_display_screen_prev();
                 }
+            } else if (adx < 25 && ady < 25) {
+                snprintk(dbg_verdict, sizeof(dbg_verdict), "TAP dx%ld dy%ld (<24 each)", (long)dx,
+                         (long)dy);
+            } else if (adx < SWIPE_MIN_DX) {
+                snprintk(dbg_verdict, sizeof(dbg_verdict), "NO dx%ld<64 dy%ld", (long)dx, (long)dy);
+            } else {
+                snprintk(dbg_verdict, sizeof(dbg_verdict), "NO vert dx%ld<2*dy%ld", (long)dx,
+                         (long)ady);
             }
         }
         break;
@@ -494,7 +641,8 @@ lv_obj_t *zmk_display_boot_screen_create(void);
 #define IDLE_POLICY_PERIOD_MS 250
 
 static int splash_home_idx;
-static struct k_work splash_done_work;
+static void splash_done_work_cb(struct k_work *work);
+K_WORK_DEFINE(display_splash_done_work, splash_done_work_cb);
 
 static void splash_done_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
@@ -504,7 +652,7 @@ static void splash_done_work_cb(struct k_work *work) {
 
 static void splash_timer_cb(struct k_timer *timer) {
     ARG_UNUSED(timer);
-    k_work_submit_to_queue(zmk_display_work_q(), &splash_done_work);
+    k_work_submit_to_queue(zmk_display_work_q(), &display_splash_done_work);
 }
 K_TIMER_DEFINE(splash_timer, splash_timer_cb, NULL);
 
@@ -528,14 +676,11 @@ int zmk_display_screen_mgr_init(void) {
     }
     atomic_set(&current_idx, home_idx);
 
-    k_work_init(&nav_work, nav_work_cb);
-    k_work_init(&idle_work, idle_work_cb);
-    k_work_init(&splash_done_work, splash_done_work_cb);
-
     atomic_set(&last_activity_ms, (int32_t)(uint32_t)k_uptime_get());
 
     if (CONFIG_ZMK_DISPLAY_BOOT_SPLASH_MS > 0) {
         splash_page = zmk_display_boot_screen_create();
+        dbg_overlay_create(splash_page); /* TEMP debug overlay (A06) */
         splash_home_idx = home_idx;
         /* nav_apply() loads the home page (and frees the splash) when the
          * splash expires. */
@@ -543,7 +688,7 @@ int zmk_display_screen_mgr_init(void) {
         k_timer_start(&splash_timer, K_MSEC(CONFIG_ZMK_DISPLAY_BOOT_SPLASH_MS), K_NO_WAIT);
     } else {
         atomic_set(&pending_nav, home_idx);
-        k_work_submit_to_queue(zmk_display_work_q(), &nav_work);
+        k_work_submit_to_queue(zmk_display_work_q(), &display_nav_work);
     }
 
     /* The idle policy may run during the splash too: its shortest timeout

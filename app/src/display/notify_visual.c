@@ -49,9 +49,10 @@ static void banner_hide_timer_cb(lv_timer_t *timer) {
 static void banner_show_work_cb(struct k_work *work);
 K_WORK_DEFINE(banner_work, banner_show_work_cb);
 
-static struct {
-    enum zmk_notify_kind kind;
-} banner_req; /* written before k_work_submit: display queue serializes */
+/* A plain shared slot would let two rapid notifications lose the first
+ * text (the writer lands before the queued work runs); the msgq keeps
+ * every kind until the display queue has shown/logged it. */
+K_MSGQ_DEFINE(banner_msgq, sizeof(uint8_t), 4, 4);
 
 static const char *banner_text(enum zmk_notify_kind kind) {
     switch (kind) {
@@ -70,10 +71,20 @@ static const char *banner_text(enum zmk_notify_kind kind) {
 
 static void banner_show_work_cb(struct k_work *work) {
     lv_obj_t *scr = lv_screen_active();
+    uint8_t kind_byte;
+    enum zmk_notify_kind kind = ZMK_NOTIFY_KIND_COUNT; /* invalid until set */
 
     ARG_UNUSED(work);
     if (scr == NULL) {
         return;
+    }
+
+    /* Newest wins the banner; every queued kind gets its console line. */
+    while (k_msgq_get(&banner_msgq, &kind_byte, K_NO_WAIT) == 0) {
+        kind = (enum zmk_notify_kind)kind_byte;
+    }
+    if ((int)kind >= ZMK_NOTIFY_KIND_COUNT) {
+        return; /* raced with itself: nothing pending */
     }
 
     if (banner != NULL) {
@@ -90,7 +101,7 @@ static void banner_show_work_cb(struct k_work *work) {
     lv_obj_set_style_pad_all(banner, ZMK_GRID_UNIT, 0);
     lv_obj_set_style_radius(banner, ZMK_GRID_UNIT, 0);
     lv_obj_set_style_bg_opa(banner, LV_OPA_COVER, 0);
-    lv_label_set_text(banner, banner_text(banner_req.kind));
+    lv_label_set_text(banner, banner_text(kind));
     lv_obj_align(banner, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN * 2);
 
     /* lv_timer runs on the display work queue like everything else LVGL
@@ -104,7 +115,13 @@ static void visual_backend(enum zmk_notify_kind kind, enum zmk_notify_channel ch
     LOG_INF("notify %s via visual backend (%s channel)", zmk_notify_kind_name(kind),
             channel == ZMK_NOTIFY_CH_BEEP ? "beep" : "light");
 
-    banner_req.kind = kind;
+    uint8_t kind_byte = (uint8_t)kind;
+
+    if (k_msgq_put(&banner_msgq, &kind_byte, K_NO_WAIT) != 0) {
+        LOG_WRN("notify banner queue full - showing newest only");
+        (void)k_msgq_get(&banner_msgq, &kind_byte, K_NO_WAIT);
+        (void)k_msgq_put(&banner_msgq, &kind, K_NO_WAIT);
+    }
     zmk_display_backlight_wake();
     k_work_submit_to_queue(zmk_display_work_q(), &banner_work);
 }

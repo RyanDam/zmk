@@ -30,6 +30,8 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+#include <zmk/settings_blob.h>
+
 #if IS_ENABLED(CONFIG_SETTINGS)
 #define THEME_SETTINGS_SUBTREE "display/theme"
 #define THEME_SETTINGS_SUBKEY "colors"
@@ -41,7 +43,13 @@ struct theme_settings_blob {
 #endif
 
 static struct zmk_display_theme current_theme;
-static struct k_work apply_work;
+
+static void apply_fn(struct k_work *work);
+
+/* Statically defined on purpose: the settings-load path can submit this
+ * before display init runs, and a bare `struct k_work` would still have a
+ * NULL handler then — sysworkq jumps to 0 and the whole chip freezes. */
+K_WORK_DEFINE(theme_apply_work, apply_fn);
 
 static void put_color(uint8_t *dst, lv_color_t c) {
     dst[0] = c.red;
@@ -49,9 +57,7 @@ static void put_color(uint8_t *dst, lv_color_t c) {
     dst[2] = c.blue;
 }
 
-static lv_color_t get_color(const uint8_t *src) {
-    return lv_color_make(src[0], src[1], src[2]);
-}
+static lv_color_t get_color(const uint8_t *src) { return lv_color_make(src[0], src[1], src[2]); }
 
 static void apply_fn(struct k_work *work) {
     zmk_display_styles_apply_theme(&current_theme);
@@ -60,7 +66,9 @@ static void apply_fn(struct k_work *work) {
     lv_obj_report_style_change(NULL);
 }
 
-static void theme_schedule_apply(void) { k_work_submit_to_queue(zmk_display_work_q(), &apply_work); }
+static void theme_schedule_apply(void) {
+    k_work_submit_to_queue(zmk_display_work_q(), &theme_apply_work);
+}
 
 const struct zmk_display_theme *zmk_display_theme_get(void) { return &current_theme; }
 
@@ -74,15 +82,12 @@ static void theme_from_defaults(void) {
 
 #if IS_ENABLED(CONFIG_SETTINGS)
 static int theme_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
-                                     void *cb_arg, void *param) {
-    if (strcmp(THEME_SETTINGS_SUBKEY, key) != 0) {
-        return 0; /* not ours */
-    }
-
+                                     void *cb_arg) {
     struct theme_settings_blob blob;
-    int err = read_cb(cb_arg, &blob, sizeof(blob));
+    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, THEME_SETTINGS_SUBKEY, &blob,
+                                     sizeof(blob), "display theme");
+
     if (err <= 0) {
-        LOG_ERR("Failed to read display theme from settings (err %d)", err);
         return err;
     }
 
@@ -109,11 +114,7 @@ static void theme_settings_save(void) {
     put_color(blob.rgb[3], current_theme.accent);
     put_color(blob.rgb[4], current_theme.inactive);
 
-    int err = settings_save_one(THEME_SETTINGS_KEY, &blob, sizeof(blob));
-    if (err) {
-        /* Gated by c02 on tab1a: live theme still works without persistence. */
-        LOG_WRN("Could not persist display theme (err %d) — live apply only", err);
-    }
+    zmk_settings_blob_save(THEME_SETTINGS_KEY, &blob, sizeof(blob), "display theme");
 }
 #else
 static void theme_settings_save(void) {}
@@ -162,7 +163,6 @@ void zmk_display_theme_cycle_preset(void) {
 }
 
 int zmk_display_theme_init(void) {
-    k_work_init(&apply_work, apply_fn);
     theme_from_defaults();
     zmk_display_styles_apply_theme(&current_theme);
     return 0;

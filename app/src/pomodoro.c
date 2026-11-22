@@ -33,6 +33,8 @@
 
 LOG_MODULE_REGISTER(zmk_pomodoro, CONFIG_ZMK_LOG_LEVEL);
 
+#include <zmk/settings_blob.h>
+
 #define ENGINE_TICK_MS 1000
 
 static struct zmk_pomo_config config = {
@@ -297,11 +299,7 @@ void zmk_pomo_config_set(const struct zmk_pomo_config *cfg) {
     k_spin_unlock(&state_lock, key);
 
 #if IS_ENABLED(CONFIG_SETTINGS)
-    int err = settings_save_one("pomodoro/config", &config, sizeof(config));
-
-    if (err) {
-        LOG_WRN("Could not persist pomodoro config (err %d) - live apply only", err);
-    }
+    zmk_settings_blob_save("pomodoro/config", &config, sizeof(config), "pomodoro config");
 #endif
     LOG_INF("pomo cfg: sets %u work %u s rest %u s noti %u", config.sets, config.work_s,
             config.rest_s, config.noti_mode);
@@ -311,19 +309,10 @@ void zmk_pomo_config_set(const struct zmk_pomo_config *cfg) {
 static int pomo_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                     void *cb_arg) {
     struct zmk_pomo_config loaded;
-    int err;
+    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "config", &loaded, sizeof(loaded),
+                                     "pomodoro config");
 
-    if (strcmp("config", key) != 0) {
-        return 0;
-    }
-    if (len != sizeof(loaded)) {
-        LOG_WRN("bad pomodoro config settings size %zu", len);
-        return -EINVAL;
-    }
-
-    err = read_cb(cb_arg, &loaded, sizeof(loaded));
     if (err <= 0) {
-        LOG_ERR("Failed to read pomodoro config from settings (err %d)", err);
         return err;
     }
 

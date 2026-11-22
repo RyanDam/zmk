@@ -28,6 +28,8 @@
 #define ZMK_GRID_MARGIN (ZMK_GRID_UNIT * 2)   /* safe margin all sides   */
 #define ZMK_GRID_TOUCH_MIN 44                 /* min touch target, px          */
 #define ZMK_GRID_REACH_H (ZMK_GRID_UNIT * 20) /* bottom-weighted reach zone */
+#define ZMK_GRID_SCREEN_W 320                 /* AXS15231B portrait panel      */
+#define ZMK_GRID_SCREEN_H 480
 
 /* ------------------------------------------------------------------ */
 /* Typography ramp (sizes baked into the generated fonts)              */

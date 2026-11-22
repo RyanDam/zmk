@@ -10,6 +10,10 @@
 
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
+
 #include <lvgl.h>
 
 #include <zephyr/input/input.h>
@@ -67,3 +71,57 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt);
  * as a click, everything else is PRESS_LOST.
  */
 void zmk_ui_indev_init(void);
+
+/* ------------------------------------------------------------------ */
+/* Review-pass helpers (2026-11-21): tick gating, text caching, work   */
+/* boilerplate, style toggling                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Set a label only when the text actually changed.
+ *
+ * On this full-refresh panel, any invalidation costs a ~61 ms flush, so
+ * per-tick updates must not poke labels that already show the string.
+ * The caller owns @p cache (per-label, same size as the formatted
+ * buffer); the first call with a given string does write.
+ */
+static inline void zmk_ui_set_text(char *cache, size_t cache_len, lv_obj_t *label,
+                                   const char *text) {
+    if (strncmp(cache, text, cache_len) == 0) {
+        return;
+    }
+    strncpy(cache, text, cache_len - 1);
+    cache[cache_len - 1] = '\0';
+    lv_label_set_text(label, text);
+}
+
+/** Add or remove a registry style as one intent. */
+static inline void zmk_ui_style_toggle(lv_obj_t *obj, const lv_style_t *style, bool on) {
+    if (on) {
+        lv_obj_add_style(obj, style, 0);
+    } else {
+        lv_obj_remove_style(obj, style, 0);
+    }
+}
+
+/**
+ * @brief 1 Hz-style updater bound to a page: ticks only while that page
+ * is current (pages are separate LVGL screens, so hidden pages
+ * shouldn't even compute their strings). In legacy status-screen mode
+ * (no screen manager) the timer always runs.
+ */
+typedef void (*zmk_ui_page_tick_cb)(void);
+lv_timer_t *zmk_ui_page_timer(const char *page_name, uint32_t period_ms, zmk_ui_page_tick_cb cb);
+
+/**
+ * @brief Define a work item posted to the display work queue.
+ *
+ *   ZMK_UI_WORK_DEFINE(my_work, my_cb) { ... }        (function body)
+ *   zmk_ui_post(&my_work);                            (any thread)
+ */
+#define ZMK_UI_WORK_DEFINE(work_sym, fn_name)                                                      \
+    static void fn_name(struct k_work *work);                                                      \
+    K_WORK_DEFINE(work_sym, fn_name);                                                              \
+    static void fn_name(struct k_work *work)
+
+void zmk_ui_post(struct k_work *work);

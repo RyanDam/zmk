@@ -15,7 +15,7 @@
  * are re-thought for the portrait panel and a 2x4 variant is added:
  *   2x1  two tall cells side by side   (slots 0-1)
  *   2x2  2x2 grid                      (slots 0-3)
- *   HYBR one big cell + three rows    (slots 0-3)
+ *   HYBR one big cell + three rows     (slots 0-3)
  *   2x4  four wide rows, big bars      (slots 0-3)
  *
  * Touch: tap a cell to cycle its metric id through all 16 metrics
@@ -23,6 +23,10 @@
  * content area to cycle layouts. Layout + metric ids persist in
  * settings ("display/stats/config", pad10a eeprom cb_eeprom.h:51-53
  * field set). Stale readings (seam reports stale) grey out their bar.
+ *
+ * The 1 Hz tick is page-gated and every label/bar mutation is
+ * skip-if-unchanged: on this full-refresh panel an unchanged tick costs
+ * zero invalidations, and an invalidation is a ~61 ms flush.
  */
 
 #include <string.h>
@@ -43,6 +47,8 @@
 #include "ui_helpers.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+
+#include <zmk/settings_blob.h>
 
 #define PAGE_NAME "stats"
 
@@ -70,6 +76,13 @@ struct cell {
     lv_obj_t *value;
     lv_obj_t *fill;
     lv_obj_t *max_label;
+    /* last-drawn text per label + last bar percent/stale state, so a
+     * tick that changes nothing invalidates nothing */
+    char label_cache[16];
+    char value_cache[24];
+    char max_cache[24];
+    int32_t pct_cache;
+    bool stale_cache;
 };
 
 static struct cell cells[ZMK_STATS_SLOT_COUNT];
@@ -82,11 +95,7 @@ static lv_obj_t *mock_label;
 
 #if IS_ENABLED(CONFIG_SETTINGS)
 static void cfg_save(void) {
-    int err = settings_save_one("display/stats/config", &cfg, sizeof(cfg));
-
-    if (err) {
-        LOG_WRN("Could not persist stats config (err %d) - live apply only", err);
-    }
+    zmk_settings_blob_save("display/stats/config", &cfg, sizeof(cfg), "stats config");
 }
 #endif
 
@@ -94,21 +103,12 @@ static void cfg_save(void) {
 /* Cells + layouts                                                     */
 /* ------------------------------------------------------------------ */
 
-static lv_obj_t *mk_cell(lv_obj_t *parent, int w, int h, bool big) {
+static lv_obj_t *mk_cell(lv_obj_t *parent, int slot, int w, int h, bool big) {
     lv_obj_t *box = lv_obj_create(parent);
 
     lv_obj_remove_style_all(box);
     lv_obj_set_size(box, w, h);
     lv_obj_set_style_pad_all(box, ZMK_GRID_UNIT, 0);
-
-    int slot = 0;
-
-    for (int i = 0; i < ZMK_STATS_SLOT_COUNT; i++) {
-        if (cells[i].box == NULL) {
-            slot = i;
-            break;
-        }
-    }
 
     lv_obj_t *col = zmk_ui_flex(box, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT / 2);
 
@@ -135,6 +135,8 @@ static lv_obj_t *mk_cell(lv_obj_t *parent, int w, int h, bool big) {
     lv_obj_align(c->fill, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_add_style(c->fill, zmk_display_style(ZMK_STYLE_ACCENT), 0);
     lv_obj_set_style_radius(c->fill, LV_RADIUS_CIRCLE, 0);
+    c->pct_cache = 0;
+    c->stale_cache = false;
 
     return box;
 }
@@ -159,17 +161,17 @@ static void layout_build(void) {
     switch (cfg.layout) {
     case STATS_LAYOUT_2X1:
         for (int i = 0; i < 2; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, 144, 336, true);
+            lv_obj_t *cell = mk_cell(screen_root, i, 144, 336, true);
 
             lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + i * 160, 80);
         }
         break;
     case STATS_LAYOUT_HYBRID: {
-        lv_obj_t *big = mk_cell(screen_root, 288, 168, true);
+        lv_obj_t *big = mk_cell(screen_root, 0, 288, 168, true);
 
         lv_obj_align(big, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 80);
         for (int i = 0; i < 3; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, 288, 80, false);
+            lv_obj_t *cell = mk_cell(screen_root, i + 1, 288, 80, false);
 
             lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 80 + 176 + i * 88);
         }
@@ -177,7 +179,7 @@ static void layout_build(void) {
     }
     case STATS_LAYOUT_2X4:
         for (int i = 0; i < 4; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, 288, 88, false);
+            lv_obj_t *cell = mk_cell(screen_root, i, 288, 88, false);
 
             lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 80 + i * 96);
         }
@@ -185,7 +187,7 @@ static void layout_build(void) {
     case STATS_LAYOUT_2X2:
     default:
         for (int i = 0; i < 4; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, 144, 168, false);
+            lv_obj_t *cell = mk_cell(screen_root, i, 144, 168, false);
 
             lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + (i % 2) * 160,
                          80 + (i / 2) * 184);
@@ -213,7 +215,7 @@ static void layout_build(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 1 Hz refresh                                                        */
+/* 1 Hz refresh (page-gated, skip-if-unchanged)                        */
 /* ------------------------------------------------------------------ */
 
 static void stats_update(void) {
@@ -224,43 +226,48 @@ static void stats_update(void) {
         if (c->box == NULL) {
             continue;
         }
-        lv_label_set_text(c->label, zmk_stats_label(cfg.metric[i]));
+        zmk_ui_set_text(c->label_cache, sizeof(c->label_cache), c->label,
+                        zmk_stats_label(cfg.metric[i]));
 
         if (!zmk_stats_get(cfg.metric[i], &r)) {
-            lv_label_set_text(c->value, "--");
-            lv_label_set_text(c->max_label, "");
-            lv_obj_set_width(c->fill, 0);
+            zmk_ui_set_text(c->value_cache, sizeof(c->value_cache), c->value, "--");
+            zmk_ui_set_text(c->max_cache, sizeof(c->max_cache), c->max_label, "");
+            if (c->pct_cache != 0) {
+                lv_obj_set_width(c->fill, 0);
+                c->pct_cache = 0;
+            }
             continue;
         }
 
         char buf[24];
 
         snprintk(buf, sizeof(buf), "%u%s", r.value, zmk_stats_unit_suffix(r.unit_id));
-        lv_label_set_text(c->value, buf);
+        zmk_ui_set_text(c->value_cache, sizeof(c->value_cache), c->value, buf);
         snprintk(buf, sizeof(buf), "/ %u%s", r.max_value, zmk_stats_unit_suffix(r.unit_id));
-        lv_label_set_text(c->max_label, buf);
+        zmk_ui_set_text(c->max_cache, sizeof(c->max_cache), c->max_label, buf);
 
         int32_t pct = r.max_value > 0 ? ((int32_t)r.value * 100) / r.max_value : 0;
 
-        lv_obj_set_width(c->fill, (int32_t)lv_obj_get_width(lv_obj_get_parent(c->fill)) *
-                                      CLAMP(pct, 0, 100) / 100);
+        pct = CLAMP(pct, 0, 100);
+        if (pct != c->pct_cache) {
+            lv_obj_set_width(c->fill,
+                             (int32_t)lv_obj_get_width(lv_obj_get_parent(c->fill)) * pct / 100);
+            c->pct_cache = pct;
+        }
 
-        /* stale grey-out: fill off the accent onto the inactive slot */
-        if (r.stale) {
-            lv_obj_remove_style(c->fill, zmk_display_style(ZMK_STYLE_ACCENT), 0);
-            lv_obj_add_style(c->fill, zmk_display_style(ZMK_STYLE_INACTIVE), 0);
-        } else {
-            lv_obj_remove_style(c->fill, zmk_display_style(ZMK_STYLE_INACTIVE), 0);
-            lv_obj_add_style(c->fill, zmk_display_style(ZMK_STYLE_ACCENT), 0);
+        /* stale grey-out: fill off the accent onto the inactive slot,
+         * restyled only when the freshness flips */
+        if (r.stale != c->stale_cache) {
+            zmk_ui_style_toggle(c->fill, zmk_display_style(ZMK_STYLE_ACCENT), !r.stale);
+            zmk_ui_style_toggle(c->fill, zmk_display_style(ZMK_STYLE_INACTIVE), r.stale);
+            c->stale_cache = r.stale;
         }
     }
 }
 
-static void stats_timer_cb(lv_timer_t *timer) {
+static void stats_tick(void) {
     static uint32_t samples, cycle_sum;
     uint32_t start = k_cycle_get_32();
-
-    ARG_UNUSED(timer);
 
     /* a11 acceptance: 1 Hz redraw cost vs the ~61 ms full frame (R5) */
     stats_update();
@@ -276,12 +283,17 @@ static void stats_timer_cb(lv_timer_t *timer) {
 /* Touch: cell -> cycle metric, background -> cycle layout             */
 /* ------------------------------------------------------------------ */
 
-ZMK_UI_TAP_STATE(stats_tap);
+/* Forward declaration: K_WORK_DEFINE below has external linkage (Zephyr
+ * macro), and the tap state needs the symbol before its definition. */
+struct k_work stats_tap_work;
 
-static void stats_tap_work_cb(struct k_work *work);
-K_WORK_DEFINE(stats_tap_work, stats_tap_work_cb);
+/* Page name and work are compile-time initializers: the input callback is
+ * global (a boot-time phantom touch fires before any page exists), so a
+ * tap state must never depend on a runtime zmk_ui_tap_init() ordering.
+ */
+ZMK_UI_TAP_STATE(stats_tap) = { .page_name = PAGE_NAME, .work = &stats_tap_work };
 
-static void stats_tap_work_cb(struct k_work *work) {
+ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
     uint16_t x = stats_tap.x, y = stats_tap.y;
 
     ARG_UNUSED(work);
@@ -329,11 +341,9 @@ static lv_obj_t *stats_page_create(lv_obj_t *parent) {
     lv_obj_remove_style_all(screen_root);
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
 
-    zmk_ui_tap_init(&stats_tap, PAGE_NAME, &stats_tap_work);
-
     layout_build();
     stats_update();
-    lv_timer_create(stats_timer_cb, 1000, NULL);
+    zmk_ui_page_timer(PAGE_NAME, 1000, stats_tick);
     return parent;
 }
 
@@ -347,19 +357,10 @@ ZMK_DISPLAY_DEFINE_SCREEN(stats, PAGE_NAME, stats_page_create, 30);
 static int stats_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                      void *cb_arg) {
     struct stats_cfg loaded;
-    int err;
+    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "config", &loaded, sizeof(loaded),
+                                     "stats config");
 
-    if (strcmp("config", key) != 0) {
-        return 0;
-    }
-    if (len != sizeof(loaded)) {
-        LOG_WRN("bad stats config settings size %zu", len);
-        return -EINVAL;
-    }
-
-    err = read_cb(cb_arg, &loaded, sizeof(loaded));
     if (err <= 0) {
-        LOG_ERR("Failed to read stats config from settings (err %d)", err);
         return err;
     }
     if (loaded.layout >= STATS_LAYOUT_COUNT) {

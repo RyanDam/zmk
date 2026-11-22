@@ -62,6 +62,8 @@
 
 LOG_MODULE_REGISTER(display_clock, CONFIG_ZMK_LOG_LEVEL);
 
+#include <zmk/settings_blob.h>
+
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
 
 /* --------------------------------------------------------------------- */
@@ -140,6 +142,7 @@ static bool hero_dimmed;
 static int32_t last_date_key; /* yyyymmdd; calendar rebuilds on change */
 
 static void clock_build_layout(void);
+static void clock_update_hint(void);
 
 /* Style-swap helper is clock-specific (registry style ids); the shared
  * label/flex/tap plumbing lives in ui_helpers.h. */
@@ -446,6 +449,8 @@ static void fmt_date_str(const struct zmk_time *t, char *buf, size_t size) {
 }
 
 static void clock_update_text(void) {
+    static char ind_cache[8], date_cache[32], wday_cache[16], unsync_cache[12],
+        cal_cache[32]; /* last-drawn text: unchanged -> no invalidation */
     struct zmk_time t;
     char buf[32];
 
@@ -472,9 +477,8 @@ static void clock_update_text(void) {
     if (l_indicator != NULL) {
         /* pad10a semantics (screen_time.c:85-99): shown per the indicator
          * setting, independent of the 12/24 h format. */
-        lv_label_set_text(l_indicator, (fmt.time_indicator == CLOCK_IND_AMPM)
-                                           ? (t.hour <= 12 ? "AM" : "PM")
-                                           : "");
+        zmk_ui_set_text(ind_cache, sizeof(ind_cache), l_indicator,
+                        (fmt.time_indicator == CLOCK_IND_AMPM) ? (t.hour <= 12 ? "AM" : "PM") : "");
     }
 
     if (l_date != NULL) {
@@ -483,16 +487,16 @@ static void clock_update_text(void) {
         } else {
             buf[0] = '\0';
         }
-        lv_label_set_text(l_date, buf);
+        zmk_ui_set_text(date_cache, sizeof(date_cache), l_date, buf);
     }
 
     if (l_weekday != NULL) {
-        lv_label_set_text(l_weekday, weekday_full[t.weekday]);
+        zmk_ui_set_text(wday_cache, sizeof(wday_cache), l_weekday, weekday_full[t.weekday]);
     }
 
     clock_apply_dim(t.synced);
     if (l_unsync != NULL) {
-        lv_label_set_text(l_unsync, t.synced ? "" : "unsynced");
+        zmk_ui_set_text(unsync_cache, sizeof(unsync_cache), l_unsync, t.synced ? "" : "unsynced");
     }
 
     if (fmt.style == CLOCK_STYLE_CALENDAR) {
@@ -502,16 +506,14 @@ static void clock_update_text(void) {
             last_date_key = key;
             build_calendar_cells(&t);
             snprintk(buf, sizeof(buf), "%s %u", month_full[t.month - 1], t.year);
-            lv_label_set_text(l_cal_title, buf);
+            zmk_ui_set_text(cal_cache, sizeof(cal_cache), l_cal_title, buf);
         }
     }
 }
 
-static void clock_timer_cb(lv_timer_t *timer) {
+static void clock_tick(void) {
     static uint32_t samples, cycle_sum;
     uint32_t start = k_cycle_get_32();
-
-    ARG_UNUSED(timer);
 
     /* a09 acceptance note: label updates must not starve touch. Full
      * cost per tick, averaged every 600 s — the panel repaint itself is
@@ -529,37 +531,7 @@ static void clock_timer_cb(lv_timer_t *timer) {
 /* Format changes: settings save, tap cycle, rebuild                     */
 /* --------------------------------------------------------------------- */
 
-static void clock_rebuild_work_cb(struct k_work *work);
-K_WORK_DEFINE(clock_rebuild_work, clock_rebuild_work_cb);
-
-static void clock_schedule_rebuild(void) {
-    k_work_submit_to_queue(zmk_display_work_q(), &clock_rebuild_work);
-}
-
-#if IS_ENABLED(CONFIG_SETTINGS)
-static void clock_settings_save(void) {
-    int err =
-        settings_save_one(CLOCK_SETTINGS_SUBTREE "/" CLOCK_SETTINGS_FMT_KEY, &fmt, sizeof(fmt));
-    if (err) {
-        LOG_WRN("Could not persist clock format (err %d) - live apply only", err);
-    }
-}
-#endif
-
-static void clock_update_hint(void) {
-    static const char *const date_names[] = {"DD/MM", "MM/DD", "YYYY/MM"};
-    char buf[48];
-
-    if (l_hint == NULL) {
-        return;
-    }
-    snprintk(buf, sizeof(buf), "S%u %s %s - tap to tune", (unsigned int)fmt.style + 1,
-             (fmt.time_format == CLOCK_FORMAT_12H) ? "12h" : "24h",
-             date_names[MIN((unsigned int)fmt.date_format, CLOCK_DATE_FORMAT_COUNT - 1)]);
-    lv_label_set_text(l_hint, buf);
-}
-
-static void clock_rebuild_work_cb(struct k_work *work) {
+ZMK_UI_WORK_DEFINE(clock_rebuild_work, clock_rebuild_work_cb) {
     ARG_UNUSED(work);
 
     if (clock_root == NULL) {
@@ -570,16 +542,36 @@ static void clock_rebuild_work_cb(struct k_work *work) {
     clock_update_text();
 }
 
+static void clock_schedule_rebuild(void) { zmk_ui_post(&clock_rebuild_work); }
+
+#if IS_ENABLED(CONFIG_SETTINGS)
+static void clock_settings_save(void) {
+    zmk_settings_blob_save(CLOCK_SETTINGS_SUBTREE "/" CLOCK_SETTINGS_FMT_KEY, &fmt, sizeof(fmt),
+                           "clock format");
+}
+#endif
+
+static void clock_update_hint(void) {
+    static const char *const date_names[] = {"DD/MM", "MM/DD", "YYYY/MM"};
+    static char hint_cache[48];
+    char buf[48];
+
+    if (l_hint == NULL) {
+        return;
+    }
+    snprintk(buf, sizeof(buf), "S%u %s %s - tap to tune", (unsigned int)fmt.style + 1,
+             (fmt.time_format == CLOCK_FORMAT_12H) ? "12h" : "24h",
+             date_names[MIN((unsigned int)fmt.date_format, CLOCK_DATE_FORMAT_COUNT - 1)]);
+    zmk_ui_set_text(hint_cache, sizeof(hint_cache), l_hint, buf);
+}
+
 /* Dev/bench cycle: each tap advances one field, so every acceptance combo
  * (5 styles x 2 formats x AM/PM x 3 dates x visibility x sync) is
  * reachable on the glass. */
 #define CLOCK_DEV_FIELDS 6
 static uint8_t dev_field;
 
-static void clock_cycle_field_work_cb(struct k_work *work);
-K_WORK_DEFINE(clock_cycle_field_work, clock_cycle_field_work_cb);
-
-static void clock_cycle_field_work_cb(struct k_work *work) {
+ZMK_UI_WORK_DEFINE(clock_cycle_field_work, clock_cycle_field_work_cb) {
     ARG_UNUSED(work);
 
     switch (dev_field) {
@@ -629,13 +621,12 @@ static void clock_cycle_field_work_cb(struct k_work *work) {
 /* --------------------------------------------------------------------- */
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
-ZMK_UI_TAP_STATE(clock_tap);
+/* Compile-time bound (see stats_screen.c): the global input callback can
+ * fire long before this page is ever created. */
+ZMK_UI_TAP_STATE(clock_tap) = { .page_name = "clock", .work = &clock_cycle_field_work };
 #endif
 
 static lv_obj_t *clock_attach(lv_obj_t *parent) {
-#if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
-    zmk_ui_tap_init(&clock_tap, "clock", &clock_cycle_field_work);
-#endif
     clock_root = lv_obj_create(parent);
 
     lv_obj_remove_style_all(clock_root);
@@ -644,7 +635,7 @@ static lv_obj_t *clock_attach(lv_obj_t *parent) {
     clock_build_layout();
     clock_update_hint();
     clock_update_text();
-    lv_timer_create(clock_timer_cb, 1000, NULL);
+    zmk_ui_page_timer("clock", 1000, clock_tick);
 
     return parent;
 }
@@ -688,19 +679,10 @@ lv_obj_t *zmk_display_status_screen(void) {
 static int clock_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                      void *cb_arg) {
     struct clock_fmt loaded;
-    int err;
+    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, CLOCK_SETTINGS_FMT_KEY, &loaded,
+                                     sizeof(loaded), "clock format");
 
-    if (strcmp(CLOCK_SETTINGS_FMT_KEY, key) != 0) {
-        return 0; /* not ours */
-    }
-    if (len != sizeof(loaded)) {
-        LOG_WRN("bad clock format settings size %zu", len);
-        return -EINVAL;
-    }
-
-    err = read_cb(cb_arg, &loaded, sizeof(loaded));
     if (err <= 0) {
-        LOG_ERR("Failed to read clock format from settings (err %d)", err);
         return err;
     }
 

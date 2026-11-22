@@ -32,6 +32,8 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+#include <zmk/settings_blob.h>
+
 /* ------------------------------------------------------------------ */
 /* LVGL filesystem drive 'A:' over the asset store                     */
 /* ------------------------------------------------------------------ */
@@ -125,9 +127,15 @@ static lv_fs_res_t fs_seek_cb(lv_fs_drv_t *drv, void *file_p, uint32_t pos, lv_f
         target = pos;
         break;
     case LV_FS_SEEK_CUR:
+        if (pos > f->asset->len || f->pos > f->asset->len - pos) {
+            return LV_FS_RES_INV_PARAM;
+        }
         target = f->pos + pos;
         break;
     case LV_FS_SEEK_END:
+        if (pos > f->asset->len) {
+            return LV_FS_RES_INV_PARAM;
+        }
         target = f->asset->len - pos;
         break;
     default:
@@ -203,7 +211,7 @@ static lv_obj_t *lottie_create(lv_obj_t *parent, const struct zmk_asset_info *as
     }
 
     lv_obj_t *obj = lv_lottie_create(parent);
-    const int32_t w = 320, h = 320; /* square stage keeps the canvas under budget */
+    const int32_t w = ZMK_GRID_SCREEN_W, h = 320; /* square stage keeps the canvas under budget */
     void *canvas = lv_malloc(w * h * 4);
 
     if (canvas == NULL) {
@@ -271,11 +279,8 @@ void zmk_anim_bg_set(bool on) {
     anim_bg = on;
 #if IS_ENABLED(CONFIG_SETTINGS)
     uint8_t val = on ? 1 : 0;
-    int err = settings_save_one("display/anim/bg", &val, sizeof(val));
 
-    if (err != 0) {
-        LOG_WRN("Could not persist anim bg (err %d) - live apply only", err);
-    }
+    zmk_settings_blob_save("display/anim/bg", &val, sizeof(val), "anim bg");
 #endif
     LOG_INF("anim bg %s", on ? "on" : "off");
 }
@@ -284,17 +289,9 @@ void zmk_anim_bg_set(bool on) {
 static int anim_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                     void *cb_arg) {
     uint8_t val;
-    int err;
+    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "bg", &val, sizeof(val), "anim bg");
 
-    if (strcmp("bg", key) != 0) {
-        return 0;
-    }
-    if (len != sizeof(val)) {
-        return -EINVAL;
-    }
-    err = read_cb(cb_arg, &val, sizeof(val));
     if (err <= 0) {
-        LOG_ERR("Failed to read anim bg setting (err %d)", err);
         return err;
     }
     anim_bg = val != 0;

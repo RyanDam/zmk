@@ -30,6 +30,8 @@
 
 LOG_MODULE_REGISTER(zmk_vkeymap, CONFIG_ZMK_LOG_LEVEL);
 
+#include <zmk/settings_blob.h>
+
 #define BLOB_VERSION 1
 #define RELEASE_DELAY_MS 30
 #define LISTENER_MAX 4
@@ -118,21 +120,30 @@ static bool cell_known_behavior(const struct zmk_vkeymap_cell *cell) {
     return zmk_behavior_get_binding(cell->behavior) != NULL;
 }
 
+/* Debounced save: a burst of edits (shell, later the a14 RPC) hits NVS
+ * once. The blob is static, not on the shell/display stack (~1.7 KB).
+ * The write lags the live model by one debounce window; at worst a
+ * superseded value is what gets persisted. */
+#define SAVE_DEBOUNCE_MS 250
+
+struct vkeymap_blob {
+    uint32_t version;
+    struct layer layers[ZMK_VKEYMAP_LAYERS];
+};
+
+static struct vkeymap_blob pending_blob;
+
+static void save_work_fn(struct k_work *work) {
+    ARG_UNUSED(work);
+    zmk_settings_blob_save("vkeymap/config", &pending_blob, sizeof(pending_blob), "vkeymap");
+}
+K_WORK_DELAYABLE_DEFINE(save_work, save_work_fn);
+
 static int persist(void) {
-    struct {
-        uint32_t version;
-        struct layer layers[ZMK_VKEYMAP_LAYERS];
-    } blob;
-
-    blob.version = BLOB_VERSION;
-    memcpy(blob.layers, layers, sizeof(blob.layers));
-
-    int err = settings_save_one("vkeymap/config", &blob, sizeof(blob));
-
-    if (err) {
-        LOG_WRN("Could not persist vkeymap (err %d) - live apply only", err);
-    }
-    return err;
+    pending_blob.version = BLOB_VERSION;
+    memcpy(pending_blob.layers, layers, sizeof(pending_blob.layers));
+    k_work_reschedule(&save_work, K_MSEC(SAVE_DEBOUNCE_MS));
+    return 0;
 }
 
 int zmk_vkeymap_cell_set(unsigned int layer, unsigned int idx,
@@ -176,22 +187,39 @@ int zmk_vkeymap_cell_clear(unsigned int layer, unsigned int idx) {
 /* Firing                                                              */
 /* ------------------------------------------------------------------ */
 
-static struct {
+/* Ring of presses awaiting their release edge. A single snapshot would
+ * let a second tap within the release delay rebind the pending release
+ * (press A would release as press B, and press/release-mode behaviors
+ * could stick) — so each press keeps its own record. */
+#define FIRE_RING 4
+
+struct fire_rec {
     struct zmk_vkeymap_cell cell; /* owns the behavior name for the release */
     struct zmk_behavior_binding_event event;
-} fired;
+};
 
-static void release_work_fn(struct k_work *work) {
+static struct fire_rec fire_ring[FIRE_RING];
+static uint8_t fire_in, fire_out;
+
+static void release_one(struct fire_rec *rec) {
     struct zmk_behavior_binding binding = {
-        .behavior_dev = fired.cell.behavior,
-        .param1 = fired.cell.param1,
-        .param2 = fired.cell.param2,
+        .behavior_dev = rec->cell.behavior,
+        .param1 = rec->cell.param1,
+        .param2 = rec->cell.param2,
     };
 
-    int err = zmk_behavior_invoke_binding(&binding, fired.event, false);
+    int err = zmk_behavior_invoke_binding(&binding, rec->event, false);
 
     if (err) {
         LOG_WRN("vkeymap release edge failed (err %d)", err);
+    }
+}
+
+static void release_work_fn(struct k_work *work) {
+    ARG_UNUSED(work);
+    while (fire_out != fire_in) {
+        release_one(&fire_ring[fire_out]);
+        fire_out = (fire_out + 1) % FIRE_RING;
     }
 }
 
@@ -209,28 +237,37 @@ int zmk_vkeymap_fire(unsigned int layer, unsigned int idx) {
     }
 
     /* Snapshot: a settings reload could swap the model between edges. */
-    fired.cell = *cell;
-    fired.event = (struct zmk_behavior_binding_event){
+    if ((fire_in + 1) % FIRE_RING == fire_out) {
+        /* ring full: the oldest press cannot wait any longer */
+        release_one(&fire_ring[fire_out]);
+        fire_out = (fire_out + 1) % FIRE_RING;
+    }
+
+    struct fire_rec *rec = &fire_ring[fire_in];
+
+    rec->cell = *cell;
+    rec->event = (struct zmk_behavior_binding_event){
         .layer = zmk_keymap_layer_index_to_id(zmk_keymap_highest_layer_active()),
         .position = idx,
         .timestamp = k_uptime_get(),
     };
 
     struct zmk_behavior_binding binding = {
-        .behavior_dev = fired.cell.behavior,
-        .param1 = fired.cell.param1,
-        .param2 = fired.cell.param2,
+        .behavior_dev = rec->cell.behavior,
+        .param1 = rec->cell.param1,
+        .param2 = rec->cell.param2,
     };
 
-    int err = zmk_behavior_invoke_binding(&binding, fired.event, true);
+    int err = zmk_behavior_invoke_binding(&binding, rec->event, true);
 
     if (err) {
-        LOG_WRN("vkeymap L%u C%u '%s' press failed (err %d)", layer, idx, fired.cell.name, err);
+        LOG_WRN("vkeymap L%u C%u '%s' press failed (err %d)", layer, idx, rec->cell.name, err);
         return err;
     }
 
-    LOG_INF("vkeymap fired L%u C%u '%s' -> %s %u,%u", layer, idx, fired.cell.name,
-            fired.cell.behavior, fired.cell.param1, fired.cell.param2);
+    LOG_INF("vkeymap fired L%u C%u '%s' -> %s %u,%u", layer, idx, rec->cell.name,
+            rec->cell.behavior, rec->cell.param1, rec->cell.param2);
+    fire_in = (fire_in + 1) % FIRE_RING;
     k_work_reschedule(&release_work, K_MSEC(RELEASE_DELAY_MS));
     return 0;
 }
@@ -242,23 +279,11 @@ int zmk_vkeymap_fire(unsigned int layer, unsigned int idx) {
 #if IS_ENABLED(CONFIG_SETTINGS)
 static int vkeymap_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                        void *cb_arg) {
-    struct {
-        uint32_t version;
-        struct layer layers[ZMK_VKEYMAP_LAYERS];
-    } blob;
-    int err;
+    struct vkeymap_blob blob;
+    int err =
+        zmk_settings_blob_read(key, len, read_cb, cb_arg, "config", &blob, sizeof(blob), "vkeymap");
 
-    if (strcmp("config", key) != 0) {
-        return 0;
-    }
-    if (len != sizeof(blob)) {
-        LOG_WRN("bad vkeymap settings size %zu", len);
-        return -EINVAL;
-    }
-
-    err = read_cb(cb_arg, &blob, sizeof(blob));
     if (err <= 0) {
-        LOG_ERR("Failed to read vkeymap settings (err %d)", err);
         return err;
     }
     if (blob.version != BLOB_VERSION) {

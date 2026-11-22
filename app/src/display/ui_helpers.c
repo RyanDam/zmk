@@ -8,6 +8,8 @@
  * verbatim.
  */
 
+#include <string.h>
+
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
@@ -132,9 +134,15 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt) {
             return;
         }
         if (evt->value) {
-            tap->pressed = true;
-            tap->start_x = tap->x;
-            tap->start_y = tap->y;
+            /* Same press-edge rule as the manager's swipe detector: the
+             * driver re-asserts BTN_TOUCH=1 every poll, so latch the start
+             * point only on the edge (otherwise a swipe back to its origin
+             * still measures dx≈0 and fires as a "tap"). */
+            if (!tap->pressed) {
+                tap->pressed = true;
+                tap->start_x = tap->x;
+                tap->start_y = tap->y;
+            }
             return;
         }
         if (!tap->pressed) {
@@ -155,6 +163,9 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt) {
         }
 
         /* The power-on phantom touch lands before the registry exists. */
+        if (tap->page_name == NULL) {
+            return; /* tap state not bound (a bug: use compile-time init) */
+        }
         page = zmk_display_screen_find(tap->page_name);
         if (page < 0 || zmk_display_screen_current() != page) {
             return;
@@ -164,3 +175,42 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt) {
     }
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* Page-bound tickers + display-queue plumbing                         */
+/* ------------------------------------------------------------------ */
+
+#define PAGE_TIMERS_MAX 4
+
+struct page_timer {
+    const char *page_name;
+    zmk_ui_page_tick_cb cb;
+};
+
+static struct page_timer page_timers[PAGE_TIMERS_MAX];
+
+static void page_timer_cb(lv_timer_t *timer) {
+    struct page_timer *pt = lv_timer_get_user_data(timer);
+    int page;
+
+    /* Legacy status-screen mode: no registry, always tick. */
+    page = zmk_display_screen_find(pt->page_name);
+    if (page >= 0 && zmk_display_screen_current() != page) {
+        return;
+    }
+    pt->cb();
+}
+
+lv_timer_t *zmk_ui_page_timer(const char *page_name, uint32_t period_ms, zmk_ui_page_tick_cb cb) {
+    for (int i = 0; i < PAGE_TIMERS_MAX; i++) {
+        if (page_timers[i].page_name == NULL) {
+            page_timers[i].page_name = page_name;
+            page_timers[i].cb = cb;
+            return lv_timer_create(page_timer_cb, period_ms, &page_timers[i]);
+        }
+    }
+    LOG_WRN("ui: no free page-timer slot for '%s' - page will not refresh", page_name);
+    return NULL;
+}
+
+void zmk_ui_post(struct k_work *work) { k_work_submit_to_queue(zmk_display_work_q(), work); }

@@ -44,7 +44,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define TILE_SIZE (ZMK_GRID_UNIT * 8) /* 64 px, > touch min     */
 #define TILE_GAP ZMK_GRID_UNIT        /* 8 px                   */
 #define GRID_W (ZMK_VKEYMAP_COLS * TILE_SIZE + (ZMK_VKEYMAP_COLS - 1) * TILE_GAP)
-#define GRID_X ((320 - GRID_W) / 2)
+#define GRID_X ((ZMK_GRID_SCREEN_W - GRID_W) / 2)
 #define GRID_Y (ZMK_GRID_UNIT * 15) /* below title + layer chips */
 
 static lv_obj_t *screen_root;
@@ -53,19 +53,28 @@ static lv_obj_t *tile_labels[ZMK_VKEYMAP_CELLS];
 static lv_obj_t *chips[ZMK_VKEYMAP_LAYERS];
 static lv_obj_t *kbd_layer_label;
 static unsigned int soft_layer;
+static char tile_cache[ZMK_VKEYMAP_CELLS][16];
+static lv_opa_t tile_opa_cache[ZMK_VKEYMAP_CELLS];
+
+static void tile_labels_refresh(void);
 
 /* ------------------------------------------------------------------ */
 /* Fire + reload work (display work queue owns all LVGL touching)      */
 /* ------------------------------------------------------------------ */
 
-static void fire_work_cb(struct k_work *work);
-K_WORK_DEFINE(fire_work, fire_work_cb);
 static unsigned int fire_idx;
 
-static void reload_work_cb(struct k_work *work);
-K_WORK_DEFINE(reload_work, reload_work_cb);
+ZMK_UI_WORK_DEFINE(reload_work, reload_work_cb) {
+    ARG_UNUSED(work);
+    tile_labels_refresh();
+    for (unsigned int l = 0; l < ZMK_VKEYMAP_LAYERS && l < ARRAY_SIZE(chips); l++) {
+        if (chips[l] != NULL) {
+            lv_label_set_text(lv_obj_get_child(chips[l], 0), zmk_vkeymap_layer_name(l));
+        }
+    }
+}
 
-static void fire_work_cb(struct k_work *work) {
+ZMK_UI_WORK_DEFINE(fire_work, fire_work_cb) {
     ARG_UNUSED(work);
     int err = zmk_vkeymap_fire(soft_layer, fire_idx);
 
@@ -75,7 +84,7 @@ static void fire_work_cb(struct k_work *work) {
 }
 
 /* vkeymap model changed (shell, settings reload, a14): redraw labels. */
-static void vkeymap_changed_cb(void) { k_work_submit_to_queue(zmk_display_work_q(), &reload_work); }
+static void vkeymap_changed_cb(void) { zmk_ui_post(&reload_work); }
 
 /* ------------------------------------------------------------------ */
 /* Tiles                                                               */
@@ -96,7 +105,7 @@ static void tile_event_cb(lv_event_t *e) {
         break;
     case LV_EVENT_CLICKED:
         fire_idx = idx;
-        k_work_submit_to_queue(zmk_display_work_q(), &fire_work);
+        zmk_ui_post(&fire_work);
         break;
     default:
         break;
@@ -106,17 +115,22 @@ static void tile_event_cb(lv_event_t *e) {
 static void tile_labels_refresh(void) {
     for (unsigned int i = 0; i < ZMK_VKEYMAP_CELLS; i++) {
         const struct zmk_vkeymap_cell *cell = zmk_vkeymap_cell_get(soft_layer, i);
+        const char *text;
+        lv_opa_t opa;
 
         if (tile_labels[i] == NULL || cell == NULL) {
             continue;
         }
-        if (cell->name[0] != '\0') {
-            lv_label_set_text(tile_labels[i], cell->name);
-        } else {
-            lv_label_set_text(tile_labels[i], cell->behavior[0] ? "?" : "—");
-        }
+        text = cell->name[0] ? cell->name : (cell->behavior[0] ? "?" : "—");
+        /* cached: a reload that changes nothing must not invalidate */
+        zmk_ui_set_text(tile_cache[i], sizeof(tile_cache[i]), tile_labels[i], text);
+
         /* unassigned tiles sit visually dead */
-        lv_obj_set_style_bg_opa(tiles[i], cell->behavior[0] ? LV_OPA_COVER : LV_OPA_30, 0);
+        opa = cell->behavior[0] ? LV_OPA_COVER : LV_OPA_30;
+        if (tile_opa_cache[i] != opa) {
+            lv_obj_set_style_bg_opa(tiles[i], opa, 0);
+            tile_opa_cache[i] = opa;
+        }
     }
 }
 
@@ -133,10 +147,9 @@ static void grid_build(void) {
         lv_obj_set_pos(tile, GRID_X + col * (TILE_SIZE + TILE_GAP),
                        GRID_Y + row * (TILE_SIZE + TILE_GAP));
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_PRESSED, (void *)(uintptr_t)i);
-        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_RELEASED, (void *)(uintptr_t)i);
-        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_PRESS_LOST, (void *)(uintptr_t)i);
-        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        /* one dispatcher for all events (review pass: 4 registrations per
+         * tile were 64 event objects for the same function) */
+        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
         tiles[i] = tile;
 
         lv_obj_t *lbl = zmk_ui_label(tile, ZMK_STYLE_TEXT_BODY);
@@ -164,11 +177,7 @@ static void chip_event_cb(lv_event_t *e) {
         if (chips[l] == NULL) {
             continue;
         }
-        if (l == soft_layer) {
-            lv_obj_add_style(chips[l], zmk_display_style(ZMK_STYLE_ACCENT), 0);
-        } else {
-            lv_obj_remove_style(chips[l], zmk_display_style(ZMK_STYLE_ACCENT), 0);
-        }
+        zmk_ui_style_toggle(chips[l], zmk_display_style(ZMK_STYLE_ACCENT), l == soft_layer);
     }
     tile_labels_refresh();
 }
@@ -202,6 +211,8 @@ static void chips_build(void) {
 /* Real keymap layer highlight (a13 acceptance)                        */
 /* ------------------------------------------------------------------ */
 
+static char kbd_layer_cache[40];
+
 static void kbd_layer_update(void) {
     zmk_keymap_layer_index_t idx = zmk_keymap_highest_layer_active();
     const char *name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(idx));
@@ -215,19 +226,18 @@ static void kbd_layer_update(void) {
     } else {
         snprintk(buf, sizeof(buf), "kbd layer: %u", (unsigned int)idx);
     }
-    lv_label_set_text(kbd_layer_label, buf);
+    zmk_ui_set_text(kbd_layer_cache, sizeof(kbd_layer_cache), kbd_layer_label, buf);
 }
 
-static void kbd_layer_work_cb(struct k_work *work) {
+ZMK_UI_WORK_DEFINE(kbd_layer_work, kbd_layer_work_cb) {
     ARG_UNUSED(work);
     kbd_layer_update();
 }
-K_WORK_DEFINE(kbd_layer_work, kbd_layer_work_cb);
 
 static int layer_changed_event_cb(const zmk_event_t *eh) {
     ARG_UNUSED(eh);
     if (kbd_layer_label != NULL) {
-        k_work_submit_to_queue(zmk_display_work_q(), &kbd_layer_work);
+        zmk_ui_post(&kbd_layer_work);
     }
     return 0;
 }
@@ -238,16 +248,6 @@ ZMK_SUBSCRIPTION(keymap_screen, zmk_layer_state_changed);
 /* ------------------------------------------------------------------ */
 /* Reload + build                                                      */
 /* ------------------------------------------------------------------ */
-
-static void reload_work_cb(struct k_work *work) {
-    ARG_UNUSED(work);
-    tile_labels_refresh();
-    for (unsigned int l = 0; l < ZMK_VKEYMAP_LAYERS && l < ARRAY_SIZE(chips); l++) {
-        if (chips[l] != NULL) {
-            lv_label_set_text(lv_obj_get_child(chips[l], 0), zmk_vkeymap_layer_name(l));
-        }
-    }
-}
 
 static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     screen_root = lv_obj_create(parent);
