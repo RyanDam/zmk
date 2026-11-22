@@ -45,3 +45,15 @@ properties:
     description: |
       Optional PWM spec for the backlight. The driver drives the duty from the
       blanking on/off handlers: fully on when unblanked, off when blanked.
+
+  rotation:
+    type: int
+    required: false
+    default: 0
+    description: |
+      Angle (0/90/180/270) the content is turned by, so a portrait-mounted
+      panel can present a landscape UI. The same property is read by the app
+      (app/src/display/main.c) to keep LVGL's logical resolution, the touch
+      coordinate mapping, and the driver's pixel order on one side of the
+      same angle. 90/270 swap the axes: a 320x480 node renders at 480x320.
+

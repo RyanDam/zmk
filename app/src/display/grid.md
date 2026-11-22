@@ -1,20 +1,38 @@
-# Tab 1a layout grid — 320×480 portrait (backlog a07)
+# Tab 1a layout grid — 480×320 landscape (backlog a07)
 
 One page, normatively linked from `styles.h`. Tokens in code live in
 `styles.h` (`ZMK_GRID_*`, font externs); if doc and code disagree, code wins
 — fix the doc the same day.
 
+## Orientation
+
+The panel is a 320×480 portrait glass, but **the product is landscape**:
+the display node's `rotation = <90>` (zmk-config `cobantab1a.overlay`) is
+the one angle everything agrees on — the driver transposes each frame
+(`app/module/drivers/display/axs15231b.c`), LVGL gets the swapped logical
+resolution (`main.c` → `lv_display_set_rotation`), LVGL widgets' touch is
+corrected by LVGL itself, and raw ZMK input listeners must call
+`zmk_ui_touch_to_logical()` (`ui_helpers.h`) before comparing against
+layout. Screens are laid out in 480×320 logical pixels and never think
+about the rotation. The software route (default) transposes each full
+frame in the display driver — a few ms against the ~61 ms full flush;
+`CONFIG_AXS15231B_ROTATION_HW` is the bench-spike switch for native MADCTL
+rotation if the panel ever proves it (see the driver's notes).
+
 ## Base
 
 - **Unit:** 8 px. Every margin, gap, and widget dimension is a multiple of
   the unit (half-units allowed for text baselines only).
-- **Canvas:** 320 wide × 480 tall, portrait, single panel (AXS15231B,
+- **Canvas:** 480 wide × 320 tall, landscape, single panel (AXS15231B,
   RGB565, **full-refresh** — see constraints).
 - **Safe margin:** 16 px (`ZMK_GRID_MARGIN`) on all four edges. Nothing
   interactive crosses it; the touch controller is less accurate at the
   extremes (bring-up observation, findings §19).
-- **Columns:** 40 unit-columns. Screen layouts are named by column spans
-  (e.g. hero clock = 24 cols centered).
+- **Columns:** 60 unit-columns. The extra width is the landscape gift:
+  prefer side-by-side splits (clock+calendar, ring+controls, cell grids)
+  over tall stacks.
+- **Bottom furniture:** page dots at `-MARGIN/2`, captions (hints, unsync)
+  at `-MARGIN*2` and `-MARGIN*4 - UNIT`. Content ends by y≈240.
 
 ## Touch
 
@@ -22,6 +40,9 @@ One page, normatively linked from `styles.h`. Tokens in code live in
 - **Reach:** the bottom 160 px (`ZMK_GRID_REACH_H`) is the thumb-weighted
   zone — primary actions (a08 nav bar, a10 pomodoro controls, a13 soft keys)
   live there; informational content (a09 clock, a11 stats) sits above.
+  On the 320-tall canvas half of the height is that band, so interactive
+  rows hug the bottom edge and the settings tap band (`REACH_H / 2`, the
+  bottom 80 px) stays free of buttons.
 - Gap between adjacent targets ≥ 8 px (1 unit).
 
 ## Type ramp (baked into the generated fonts)
@@ -37,7 +58,8 @@ One page, normatively linked from `styles.h`. Tokens in code live in
 | Tabular (stats) | 20 | Barlow Medium | `ZMK_STYLE_TEXT_TABULAR` |
 
 Line height = 1.4× size, rounded to the unit where practical. Never call
-`lv_obj_set_style_text_font()` with a font outside this table.
+`lv_obj_set_style_text_font()` with a font outside this table. The hero
+72 fits the 320-tall canvas; a 640-px hero would not — keep the ramp.
 
 ## Theme
 

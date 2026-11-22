@@ -3,8 +3,8 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Coban Tab 1a design system — shared style registry + 320×480 grid tokens
- * (backlog a07).
+ * Coban Tab 1a design system — shared style registry + 480×320 landscape
+ * grid tokens (backlog a07).
  *
  * THE RULE: screens get colors, fonts and sizes ONLY from this registry.
  * A hardcoded lv_color_* / font symbol in screen code is a review reject
@@ -21,15 +21,17 @@
 #include "theme.h"
 
 /* ------------------------------------------------------------------ */
-/* 320×480 portrait grid (see grid.md)                                 */
+/* 480×320 landscape grid (see grid.md)                                */
 /* ------------------------------------------------------------------ */
 
 #define ZMK_GRID_UNIT 8                       /* base grid unit, px            */
 #define ZMK_GRID_MARGIN (ZMK_GRID_UNIT * 2)   /* safe margin all sides   */
 #define ZMK_GRID_TOUCH_MIN 44                 /* min touch target, px          */
 #define ZMK_GRID_REACH_H (ZMK_GRID_UNIT * 20) /* bottom-weighted reach zone */
-#define ZMK_GRID_SCREEN_W 320                 /* AXS15231B portrait panel      */
-#define ZMK_GRID_SCREEN_H 480
+/* Logical landscape canvas: the 320x480 panel presented at 90° — the node's
+ * `rotation` property is what makes W/H mean what they say (grid.md). */
+#define ZMK_GRID_SCREEN_W 480
+#define ZMK_GRID_SCREEN_H 320
 
 /* ------------------------------------------------------------------ */
 /* Typography ramp (sizes baked into the generated fonts)              */

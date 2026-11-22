@@ -35,6 +35,7 @@
 #include <zephyr/drivers/mspi.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/kernel.h>
+#include <zephyr/linker/sections.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <soc/gpio_struct.h> /* gpio_dev_t, for the GPIO-matrix clock inverter */
@@ -49,6 +50,54 @@ LOG_MODULE_REGISTER(axs15231b, CONFIG_DISPLAY_LOG_LEVEL);
 #define AXS_HEIGHT DT_INST_PROP(0, height)
 
 #define AXS_HAS_BACKLIGHT DT_NODE_HAS_PROP(DT_INST(0, axs_axs15231b), pwms)
+
+/*
+ * Product orientation (a07 landscape redesign): `rotation` on the node is the
+ * angle the CONTENT is turned by, so a portrait-mounted 320x480 panel shows a
+ * 480x320 landscape UI. Two routes:
+ *
+ * - Software (default): the panel stays MADCTL 0x00, LVGL renders the logical
+ *   landscape frame (lv_display_set_rotation, driven from the same DT
+ *   property by app/src/display/main.c), and the flush arrives transposed -
+ *   axs15231b_write transposes it into a PSRAM staging frame and streams it
+ *   as one RAMWR, the same transaction shape the unrotated path uses. Costs
+ *   a few ms of transpose per full frame; the 61 ms QSPI flush dominates.
+ *
+ * - Hardware (CONFIG_AXS15231B_ROTATION_HW): MADCTL's MV swap, caps report
+ *   the swapped resolution, and the pixel stream is written straight through.
+ *   ZERO per-frame cost - but the AXS15231B's QSPI row-pointer stream under
+ *   MV is NOT yet proven on the bench (the columns-only-window findings in
+ *   this file's notes were made at MADCTL 0x00), so the route is opt-in.
+ *   The MADCTL table below is the MIPI-DDI convention and must be verified
+ *   against a test pattern before this route ships; if the stream order comes
+ *   out transposed, the software route is the answer.
+ *
+ * The software rotation direction is tied to LVGL's: the transpose formulas
+ * are derived from lv_display_rotate_point() (lv_indev.c feeds touch through
+ * the same map), so pixels and taps cannot drift apart. Keep them in lockstep
+ * with any LVGL upgrade.
+ */
+#define AXS_ROTATION DT_PROP_OR(DT_INST(0, axs_axs15231b), rotation, 0)
+#define AXS_ROTATION_HW IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW)
+#define AXS_ROTATION_SW (AXS_ROTATION != 0 && !AXS_ROTATION_HW)
+
+BUILD_ASSERT(AXS_ROTATION == 0 || AXS_ROTATION == 90 || AXS_ROTATION == 180 ||
+                     AXS_ROTATION == 270,
+             "rotation: one of 0/90/180/270");
+
+/* MADCTL bits per rotation (MX 0x80, MY 0x40, MV 0x20) - bench-verify first,
+ * see the note above. */
+#define AXS_MADCTL_ROT_0 0x00
+#define AXS_MADCTL_ROT_90 0x60  /* MV | MX */
+#define AXS_MADCTL_ROT_180 0xC0 /* MX | MY */
+#define AXS_MADCTL_ROT_270 0xA0 /* MV | MY */
+
+/* Logical (what LVGL/flush sees) vs physical (what the glass streams). Only
+ * 90/270 swap the axes; the hardware route reports them in caps, the
+ * software route keeps caps physical and transposes at write time. */
+#define AXS_ROT_SWAPPED (AXS_ROTATION_HW && (AXS_ROTATION == 90 || AXS_ROTATION == 270))
+#define AXS_LOGICAL_WIDTH (AXS_ROT_SWAPPED ? AXS_HEIGHT : AXS_WIDTH)
+#define AXS_LOGICAL_HEIGHT (AXS_ROT_SWAPPED ? AXS_WIDTH : AXS_HEIGHT)
 
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_PARENT(DT_INST(0, axs_axs15231b)), espressif_esp32_mspi),
              "this axs,axs15231b node must be a child of an espressif,esp32-mspi controller: "
@@ -413,7 +462,16 @@ static int axs15231b_send_init(const struct device *dev) {
     }
     k_msleep(AXS_SLPOUT_DELAY_MS);
 
-    uint8_t madctl = 0x00; /* no swap, no mirror */
+#if AXS_ROTATION_HW
+    /* Hardware route: see the rotation note at the top of the file - the
+     * table needs a bench pass before this route ships. */
+    uint8_t madctl = (AXS_ROTATION == 90)      ? AXS_MADCTL_ROT_90
+                     : (AXS_ROTATION == 180)   ? AXS_MADCTL_ROT_180
+                     : (AXS_ROTATION == 270)   ? AXS_MADCTL_ROT_270
+                                               : AXS_MADCTL_ROT_0;
+#else
+    uint8_t madctl = 0x00; /* no swap, no mirror: rotation (if any) is software */
+#endif
     err = axs15231b_tx_cmd(dev, AXS_CMD_MADCTL, &madctl, 1);
     if (err) {
         LOG_ERR("MADCTL failed: %d", err);
@@ -463,6 +521,98 @@ static int axs15231b_send_init(const struct device *dev) {
     return 0;
 }
 
+#if AXS_ROTATION_SW
+/*
+ * Software rotation: LVGL renders the logical landscape frame (see main.c's
+ * lv_display_set_rotation) and the flush arrives as one full logical frame,
+ * e.g. 480x320 for a 320x480 panel at 90/270. Transpose it into physical
+ * strips here and stream those - the panel never learns the difference.
+ *
+ * Direction follows lv_display_rotate_point() (which is what maps touch):
+ *   90:  physical P[y][x] = logical L[x][PH-1-y]
+ *   270: P[y][x] = L[PW-1-x][y]
+ *   180: P[y][x] = L[PH-1-y][PW-1-x]
+ * PW/PH are the panel's physical size. Reads walk the PSRAM source row-wise
+ * (a strip's pixels live in one logical column per destination row), writes
+ * hit a small internal-RAM scratch, so no 300 KB staging buffer is needed.
+ */
+#define AXS_ROTATE_STRIP_ROWS 8
+
+static uint16_t axs_rotate_scratch[AXS_ROTATE_STRIP_ROWS * AXS_WIDTH] __aligned(4);
+
+/*
+ * Full physical frame (300 KB) staged in PSRAM - the same placement and the
+ * same GDMA path the LVGL draw buffer (`.lvgl_buf`) uses. The transpose
+ * assembles the whole frame here and streams it as ONE RAMWR transaction,
+ * byte-for-byte the protocol shape proven on the bench; a frame split into
+ * many CS-asserted RAMWRC chunks is NOT proven on this panel (bench
+ * 2026-11-22: 60-chunk streaming painted scattered pixel runs).
+ */
+static uint16_t axs_rotate_frame[AXS_WIDTH * AXS_HEIGHT] Z_GENERIC_SECTION(.ext_ram.bss)
+    __aligned(4);
+
+static void axs_rotate_strip(const uint16_t *src, uint16_t pitch, uint16_t y0, uint16_t rows) {
+    for (uint16_t x = 0; x < AXS_WIDTH; x++) {
+        const uint16_t *scol = src + (uint32_t)x * pitch;
+
+        for (uint16_t r = 0; r < rows; r++) {
+#if AXS_ROTATION == 90
+            axs_rotate_scratch[r * AXS_WIDTH + x] = scol[AXS_HEIGHT - 1 - (y0 + r)];
+#elif AXS_ROTATION == 270
+            axs_rotate_scratch[r * AXS_WIDTH + x] = src[(uint32_t)(AXS_WIDTH - 1 - x) * pitch +
+                                                        y0 + r];
+#elif AXS_ROTATION == 180
+            axs_rotate_scratch[r * AXS_WIDTH + x] =
+                src[(uint32_t)(AXS_HEIGHT - 1 - (y0 + r)) * pitch + (AXS_WIDTH - 1 - x)];
+#endif
+        }
+    }
+}
+
+/* Full logical frame at the rotated shape? (The only flush shape LVGL's
+ * full-refresh mode produces, and the only one the transpose can serve.) */
+static bool axs_frame_is_rotated(const struct display_buffer_descriptor *desc) {
+#if AXS_ROTATION == 90 || AXS_ROTATION == 270
+    return desc->width == AXS_HEIGHT && desc->height == AXS_WIDTH;
+#else
+    return desc->width == AXS_WIDTH && desc->height == AXS_HEIGHT;
+#endif
+}
+
+static int axs15231b_write_rotated(const struct device *dev,
+                                   const struct display_buffer_descriptor *desc, const void *buf) {
+    const uint16_t *src = buf;
+    int err;
+
+    /* Columns 0..AXS_WIDTH-1 inclusive - what the unrotated path programs for
+     * every full-width flush. The CASET window sets the row wrap, so an
+     * off-by-one here shifts every row by a pixel (diagonal shear; bench
+     * 2026-11-22). */
+    uint8_t caset[4] = {0x00, 0x00, (uint8_t)((AXS_WIDTH - 1) >> 8),
+                        (uint8_t)((AXS_WIDTH - 1) & 0xFF)};
+
+    err = axs15231b_tx_cmd(dev, AXS_CMD_CASET, caset, sizeof(caset));
+    if (err) {
+        return err;
+    }
+
+    /*
+     * Transpose strip by strip (scratch keeps the read pattern cache-friendly
+     * and the frame copies sequential) into the full physical frame, then
+     * stream that as one frame - see axs_rotate_frame's note.
+     */
+    for (uint16_t y0 = 0; y0 < AXS_HEIGHT; y0 += AXS_ROTATE_STRIP_ROWS) {
+        uint16_t rows = MIN(AXS_ROTATE_STRIP_ROWS, AXS_HEIGHT - y0);
+
+        axs_rotate_strip(src, desc->pitch, y0, rows);
+        memcpy(axs_rotate_frame + (uint32_t)y0 * AXS_WIDTH, axs_rotate_scratch,
+               (size_t)rows * AXS_WIDTH * 2);
+    }
+
+    return axs15231b_tx_color(dev, AXS_CMD_RAMWR, axs_rotate_frame, sizeof(axs_rotate_frame));
+}
+#endif /* AXS_ROTATION_SW */
+
 static int axs15231b_write(const struct device *dev, const uint16_t x, const uint16_t y,
                            const struct display_buffer_descriptor *desc, const void *buf) {
     struct axs15231b_data *data = dev->data;
@@ -472,10 +622,16 @@ static int axs15231b_write(const struct device *dev, const uint16_t x, const uin
         return -ENODEV;
     }
 
+#if AXS_ROTATION_SW
+    if (x == 0 && y == 0 && axs_frame_is_rotated(desc)) {
+        return axs15231b_write_rotated(dev, desc, buf);
+    }
+#endif
+
     uint16_t x_end = x + desc->width - 1;
     uint16_t y_end = y + desc->height - 1;
 
-    if (x_end >= AXS_WIDTH || y_end >= AXS_HEIGHT) {
+    if (x_end >= AXS_LOGICAL_WIDTH || y_end >= AXS_LOGICAL_HEIGHT) {
         LOG_ERR("Write out of bounds: x %u..%u, y %u..%u", x, x_end, y, y_end);
         return -EINVAL;
     }
@@ -582,8 +738,8 @@ static void axs15231b_get_capabilities(const struct device *dev,
                                        struct display_capabilities *caps) {
     ARG_UNUSED(dev);
     memset(caps, 0, sizeof(*caps));
-    caps->x_resolution = AXS_WIDTH;
-    caps->y_resolution = AXS_HEIGHT;
+    caps->x_resolution = AXS_LOGICAL_WIDTH;
+    caps->y_resolution = AXS_LOGICAL_HEIGHT;
     /*
      * RGB_565X = byte-swapped 565. The panel consumes 16-bit pixels
      * big-endian, like any MIPI DDI panel (datasheet's 16-bit figure puts
@@ -600,6 +756,13 @@ static void axs15231b_get_capabilities(const struct device *dev,
     caps->supported_pixel_formats = PIXEL_FORMAT_RGB_565X;
     caps->current_pixel_format = PIXEL_FORMAT_RGB_565X;
     caps->screen_info = 0;
+#if AXS_ROT_SWAPPED || (AXS_ROTATION_HW && AXS_ROTATION == 180)
+    /* The LVGL pointer glue maps raw touch into these coordinates, so the
+     * hardware route must not also rotate in LVGL (see main.c). */
+    caps->current_orientation = (AXS_ROTATION == 90)    ? DISPLAY_ORIENTATION_ROTATED_90
+                                : (AXS_ROTATION == 180) ? DISPLAY_ORIENTATION_ROTATED_180
+                                                        : DISPLAY_ORIENTATION_ROTATED_270;
+#endif
 }
 
 static int axs15231b_set_pixel_format(const struct device *dev,
@@ -611,8 +774,22 @@ static int axs15231b_set_pixel_format(const struct device *dev,
 static int axs15231b_set_orientation(const struct device *dev,
                                      const enum display_orientation orientation) {
     ARG_UNUSED(dev);
-    /* Orientation is fixed at init (MADCTL 0x00). */
+    /* Orientation is fixed at init (from the node's `rotation`), and caps
+     * report it; the LVGL pointer glue caches caps at its own init, so a
+     * runtime flip could not be honoured end-to-end anyway. Accept the
+     * configured value, refuse everything else. */
+#if !AXS_ROTATION_HW
+    /* Software route: the PANEL stays normal; only LVGL/flush rotate. */
     return (orientation == DISPLAY_ORIENTATION_NORMAL) ? 0 : -ENOTSUP;
+#else
+    const enum display_orientation want =
+        (AXS_ROTATION == 90)    ? DISPLAY_ORIENTATION_ROTATED_90
+        : (AXS_ROTATION == 180) ? DISPLAY_ORIENTATION_ROTATED_180
+        : (AXS_ROTATION == 270) ? DISPLAY_ORIENTATION_ROTATED_270
+                                : DISPLAY_ORIENTATION_NORMAL;
+
+    return (orientation == want) ? 0 : -ENOTSUP;
+#endif
 }
 
 /*
@@ -710,7 +887,9 @@ static int axs15231b_init(const struct device *dev) {
 
     data->initialized = true;
 
-    LOG_INF("AXS15231B initialized (%ux%u)", AXS_WIDTH, AXS_HEIGHT);
+    LOG_INF("AXS15231B initialized (%ux%u, rotation %u, %s route)", AXS_WIDTH, AXS_HEIGHT,
+            (unsigned int)AXS_ROTATION,
+            (AXS_ROTATION == 0) ? "upright" : (AXS_ROTATION_HW ? "hardware" : "software"));
 
     return 0;
 }

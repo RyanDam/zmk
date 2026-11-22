@@ -6,7 +6,7 @@
  * Coban Tab 1a display design system — 5-slot theme model (backlog a07).
  *
  * Port of pad10a's `theme_color_t` (background, text_primary, text_secondary,
- * accent, inactive) scaled for 320×480. The theme is the ONLY source of
+ * accent, inactive) scaled for the 480×320 canvas. The theme is the ONLY source of
  * colors for screen code: styles.c derives every lv_style_t from it, and the
  * model persists via ZMK settings ("display/theme/colors", 15 bytes RGB888,
  * same wire shape as pad10a's eeprom blob) so the Studio RPC (a14) can edit

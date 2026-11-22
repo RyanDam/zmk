@@ -211,7 +211,10 @@ static lv_obj_t *lottie_create(lv_obj_t *parent, const struct zmk_asset_info *as
     }
 
     lv_obj_t *obj = lv_lottie_create(parent);
-    const int32_t w = ZMK_GRID_SCREEN_W, h = 320; /* square stage keeps the canvas under budget */
+    /* Landscape stage = the whole logical screen; the ARGB canvas is a
+     * 600 KB lv_malloc from the PSRAM pool (was 400 KB for the square
+     * 320x320 portrait stage) - see the pool sizing note in cobantab1a.conf. */
+    const int32_t w = ZMK_GRID_SCREEN_W, h = ZMK_GRID_SCREEN_H;
     void *canvas = lv_malloc(w * h * 4);
 
     if (canvas == NULL) {

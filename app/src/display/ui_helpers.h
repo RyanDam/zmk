@@ -16,10 +16,56 @@
 
 #include <lvgl.h>
 
+#include <zephyr/devicetree.h>
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 
 #include "styles.h"
+
+/* ------------------------------------------------------------------ */
+/* Product orientation (mirrors the panel node's `rotation`)           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The touch driver always reports RAW panel coordinates (0..319 x 0..479 on
+ * the portrait glass) regardless of the product rotation. LVGL corrects its
+ * own widgets itself (lv_indev runs pointer reads through
+ * lv_display_rotate_point), but the raw ZMK input listeners (screen swipes,
+ * band/hit-test taps) must convert before comparing against layout, or a
+ * vertical swipe would navigate pages sideways.
+ */
+#if DT_HAS_CHOSEN(zephyr_display)
+#define ZMK_UI_PANEL_W DT_PROP_OR(DT_CHOSEN(zephyr_display), width, 0)
+#define ZMK_UI_PANEL_H DT_PROP_OR(DT_CHOSEN(zephyr_display), height, 0)
+#define ZMK_UI_ROTATION DT_PROP_OR(DT_CHOSEN(zephyr_display), rotation, 0)
+#else
+#define ZMK_UI_PANEL_W 0
+#define ZMK_UI_PANEL_H 0
+#define ZMK_UI_ROTATION 0
+#endif
+
+/** Map a raw touch point into the logical (laid-out) coordinate space,
+ *  with the exact same mapping LVGL applies to pointer input. */
+static inline void zmk_ui_touch_to_logical(int32_t *x, int32_t *y) {
+    const int32_t rx = *x, ry = *y;
+
+    switch (ZMK_UI_ROTATION) {
+    case 90:
+        *x = ZMK_UI_PANEL_H - 1 - ry;
+        *y = rx;
+        break;
+    case 180:
+        *x = ZMK_UI_PANEL_W - 1 - rx;
+        *y = ZMK_UI_PANEL_H - 1 - ry;
+        break;
+    case 270:
+        *x = ry;
+        *y = ZMK_UI_PANEL_W - 1 - rx;
+        break;
+    default:
+        break;
+    }
+}
 
 /** Label carrying exactly one registry style. */
 lv_obj_t *zmk_ui_label(lv_obj_t *parent, enum zmk_display_style_id style_id);

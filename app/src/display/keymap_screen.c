@@ -41,11 +41,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAGE_NAME "keymap"
 
-#define TILE_SIZE (ZMK_GRID_UNIT * 8) /* 64 px, > touch min     */
+#define TILE_SIZE (ZMK_GRID_UNIT * 6) /* 48 px, > touch min     */
 #define TILE_GAP ZMK_GRID_UNIT        /* 8 px                   */
 #define GRID_W (ZMK_VKEYMAP_COLS * TILE_SIZE + (ZMK_VKEYMAP_COLS - 1) * TILE_GAP)
 #define GRID_X ((ZMK_GRID_SCREEN_W - GRID_W) / 2)
-#define GRID_Y (ZMK_GRID_UNIT * 15) /* below title + layer chips */
+#define GRID_Y (ZMK_GRID_UNIT * 11) /* below title + caption row  */
 
 static lv_obj_t *screen_root;
 static lv_obj_t *tiles[ZMK_VKEYMAP_CELLS];
@@ -185,7 +185,7 @@ static void chip_event_cb(lv_event_t *e) {
 static void chips_build(void) {
     lv_obj_t *row = zmk_ui_flex(screen_root, LV_FLEX_FLOW_ROW, TILE_GAP);
 
-    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT * 5);
+    lv_obj_align(row, LV_ALIGN_TOP_RIGHT, -ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
 
     for (unsigned int l = 0; l < ZMK_VKEYMAP_LAYERS; l++) {
         lv_obj_t *chip = lv_obj_create(row);
@@ -256,19 +256,19 @@ static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
 
     lv_obj_t *title = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_TITLE);
 
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
     lv_label_set_text(title, "Keys");
 
     chips_build();
     grid_build();
 
     kbd_layer_label = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_CAPTION);
-    lv_obj_align(kbd_layer_label, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 4);
+    lv_obj_align(kbd_layer_label, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, ZMK_GRID_MARGIN * 4);
     kbd_layer_update();
 
     lv_obj_t *hint = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_CAPTION);
 
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 2);
+    lv_obj_align(hint, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN * 11, ZMK_GRID_MARGIN * 4);
     lv_label_set_text(hint, "tap a key to fire it");
 
     zmk_vkeymap_add_listener(vkeymap_changed_cb);

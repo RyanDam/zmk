@@ -16,3 +16,20 @@ config AXS15231B
 	  The node must sit on an MSPI controller ("espressif,esp32-mspi"): only
 	  there are header and pixels a single transfer with per-phase line widths,
 	  and the controller drives the CS line. SPI cannot frame this panel.
+
+config AXS15231B_ROTATION_HW
+	bool "Rotate the panel in hardware (MADCTL MV) instead of in software"
+	default n
+	depends on AXS15231B
+	help
+	  With a non-zero `rotation` on the panel node, turn the display with
+	  MADCTL's MV/mirror bits and report the swapped resolution through the
+	  display API, so LVGL renders the rotated UI natively and frames stream
+	  through the driver unchanged (zero per-frame cost).
+
+	  NOT YET PROVEN on this panel's QSPI row-pointer stream: the bench
+	  findings that settled the write protocol were made at MADCTL 0x00.
+	  Until a test pattern confirms the stream order under MV (see the note
+	  in axs15231b.c), leave this off - the default software route transposes
+	  each frame in the driver and is the proven path.
+

@@ -41,7 +41,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAGE_NAME "pomodoro"
 
-#define RING_SIZE 208 /* 26 grid units, fits 320 - 2*margin */
+#define RING_SIZE 160 /* 20 grid units: fits the 320-tall canvas beside the
+                       * control column (was 208 for the 480-tall portrait) */
 
 /* Dev-cycle choices. Short entries first so a bench session can watch a
  * full session complete (d06); the 1-minute run also proves the engine's
@@ -308,10 +309,16 @@ static void pomo_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
 
     /* cheap pre-filter before the shared detector posts work: only taps
-     * landing in the settings band get through */
-    if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH && evt->value == 0 &&
-        pomo_tap.y < CFG_BAND_TOP_Y) {
-        return;
+     * landing in the settings band get through. The detector stores RAW
+     * panel coordinates; the band edge is logical, so convert first. */
+    if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH && evt->value == 0) {
+        int32_t ly = pomo_tap.y;
+        int32_t lx = pomo_tap.x;
+
+        zmk_ui_touch_to_logical(&lx, &ly);
+        if (ly < CFG_BAND_TOP_Y) {
+            return;
+        }
     }
     zmk_ui_tap_input(&pomo_tap, evt);
 }
@@ -322,7 +329,7 @@ INPUT_CALLBACK_DEFINE(NULL, pomo_touch_cb, NULL);
 /* ------------------------------------------------------------------ */
 
 static lv_obj_t *pomo_build(lv_obj_t *parent) {
-    lv_obj_t *col;
+    lv_obj_t *col, *right;
 
     memset(&ui, 0, sizeof(ui));
 
@@ -334,9 +341,11 @@ static lv_obj_t *pomo_build(lv_obj_t *parent) {
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
     lv_label_set_text(title, "Pomodoro");
 
+    /* Landscape split: the ring owns the left half, the readouts and
+     * controls the right column. */
     ui.ring = lv_arc_create(ui.root);
     lv_obj_set_size(ui.ring, RING_SIZE, RING_SIZE);
-    lv_obj_align(ui.ring, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 6);
+    lv_obj_align(ui.ring, LV_ALIGN_LEFT_MID, ZMK_GRID_MARGIN, -ZMK_GRID_UNIT * 2);
     lv_arc_set_bg_angles(ui.ring, 0, 360);
     lv_arc_set_rotation(ui.ring, 270);
     lv_arc_set_range(ui.ring, 0, 1000);
@@ -349,15 +358,15 @@ static lv_obj_t *pomo_build(lv_obj_t *parent) {
     ui.time_label = zmk_ui_label(ui.root, ZMK_STYLE_TEXT_SUBHERO);
     lv_obj_align_to(ui.time_label, ui.ring, LV_ALIGN_CENTER, 0, 0);
 
-    ui.phase_label = zmk_ui_label(ui.root, ZMK_STYLE_TEXT_TITLE);
-    lv_obj_align(ui.phase_label, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 7);
+    right = zmk_ui_flex(ui.root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
+    lv_obj_align(right, LV_ALIGN_RIGHT_MID, -ZMK_GRID_MARGIN, -ZMK_GRID_UNIT * 4);
 
-    ui.pips = zmk_ui_flex(ui.root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT);
-    lv_obj_align(ui.pips, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 11);
+    ui.phase_label = zmk_ui_label(right, ZMK_STYLE_TEXT_TITLE);
+
+    ui.pips = zmk_ui_flex(right, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT);
 
     /* buttons in the reach band */
-    col = zmk_ui_flex(ui.root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
-    lv_obj_align(col, LV_ALIGN_BOTTOM_MID, 0, -(ZMK_GRID_REACH_H / 2 + ZMK_GRID_UNIT));
+    col = zmk_ui_flex(right, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
     ui.btn_start = mk_button(col, "Start", 0, &ui.btn_label_start);
     ui.btn_pause = mk_button(col, "Pause", 1, &ui.btn_label_pause);
     ui.btn_cancel = mk_button(col, "Cancel", 2, NULL);

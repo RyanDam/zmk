@@ -30,6 +30,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static atomic_t pt_x;
 static atomic_t pt_y;
 static atomic_t pt_down;
+#if IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW) && ZMK_UI_ROTATION != 0
+static atomic_t raw_x; /* last RAW axis pair, for the HW-route remap below */
+static atomic_t raw_y;
+#endif
 
 static void indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     ARG_UNUSED(indev);
@@ -39,14 +43,41 @@ static void indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
 }
 
 static void ui_input_cb(struct input_event *evt, void *user_data) {
+    int32_t value = evt->value;
+
     ARG_UNUSED(user_data);
+
+#if IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW) && ZMK_UI_ROTATION != 0
+    /*
+     * Hardware-rotation route: LVGL's display rotation stays 0 (the driver
+     * reports swapped caps instead), so its indev correction is a no-op and
+     * this feed must supply logical coordinates itself. On the default
+     * software route we must NOT do this - lv_indev rotates raw points
+     * against lv_display_get_rotation() already.
+     */
+    int32_t x, y;
+
+    if (evt->type == INPUT_EV_ABS && evt->code == INPUT_ABS_X) {
+        atomic_set(&raw_x, value);
+    } else if (evt->type == INPUT_EV_ABS && evt->code == INPUT_ABS_Y) {
+        atomic_set(&raw_y, value);
+    }
+    x = atomic_get(&raw_x);
+    y = atomic_get(&raw_y);
+    zmk_ui_touch_to_logical(&x, &y);
+    if (evt->type == INPUT_EV_ABS && evt->code == INPUT_ABS_X) {
+        value = x;
+    } else if (evt->type == INPUT_EV_ABS && evt->code == INPUT_ABS_Y) {
+        value = y;
+    }
+#endif
 
     switch (evt->type) {
     case INPUT_EV_ABS:
         if (evt->code == INPUT_ABS_X) {
-            atomic_set(&pt_x, evt->value);
+            atomic_set(&pt_x, value);
         } else if (evt->code == INPUT_ABS_Y) {
-            atomic_set(&pt_y, evt->value);
+            atomic_set(&pt_y, value);
         }
         break;
     case INPUT_EV_KEY:

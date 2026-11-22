@@ -6,7 +6,7 @@
  * Style registry implementation (backlog a07) — every lv_style_t is a pure
  * function of the 5-slot theme + the fixed typography ramp, mirroring
  * pad10a's init_styles()/apply_theme() pattern (pad10a
- * graphics/screens/styles.c:199-217) for the 320×480 portrait panel.
+ * graphics/screens/styles.c:199-217) for the 480×320 landscape canvas.
  */
 
 #include <string.h>

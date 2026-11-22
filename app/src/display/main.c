@@ -10,6 +10,7 @@
 #include <zephyr/devicetree.h>
 
 #include <zephyr/logging/log.h>
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zephyr/drivers/display.h>
@@ -42,6 +43,45 @@ static lv_obj_t *screen;
 #endif
 
 __attribute__((weak)) lv_obj_t *zmk_display_status_screen() { return NULL; }
+
+/*
+ * Product orientation from the panel node's `rotation` — the same property
+ * the display driver transposes frames by and ui_helpers.h remaps touch
+ * through. Set before any screen exists so every page lays out directly in
+ * logical landscape (LVGL swaps the logical resolution; the physical frame
+ * buffer stays the panel's shape, and the driver re-transposes at flush).
+ *
+ * The pointer path rotates with it for free: lv_indev's pointer processing
+ * runs the raw coordinates through lv_display_rotate_point (9.5,
+ * lv_indev.c indev_pointer_proc) — so zmk_ui_indev keeps feeding raw panel
+ * coordinates. The hardware rotation route (AXS15231B_ROTATION_HW) must NOT
+ * call this: there the driver reports swapped caps + orientation, LVGL
+ * renders landscape natively, and double-rotating would cancel out.
+ */
+#if DT_HAS_CHOSEN(zephyr_display) && !IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW)
+static void display_setup_rotation(void) {
+    lv_display_t *disp = lv_display_get_default();
+
+    if (disp == NULL) {
+        return;
+    }
+
+    switch (DT_PROP_OR(DT_CHOSEN(zephyr_display), rotation, 0)) {
+    case 90:
+        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+        break;
+    case 180:
+        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
+        break;
+    case 270:
+        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
+        break;
+    default:
+        break;
+    }
+}
+
+#endif
 
 void display_tick_cb(struct k_work *work) { lv_task_handler(); }
 
@@ -138,6 +178,10 @@ void initialize_display(struct k_work *work) {
     }
 
     initialized = true;
+
+#if DT_HAS_CHOSEN(zephyr_display) && !IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW)
+    display_setup_rotation();
+#endif
 
     initialize_theme();
 

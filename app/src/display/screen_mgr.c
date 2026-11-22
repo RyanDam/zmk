@@ -253,7 +253,12 @@ static void dbg_refresh_fn(struct k_work *work) {
                  frozen ? "FRZ" : "ok", same, stale, rec, fr[0], fr[1], fr[2], fr[3], fr[4], fr[5],
                  fr[6], fr[7]);
         lv_label_set_text(dbg_big, buf);
-        lv_obj_set_pos(dbg_dot, x - 8, y - 8);
+        /* dbg_x/dbg_y are RAW (the text above reports them); the dot lives
+         * on the logical page, so plot it where the finger really is. */
+        int dx = x, dy = y;
+
+        zmk_ui_touch_to_logical(&dx, &dy);
+        lv_obj_set_pos(dbg_dot, dx - 8, dy - 8);
     }
 #endif
 }
@@ -274,7 +279,7 @@ static lv_obj_t *dbg_page_create(lv_obj_t *parent) {
 
     lv_obj_t *hint = lv_label_create(parent);
     lv_obj_add_style(hint, zmk_display_style(ZMK_STYLE_TEXT_CAPTION), 0);
-    lv_label_set_text(hint, "red dot follows raw touch x,y");
+    lv_label_set_text(hint, "red dot follows touch (text shows raw x,y)");
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 4);
     return NULL;
 }
@@ -541,9 +546,28 @@ void zmk_display_blank_unlock(void) {
 
 static struct {
     bool pressed;
-    uint16_t x, y;
+    uint16_t x, y; /* logical (post-rotation) for the swipe math */
     uint16_t start_x, start_y;
+    uint16_t raw_x, raw_y; /* last raw pair, for the axis remap */
 } touch;
+
+/* The touch driver reports raw panel coordinates; the swipe contract
+ * ("finger moves right = next page") is about the LOGICAL screen, so
+ * everything below runs on remapped coordinates (ui_helpers.h). */
+static void touch_raw_updated(uint16_t value, bool is_x) {
+    int32_t lx, ly;
+
+    if (is_x) {
+        touch.raw_x = value;
+    } else {
+        touch.raw_y = value;
+    }
+    lx = touch.raw_x;
+    ly = touch.raw_y;
+    zmk_ui_touch_to_logical(&lx, &ly);
+    touch.x = (uint16_t)lx;
+    touch.y = (uint16_t)ly;
+}
 
 static void mgr_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
@@ -566,9 +590,9 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
     switch (evt->type) {
     case INPUT_EV_ABS:
         if (evt->code == INPUT_ABS_X) {
-            touch.x = evt->value;
+            touch_raw_updated(evt->value, true);
         } else if (evt->code == INPUT_ABS_Y) {
-            touch.y = evt->value;
+            touch_raw_updated(evt->value, false);
         } else {
             break;
         }

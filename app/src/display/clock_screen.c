@@ -6,7 +6,8 @@
  * Clock and calendar screen for display-centric boards (Coban Tab 1a).
  *
  * a09: the pad10a time screen (graphics/screens/screen_time.[ch]) ported to
- * the 320x480 portrait panel. Its five time styles become five LVGL layouts
+ * the panel's 480x320 landscape canvas (the 320x480 glass is turned by the
+ * node's `rotation`; see grid.md). Its five time styles become five LVGL layouts
  * on the a07 grid (pad10a itself only distinguished three fonts and let
  * styles 4/5 fall back); its 12/24 h + AM/PM + three date formats + date
  * visibility enums are ported value-for-value (screen_time.h:29-42) so the
@@ -187,7 +188,10 @@ static void clock_apply_dim(bool synced) {
 static void build_hero(void) {
     lv_obj_t *col = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
 
-    lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 5);
+    /* Landscape (480x320): the column runs hero → seconds → AM/PM → date,
+     * ~180 px tall; nudge it above centre so the -72/-32 caption slots stay
+     * clear. */
+    lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 3);
 
     l_hero = zmk_ui_label(col, ZMK_STYLE_TEXT_HERO);
     l_seconds = zmk_ui_label(col, ZMK_STYLE_TEXT_SUBHERO);
@@ -226,20 +230,21 @@ static void build_serif(void) {
 /* ---------------- style 2: STACKED — hour over minute ----------------- */
 
 static void build_stacked(void) {
-    lv_obj_t *col;
+    lv_obj_t *col, *row;
 
     l_weekday = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TITLE);
-    lv_obj_align(l_weekday, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT * 2);
+    lv_obj_align(l_weekday, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
 
     col = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT);
-    lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 3);
+    lv_obj_align(col, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 2);
     l_hero = zmk_ui_label(col, ZMK_STYLE_TEXT_HERO);     /* hour   */
     l_hero2 = zmk_ui_label(col, ZMK_STYLE_TEXT_SUBHERO); /* minute */
-    l_seconds = zmk_ui_label(col, ZMK_STYLE_TEXT_CAPTION);
-    l_indicator = zmk_ui_label(col, ZMK_STYLE_TEXT_CAPTION);
-
-    l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
-    lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 17);
+    row = zmk_ui_flex(col, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
+    l_seconds = zmk_ui_label(row, ZMK_STYLE_TEXT_CAPTION);
+    l_indicator = zmk_ui_label(row, ZMK_STYLE_TEXT_CAPTION);
+    /* date joins the column: at 320 px tall there is no clear space below
+     * it for the portrait-era centre offset. */
+    l_date = zmk_ui_label(col, ZMK_STYLE_TEXT_SECONDARY);
 
     hero_style_id = ZMK_STYLE_TEXT_HERO;
     hero_dim_id = ZMK_STYLE_TEXT_HERO_DIM;
@@ -321,22 +326,26 @@ static void build_calendar_cells(const struct zmk_time *t) {
 }
 
 static void build_calendar(void) {
-    lv_obj_t *trow;
+    lv_obj_t *left, *trow;
 
     l_cal_title = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TITLE);
     lv_obj_align(l_cal_title, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
 
-    trow = zmk_ui_flex(clock_root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
-    lv_obj_align(trow, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 13);
-    l_hero = zmk_ui_label(trow, ZMK_STYLE_TEXT_SUBHERO);
+    /* Landscape split: time on the left, month grid on the right (the grid
+     * is 280x188 - half the wide screen is exactly its room). */
+    left = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT / 2);
+    lv_obj_align(left, LV_ALIGN_LEFT_MID, ZMK_GRID_MARGIN, 0);
+    l_hero = zmk_ui_label(left, ZMK_STYLE_TEXT_SUBHERO);
+
+    trow = zmk_ui_flex(left, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
     l_seconds = zmk_ui_label(trow, ZMK_STYLE_TEXT_CAPTION);
     l_indicator = zmk_ui_label(trow, ZMK_STYLE_TEXT_CAPTION);
 
     cal_box = zmk_ui_flex(clock_root, LV_FLEX_FLOW_COLUMN, 0);
-    lv_obj_align(cal_box, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 5);
+    lv_obj_align(cal_box, LV_ALIGN_RIGHT_MID, -ZMK_GRID_MARGIN, 0);
 
     l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
-    lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 24);
+    lv_obj_align(l_date, LV_ALIGN_BOTTOM_LEFT, ZMK_GRID_MARGIN, -ZMK_GRID_MARGIN);
 
     hero_style_id = ZMK_STYLE_TEXT_SUBHERO;
     hero_dim_id = ZMK_STYLE_TEXT_SUBHERO_DIM;
@@ -351,18 +360,18 @@ static void build_desk(void) {
     lv_obj_t *trow;
 
     l_weekday = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TITLE);
-    lv_obj_align(l_weekday, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT * 2);
+    lv_obj_align(l_weekday, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
 
     trow = zmk_ui_flex(clock_root, LV_FLEX_FLOW_ROW, ZMK_GRID_UNIT * 2);
-    lv_obj_align(trow, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 5);
+    lv_obj_align(trow, LV_ALIGN_CENTER, 0, -ZMK_GRID_UNIT * 4);
     l_hero = zmk_ui_label(trow, ZMK_STYLE_TEXT_HERO);
     l_seconds = zmk_ui_label(trow, ZMK_STYLE_TEXT_SUBHERO);
 
     l_indicator = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
-    lv_obj_align(l_indicator, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 4);
+    lv_obj_align(l_indicator, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 3);
 
     l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_TABULAR);
-    lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 15);
+    lv_obj_align(l_date, LV_ALIGN_CENTER, 0, ZMK_GRID_UNIT * 6);
 
     hero_style_id = ZMK_STYLE_TEXT_HERO;
     hero_dim_id = ZMK_STYLE_TEXT_HERO_DIM;
@@ -406,13 +415,14 @@ static void clock_build_layout(void) {
         break;
     }
 
-    /* Shared bottom furniture, above the page dots. */
+    /* Shared bottom furniture, above the page dots (landscape: caption
+     * slots at -72 and -32, dots live at -MARGIN/2). */
     l_unsync = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
-    lv_obj_align(l_unsync, LV_ALIGN_BOTTOM_MID, 0, -(ZMK_GRID_MARGIN * 3 + ZMK_GRID_UNIT * 2));
+    lv_obj_align(l_unsync, LV_ALIGN_BOTTOM_MID, 0, -(ZMK_GRID_MARGIN * 4 + ZMK_GRID_UNIT));
     lv_label_set_text(l_unsync, "unsynced");
 
     l_hint = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_CAPTION);
-    lv_obj_align(l_hint, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 3);
+    lv_obj_align(l_hint, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 2);
 
     /* Fresh labels carry the base styles; dim them now if the time source
      * is (still) unsynced. */

@@ -161,36 +161,40 @@ static void layout_build(void) {
     switch (cfg.layout) {
     case STATS_LAYOUT_2X1:
         for (int i = 0; i < 2; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, i, 144, 336, true);
+            lv_obj_t *cell = mk_cell(screen_root, i, 216, 160, true);
 
-            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + i * 160, 80);
+            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + i * 232, 88);
         }
         break;
     case STATS_LAYOUT_HYBRID: {
-        lv_obj_t *big = mk_cell(screen_root, 0, 288, 168, true);
+        lv_obj_t *big = mk_cell(screen_root, 0, 288, 160, true);
 
-        lv_obj_align(big, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 80);
+        lv_obj_align(big, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 88);
         for (int i = 0; i < 3; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, i + 1, 288, 80, false);
+            lv_obj_t *cell = mk_cell(screen_root, i + 1, 144, 52, false);
 
-            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 80 + 176 + i * 88);
+            /* right-hand column, flush to the safe margin */
+            lv_obj_align(cell, LV_ALIGN_TOP_LEFT,
+                         ZMK_GRID_SCREEN_W - ZMK_GRID_MARGIN - 144, 88 + i * 56);
         }
         break;
     }
     case STATS_LAYOUT_2X4:
+        /* Four across: at 320 px tall a column of four cannot give any cell
+         * its text stack, but 104-px columns can. */
         for (int i = 0; i < 4; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, i, 288, 88, false);
+            lv_obj_t *cell = mk_cell(screen_root, i, 104, 160, false);
 
-            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 80 + i * 96);
+            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + i * 112, 88);
         }
         break;
     case STATS_LAYOUT_2X2:
     default:
         for (int i = 0; i < 4; i++) {
-            lv_obj_t *cell = mk_cell(screen_root, i, 144, 168, false);
+            lv_obj_t *cell = mk_cell(screen_root, i, 216, 76, false);
 
-            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + (i % 2) * 160,
-                         80 + (i / 2) * 184);
+            lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + (i % 2) * 232,
+                         88 + (i / 2) * 84);
         }
         break;
     }
@@ -294,9 +298,13 @@ struct k_work stats_tap_work;
 ZMK_UI_TAP_STATE(stats_tap) = { .page_name = PAGE_NAME, .work = &stats_tap_work };
 
 ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
-    uint16_t x = stats_tap.x, y = stats_tap.y;
+    /* The tap detector stores RAW panel coordinates; the cell rects are
+     * logical. Convert before the hit test (ui_helpers.h). */
+    int32_t x = stats_tap.x, y = stats_tap.y;
 
     ARG_UNUSED(work);
+
+    zmk_ui_touch_to_logical(&x, &y);
 
     for (int i = 0; i < ZMK_STATS_SLOT_COUNT; i++) {
         lv_area_t a;
