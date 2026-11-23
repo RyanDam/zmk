@@ -87,6 +87,46 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
     lv_style_set_radius(&styles[ZMK_STYLE_TODAY], LV_RADIUS_CIRCLE);
     lv_style_set_border_width(&styles[ZMK_STYLE_TODAY], 0);
 
+    /* Pomodoro breath disc: whisper-white at 10 % (theme-independent,
+     * no tint — owner pass 2026-11-23; pad10a's was the accent hue,
+     * style_pomo_breath:185-187). The HOLD variant's 30 % is the
+     * hold-to-start feedback. Radius circle lives here so growth never
+     * needs a per-tick radius poke. */
+    lv_style_reset(&styles[ZMK_STYLE_POMO_BREATH]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_POMO_BREATH], lv_color_white());
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_POMO_BREATH], LV_OPA_10);
+    lv_style_set_radius(&styles[ZMK_STYLE_POMO_BREATH], LV_RADIUS_CIRCLE);
+    lv_style_set_border_width(&styles[ZMK_STYLE_POMO_BREATH], 0);
+
+    lv_style_reset(&styles[ZMK_STYLE_POMO_BREATH_HOLD]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_POMO_BREATH_HOLD], lv_color_white());
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_POMO_BREATH_HOLD], LV_OPA_30);
+    lv_style_set_radius(&styles[ZMK_STYLE_POMO_BREATH_HOLD], LV_RADIUS_CIRCLE);
+    lv_style_set_border_width(&styles[ZMK_STYLE_POMO_BREATH_HOLD], 0);
+
+    /* Segmented session bar (a10). Each block is a whisper-white 10 %
+     * pill (theme-independent, same family as the today pip) so the
+     * session's shape reads as quiet furniture; fills tell the phases:
+     * work accent, rest accent 40 % (pad10a's bar was the plain accent
+     * pair). Pill = radius circle on both track and fill. */
+    lv_style_reset(&styles[ZMK_STYLE_BAR_MAIN]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_BAR_MAIN], lv_color_white());
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_BAR_MAIN], LV_OPA_10);
+    lv_style_set_border_width(&styles[ZMK_STYLE_BAR_MAIN], 0);
+    lv_style_set_radius(&styles[ZMK_STYLE_BAR_MAIN], LV_RADIUS_CIRCLE);
+
+    lv_style_reset(&styles[ZMK_STYLE_BAR_IND]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_BAR_IND], t->accent);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_BAR_IND], LV_OPA_COVER);
+    lv_style_set_border_width(&styles[ZMK_STYLE_BAR_IND], 0);
+    lv_style_set_radius(&styles[ZMK_STYLE_BAR_IND], LV_RADIUS_CIRCLE);
+
+    lv_style_reset(&styles[ZMK_STYLE_BAR_REST_IND]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_BAR_REST_IND], t->accent);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_BAR_REST_IND], LV_OPA_40);
+    lv_style_set_border_width(&styles[ZMK_STYLE_BAR_REST_IND], 0);
+    lv_style_set_radius(&styles[ZMK_STYLE_BAR_REST_IND], LV_RADIUS_CIRCLE);
+
     /* progress rings (a10): LVGL 9 draws the track on LV_PART_MAIN and
      * the progress on LV_PART_INDICATOR, both via arc_color/arc_width */
     lv_style_reset(&styles[ZMK_STYLE_RING]);
@@ -113,6 +153,31 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
     lv_style_set_min_width(&styles[ZMK_STYLE_TOUCH_PRESSED], ZMK_GRID_TOUCH_MIN);
     lv_style_set_min_height(&styles[ZMK_STYLE_TOUCH_PRESSED], ZMK_GRID_TOUCH_MIN);
     lv_style_set_border_width(&styles[ZMK_STYLE_TOUCH_PRESSED], 0);
+
+    /* Ghost hit-target (a10 Cancel, owner pass: the solid pill was too
+     * loud on the session page): invisible 44 px box, the label inside
+     * carries the affordance. */
+    lv_style_reset(&styles[ZMK_STYLE_TOUCH_GHOST]);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_TOUCH_GHOST], LV_OPA_TRANSP);
+    lv_style_set_border_width(&styles[ZMK_STYLE_TOUCH_GHOST], 0);
+    lv_style_set_radius(&styles[ZMK_STYLE_TOUCH_GHOST], ZMK_GRID_UNIT);
+    lv_style_set_min_width(&styles[ZMK_STYLE_TOUCH_GHOST], ZMK_GRID_TOUCH_MIN);
+    lv_style_set_min_height(&styles[ZMK_STYLE_TOUCH_GHOST], ZMK_GRID_TOUCH_MIN);
+
+    /* Confirm dialog (a10, owner pass 2026-11-23 replacing hold-to-
+     * start / ghost-cancel): scrim dims everything (and swallows the
+     * taps), the card carries the question. */
+    lv_style_reset(&styles[ZMK_STYLE_SCRIM]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_SCRIM], lv_color_black());
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_SCRIM], LV_OPA_70);
+    lv_style_set_border_width(&styles[ZMK_STYLE_SCRIM], 0);
+
+    lv_style_reset(&styles[ZMK_STYLE_CARD]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_CARD], t->background);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_CARD], LV_OPA_COVER);
+    lv_style_set_radius(&styles[ZMK_STYLE_CARD], ZMK_GRID_UNIT * 2);
+    lv_style_set_pad_all(&styles[ZMK_STYLE_CARD], ZMK_GRID_UNIT * 2);
+    lv_style_set_border_width(&styles[ZMK_STYLE_CARD], 0);
 }
 
 const lv_style_t *zmk_display_style(enum zmk_display_style_id id) {

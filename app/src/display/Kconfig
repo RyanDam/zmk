@@ -236,16 +236,19 @@ config ZMK_DISPLAY_DEBUG_LAYOUT_COLOR
 endif # ZMK_DISPLAY_DEBUG_LAYOUT
 
 config ZMK_DISPLAY_POMODORO_SCREEN
-    bool "Pomodoro screen (ring, sets, touch controls)"
+    bool "Pomodoro screen (breath quote, hold-to-start, session bar)"
     depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_POMODORO
     default y
-    select LV_USE_ARC
     select LV_USE_LABEL
     help
-      Page rendering the pomodoro engine at 1 Hz: progress ring, set
-      pips, Start/Pause/Cancel in the reach band, and a settings strip
-      whose tap dev-cycles sets/work/rest/notification mode (persisted
-      in settings "pomodoro/config").
+      pad10a-spirit page (a10): Vietnamese quote over a breathing white
+      disc when idle; tapping the page opens a confirm dialog (Start
+      with the config summary / Cancel with the time left, plus a close
+      ghost); running shows the countdown (rest flips to the fusion
+      split: stacked digits on the disc left, quote right) over a
+      segmented whole-session bar (work/rest blocks, width-proportional).
+      No on-page config UI: durations live in Kconfig defaults + the
+      a14 RPC seam.
 
 menuconfig ZMK_DISPLAY_ANIM
     bool "Asset-backed animations (boot splash + animated clock bg)"

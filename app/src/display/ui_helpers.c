@@ -211,7 +211,9 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt) {
 /* Page-bound tickers + display-queue plumbing                         */
 /* ------------------------------------------------------------------ */
 
-#define PAGE_TIMERS_MAX 4
+/* clock/pomodoro/stats 1 Hz ticks + the pomodoro 100 ms breath/fill tick;
+ * headroom so a12/a13 landers do not silently starve (warn below). */
+#define PAGE_TIMERS_MAX 6
 
 struct page_timer {
     const char *page_name;

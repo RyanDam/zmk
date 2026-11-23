@@ -72,10 +72,18 @@ enum zmk_display_style_id {
     ZMK_STYLE_ACCENT,         /* accent fill (bars, indicators)  */
     ZMK_STYLE_INACTIVE,       /* inactive fill (bar bg, idle)    */
     ZMK_STYLE_TODAY,          /* calendar today pip: white 25 % circle */
+    ZMK_STYLE_POMO_BREATH,    /* white 10 % disc (idle/rest breathe, a10) */
+    ZMK_STYLE_POMO_BREATH_HOLD, /* same disc at 30 % while held (a10)  */
+    ZMK_STYLE_BAR_MAIN,       /* session bar: block pill track (a10) */
+    ZMK_STYLE_BAR_IND,        /* session bar: work block fill  (a10) */
+    ZMK_STYLE_BAR_REST_IND,   /* session bar: rest block fill  (a10) */
     ZMK_STYLE_RING,           /* arc track (bg) part             */
     ZMK_STYLE_RING_INDICATOR, /* arc progress (indicator part)   */
     ZMK_STYLE_TOUCH,          /* interactive target base state   */
     ZMK_STYLE_TOUCH_PRESSED,  /* interactive target pressed      */
+    ZMK_STYLE_TOUCH_GHOST,    /* invisible 44 px hit-target (a10 Cancel) */
+    ZMK_STYLE_SCRIM,          /* modal dim: black 70 % (a10 dialog)      */
+    ZMK_STYLE_CARD,           /* modal card: screen bg, rounded, padded  */
     ZMK_STYLE_COUNT,
 };
 
