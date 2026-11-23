@@ -77,8 +77,12 @@ GPIO numbering note: the S3 port splits controllers — `&gpio0` = IO0–31,
   LRCLK 2 / BCLK 42 / DATA 41, i2s0 defaults (GDMA 2/3). No ZMK I2S code
   exists yet; h03 adds TX + volume. Amp auto-enables from I2S clock (no EN pin
   observed — verify on the final-board schematic review).
-- **Keys + light bar (h04)** — 4 keys on P2, matrix 2×2 rows IO14/IO15,
-  cols IO16/IO7 (excludes IO5=VBAT, IO9=BOOT — R8/R2). WS2812 bar DIN IO46.
+- **Keys + light bar (h04)** — 4 keys on P2, matrix 2×2 **rows IO7/IO14,
+  cols IO15/IO16** (excludes IO5=VBAT, IO9=BOOT — R8/R2; diodes row→col).
+  Earlier text had rows IO14/15 × cols IO16/7 — wrong; the h01 harness and
+  the product `cobantab1a-layout.dtsi` both run rows 7/14 × cols 15/16,
+  bench-verified. Button→position order is set by the transform `RC()`
+  list, not the GPIO choice. WS2812 bar DIN IO46.
 - **VBAT (p01)** — `adc1` ch 4 (`ADC1_GPIO5_CHANNEL = 4`,
   `modules/hal/espressif/components/soc/esp32s3/include/soc/adc_channel.h:21`);
   divider ratio **measure with a bench meter** and record here (see runbook).
