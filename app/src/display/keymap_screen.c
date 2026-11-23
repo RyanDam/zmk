@@ -185,11 +185,27 @@ ZMK_UI_WORK_DEFINE(nav_work, nav_work_cb) {
 /* Tile labels from the keymap                                          */
 /* ------------------------------------------------------------------ */
 
+#define ICON_VOL_DOWN "\xEF\x80\xA7" /* f027 volume-down       */
+#define ICON_VOL_UP   "\xEF\x80\xA8" /* f028 volume-up         */
+#define ICON_PREV     "\xEF\x81\x8A" /* f04a backward          */
+#define ICON_PLAY     "\xEF\x81\x8B" /* f04b play              */
+#define ICON_PAUSE    "\xEF\x81\x8C" /* f04c pause             */
+#define ICON_STOP     "\xEF\x81\x8D" /* f04d stop              */
+#define ICON_NEXT     "\xEF\x81\x8E" /* f04e forward           */
+#define ICON_LEFT     "\xEF\x81\xA0" /* f060 arrow-left        */
+#define ICON_RIGHT    "\xEF\x81\xA1" /* f061 arrow-right       */
+#define ICON_UP       "\xEF\x81\xA2" /* f062 arrow-up          */
+#define ICON_DOWN     "\xEF\x81\xA3" /* f063 arrow-down        */
+#define ICON_MUTE     "\xEF\x9A\xA9" /* f6a9 volume-mute       */
+#define ICON_CARET_DOWN "\xEF\x83\x97" /* f0d7 caret-down: transparent key
+                                        * (pad10a: {CB_ICON_CARET_DOWN, KC_TRNS}) */
+
 /* Compact labels for the behaviors a tab1a cell commonly carries. The
  * device-name strings are the behavior nodes' devicetree node names
- * (behaviors.dtsi) — what zmk_behavior_get_binding() matches. Unknown
- * behaviors fall back to the device name, truncated: never a wrong lie,
- * occasionally verbose. */
+ * (behaviors.dtsi) — what zmk_behavior_get_binding() matches; bindings
+ * with richer meaning (&mt/&lt/&sk, bt, outputs, macros) are
+ * special-cased in binding_label(). Unknown behaviors fall back to the
+ * device name, truncated: never a wrong lie, occasionally verbose. */
 static struct {
     const char *dev;
     const char *fmt; /* %lu = param1 */
@@ -197,96 +213,194 @@ static struct {
     {"momentary_layer", "MO %lu"},
     {"to_layer", "TO %lu"},
     {"toggle_layer", "TG %lu"},
-    {"transparent", "…"}, /* inherits the layer below (owner pass 5) */
+    {"key_toggle", "KT %lu"},
+    {"transparent", ICON_CARET_DOWN}, /* inherits the layer below (pad10a
+                                       * caret-down, owner pass 5) */
     {"key_repeat", "REPT"},
-    {"caps_word", "CAPS"},
-    {"sticky_key", "STKY"},
-    {"bluetooth", "BT %lu"},
-    {"outputs", "OUT %lu"},
+    {"caps_word", "CAPSW"},
     {"macro", "MAC %lu"},
+    {"backlight", "BL %lu"},
+    {"rgb_underglow", "RGB %lu"},
+    {"ext_power", "PWR"},
+    {"soft_off", "SOFF"},
+    {"studio_unlock", "STUD"},
+    {"bootload", "BOOT"},
+    {"sysreset", "RST"},
+    {"mouse_key_press", "MBTN"},
+    {"mouse_move", "MS"},
+    {"mouse_scroll", "WHL"},
+    {"enc_key_press", "ENC"},
+    {"gresc", "GESC"},
 };
 
-static void key_press_label(char *out, size_t n, uint32_t page, uint32_t usage) {
+/* The screen's answer to pad10a's utils/keycode_lookup.c: every binding
+ * a tab cell can carry gets a short on-glass label. Text is ASCII (the
+ * barlow ramps), icons are FontAwesome5 codepoints (LVGL docs
+ * main-modules/fonts/overview#symbols) that render through barlow_24's
+ * `fallback` = lv_font_tab1a_icons_24 — the same trick pad10a's barlow.c
+ * does with fonts/icons.c. Glyph ids mirror pad10a's CB_ICON_* defines
+ * (keycode_lookup.c:23-35) so both screens speak one icon language.
+ * Unmapped usages render as "?U4C"-style hex — a visible TODO, not a
+ * silent "?". Raw usage IDs follow the HID Usage Tables. */
+static const struct {
+    uint16_t usage;
+    const char *label;
+} KB_USAGE_LABELS[] = {
+    {0x28, "ENT"},
+    {0x29, "ESC"},  {0x2A, "BSP"}, {0x2B, "TAB"}, {0x2C, "SPC"},
+    {0x2D, "-"},    {0x2E, "="},   {0x2F, "["},   {0x30, "]"},
+    {0x31, "\\"},   {0x32, "#"}, /* NONUS_HASH */
+    {0x33, ";"},    {0x34, "'"},   {0x35, "`"},   {0x36, ","},
+    {0x37, "."},    {0x38, "/"},   {0x39, "CAPS"},
+    {0x46, "PRT"},  {0x47, "SCR"}, {0x48, "PAU"}, {0x49, "INS"},
+    {0x4A, "HOME"}, {0x4B, "Pg " ICON_UP}, {0x4C, "DEL"}, {0x4D, "END"},
+    {0x4E, "Pg " ICON_DOWN},
+    {0x4F, ICON_RIGHT}, {0x50, ICON_LEFT}, {0x51, ICON_DOWN}, {0x52, ICON_UP},
+    {0x53, "NML"}, /* NUM_LOCK */
+    {0x54, "K/"},   {0x55, "K*"},  {0x56, "K-"},  {0x57, "K+"},
+    {0x58, "KENT"},
+    {0x59, "K1"},   {0x5A, "K2"},  {0x5B, "K3"},  {0x5C, "K4"},
+    {0x5D, "K5"},   {0x5E, "K6"},  {0x5F, "K7"},  {0x60, "K8"},
+    {0x61, "K9"},   {0x62, "K0"},  {0x63, "K."},
+    {0x64, "|"}, /* NONUS_BACKSLASH */
+    {0x65, "APP"}, {0x67, "K="},
+};
+
+static const char *kb_sparse_label(uint16_t usage) {
+    for (size_t i = 0; i < ARRAY_SIZE(KB_USAGE_LABELS); i++) {
+        if (KB_USAGE_LABELS[i].usage == usage) {
+            return KB_USAGE_LABELS[i].label;
+        }
+    }
+    return NULL;
+}
+
+/* "CSAG"-style prefix from the &kp param2 / mod-tap modifier flags
+ * (the zmk/keys.h mod bits; L/R collapsed — the tile shows intent, not
+ * which thumb hits it). Empty string when nothing is held. */
+static void mods_prefix(char *p, size_t n, uint32_t mods) {
+    size_t len = 0;
+
+    if (mods & 0x11) {
+        p[len++] = 'C'; /* LCTL|RCTL */
+    }
+    if (mods & 0x22) {
+        p[len++] = 'S'; /* LSFT|RSFT */
+    }
+    if (mods & 0x44) {
+        p[len++] = 'A'; /* LALT|RALT */
+    }
+    if (mods & 0x88) {
+        p[len++] = 'G'; /* LGUI|RGUI */
+    }
+    p[len < n ? len : n - 1] = '\0';
+}
+
+/* Full ZMK keycode ((page << 16) | usage) -> shortest honest label. */
+static void keycode_base(char *base, size_t n, uint32_t keycode) {
+    uint32_t page = ZMK_HID_USAGE_PAGE(keycode);
+    uint16_t usage = ZMK_HID_USAGE_ID(keycode);
+
     if (page == HID_USAGE_KEY) {
         if (usage >= HID_USAGE_KEY_KEYBOARD_A && usage <= HID_USAGE_KEY_KEYBOARD_Z) {
-            snprintk(out, n, "%c", (char)('A' + (usage - HID_USAGE_KEY_KEYBOARD_A)));
+            snprintk(base, n, "%c", (char)('A' + (usage - HID_USAGE_KEY_KEYBOARD_A)));
         } else if (usage >= 0x1E && usage <= 0x27) { /* 1..9,0 (HID usages) */
-            snprintk(out, n, "%c", usage == 0x27 ? '0' : (char)('1' + (usage - 0x1E)));
+            snprintk(base, n, "%c", usage == 0x27 ? '0' : (char)('1' + (usage - 0x1E)));
         } else if (usage >= 0x3A && usage <= 0x45) { /* F1..F12 */
-            snprintk(out, n, "F%lu", usage - 0x3A + 1);
+            snprintk(base, n, "F%lu", usage - 0x3A + 1);
+        } else if (usage >= 0x68 && usage <= 0x73) { /* F13..F24 */
+            snprintk(base, n, "F%lu", usage - 0x68 + 13);
         } else if (usage >= 0xE0 && usage <= 0xE7) { /* mods: LCTL..LGUI, RCTL..RGUI */
-            static const char *const mods[8] = {"LC", "LS", "LA", "LG",
-                                                "RC", "RS", "RA", "RG"};
-            snprintk(out, n, "%s", mods[usage - 0xE0]);
+            static const char *const mod_usage[8] = {"LC", "LS", "LA", "LG",
+                                                     "RC", "RS", "RA", "RG"};
+            snprintk(base, n, "%s", mod_usage[usage - 0xE0]);
         } else {
-            switch (usage) {
-            case 0x28:
-                strcpy(out, "ENT");
-                break;
-            case 0x29:
-                strcpy(out, "ESC");
-                break;
-            case 0x2A:
-                strcpy(out, "BSP");
-                break;
-            case 0x2B:
-                strcpy(out, "TAB");
-                break;
-            case 0x2C:
-                strcpy(out, "SPC");
-                break;
-            case 0x4B:
-                strcpy(out, "PGU");
-                break;
-            case 0x4E:
-                strcpy(out, "PGD");
-                break;
-            case 0x4F:
-                strcpy(out, ">");
-                break;
-            case 0x50:
-                strcpy(out, "<");
-                break;
-            case 0x51:
-                strcpy(out, "v");
-                break;
-            case 0x52:
-                strcpy(out, "^");
-                break;
-            default:
-                strcpy(out, "?");
-                break;
+            const char *sparse = kb_sparse_label(usage);
+
+            if (sparse != NULL) {
+                strcpy(base, sparse);
+            } else {
+                snprintk(base, n, "?U%02X", usage);
             }
         }
     } else if (page == HID_USAGE_CONSUMER) {
         switch (usage) {
         case HID_USAGE_CONSUMER_PLAY_PAUSE:
-            strcpy(out, "PLAY");
+            strcpy(base, ICON_PLAY);
             break;
         case HID_USAGE_CONSUMER_SCAN_NEXT_TRACK:
-            strcpy(out, "NEXT");
+            strcpy(base, ICON_NEXT);
             break;
         case HID_USAGE_CONSUMER_SCAN_PREVIOUS_TRACK:
-            strcpy(out, "PREV");
+            strcpy(base, ICON_PREV);
             break;
         case HID_USAGE_CONSUMER_STOP:
-            strcpy(out, "STOP");
+            strcpy(base, ICON_STOP);
             break;
         case HID_USAGE_CONSUMER_MUTE:
-            strcpy(out, "MUTE");
+            strcpy(base, ICON_MUTE);
             break;
         case HID_USAGE_CONSUMER_VOLUME_INCREMENT:
-            strcpy(out, "VOL+");
+            strcpy(base, ICON_VOL_UP);
             break;
         case HID_USAGE_CONSUMER_VOLUME_DECREMENT:
-            strcpy(out, "VOL-");
+            strcpy(base, ICON_VOL_DOWN);
+            break;
+        case HID_USAGE_CONSUMER_RECORD:
+            strcpy(base, "REC");
+            break;
+        case HID_USAGE_CONSUMER_FAST_FORWARD:
+            strcpy(base, "FF");
+            break;
+        case HID_USAGE_CONSUMER_REWIND:
+            strcpy(base, "REW");
+            break;
+        case HID_USAGE_CONSUMER_STOP_EJECT:
+            strcpy(base, "EJT");
+            break;
+        case HID_USAGE_CONSUMER_DISPLAY_BRIGHTNESS_INCREMENT:
+            strcpy(base, "BRT+");
+            break;
+        case HID_USAGE_CONSUMER_DISPLAY_BRIGHTNESS_DECREMENT:
+            strcpy(base, "BRT-");
             break;
         default:
-            strcpy(out, "?");
+            snprintk(base, n, "?C%02X", usage);
+            break;
+        }
+    } else if (page == HID_USAGE_GD) {
+        switch (usage) {
+        case HID_USAGE_GD_SYSTEM_POWER_DOWN:
+            strcpy(base, "PWR");
+            break;
+        case HID_USAGE_GD_SYSTEM_SLEEP:
+            strcpy(base, "SLP");
+            break;
+        case HID_USAGE_GD_SYSTEM_WAKE_UP:
+            strcpy(base, "WAKE");
+            break;
+        default:
+            snprintk(base, n, "?G%02X", usage);
             break;
         }
     } else {
-        strcpy(out, "?");
+        snprintk(base, n, "?%lX.%02X", (unsigned long)page, usage);
+    }
+}
+
+/* &kp binding (param1 = full keycode, param2 = mod flags) and any plain
+ * keycode caller: "S/ENT", "CG/K", "PLAY" ... */
+static void key_press_label(char *out, size_t n, uint32_t keycode, uint32_t mods) {
+    char base[8];
+    char pre[5];
+
+    keycode_base(base, sizeof(base), keycode);
+    mods_prefix(pre, sizeof(pre), mods);
+
+    if (pre[0] != '\0') {
+        snprintk(out, n, "%s/%s", pre, base);
+    } else {
+        snprintk(out, n, "%s", base);
     }
 }
 
@@ -313,6 +427,42 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
     }
     if (strcmp(b->behavior_dev, "key_press") == 0) {
         key_press_label(out, n, b->param1, b->param2);
+        return;
+    }
+    /* Composite bindings show both halves: "S/A", "MO1/ENT", "STK/G". */
+    if (strcmp(b->behavior_dev, "mod_tap") == 0) {
+        char base[8];
+        char pre[5];
+
+        keycode_base(base, sizeof(base), b->param2);
+        mods_prefix(pre, sizeof(pre), b->param1 & 0x7F); /* bit7: right-hand mods */
+        snprintk(out, n, "%s/%s", pre, base);
+        return;
+    }
+    if (strcmp(b->behavior_dev, "layer_tap") == 0) {
+        char base[8];
+
+        keycode_base(base, sizeof(base), b->param2);
+        snprintk(out, n, "MO%lu/%s", b->param1, base);
+        return;
+    }
+    if (strcmp(b->behavior_dev, "sticky_key") == 0) {
+        char base[8];
+
+        keycode_base(base, sizeof(base), b->param1);
+        snprintk(out, n, "STK/%s", base);
+        return;
+    }
+    if (strcmp(b->behavior_dev, "bluetooth") == 0) {
+        if (b->param1 <= 4) {
+            snprintk(out, n, "BT%lu", b->param1); /* &bt 0..4 = profile slot */
+        } else {
+            strcpy(out, "BT"); /* SEL/NEXT/PREV/CLEAR... */
+        }
+        return;
+    }
+    if (strcmp(b->behavior_dev, "outputs") == 0) {
+        strcpy(out, b->param1 == 0 ? "USB" : "BLE");
         return;
     }
     for (size_t i = 0; i < ARRAY_SIZE(DEV_LABELS); i++) {

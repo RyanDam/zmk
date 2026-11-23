@@ -6,9 +6,17 @@
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
 #include "lvgl.h"
+
 #else
 #include "lvgl.h"
 #endif
+
+/* Coban tab1a addition (a13 icon pass): the key-tile labels mix text
+ * with FontAwesome5 icon codepoints; the subset font below carries the
+ * icons and is chained via .fallback (keep this line + the .fallback
+ * entry when regenerating via gen_fonts.sh -- the script re-applies
+ * both). */
+LV_FONT_DECLARE(lv_font_tab1a_icons_24);
 
 #ifndef LV_FONT_TAB1A_BARLOW_24
 #define LV_FONT_TAB1A_BARLOW_24 1
@@ -1245,7 +1253,7 @@ lv_font_t lv_font_tab1a_barlow_24 = {
 #endif
     .dsc = &font_dsc,          /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
 #if LV_VERSION_CHECK(8, 2, 0) || LVGL_VERSION_MAJOR >= 9
-    .fallback = NULL,
+    .fallback = &lv_font_tab1a_icons_24,
 #endif
     .user_data = NULL,
 };

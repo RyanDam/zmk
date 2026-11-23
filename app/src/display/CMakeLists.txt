@@ -52,6 +52,7 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM app PRIVATE
     fonts/lv_font_tab1a_inter_16.c
     fonts/lv_font_tab1a_barlow_24.c
     fonts/lv_font_tab1a_barlow_20.c
+    fonts/lv_font_tab1a_icons_24.c
 )
 
 add_subdirectory_ifdef(CONFIG_ZMK_DISPLAY widgets/)

@@ -18,6 +18,7 @@
 #   inter        28 title  (ASCII + Vietnamese: a10 quote screen)
 #                20 body  16 caption    (ASCII + UI punct: · — …)
 #   barlow       24 calendar days + key tiles (a13)  20 tabular UI alt (stats, a11)
+#   icons        24 FontAwesome5 subset, barlow_24's fallback (a13 icons)
 #
 set -euo pipefail
 
@@ -92,5 +93,52 @@ gen inter       20 -r 0x20-0x7e --symbols "$UI_PUNCT"
 gen inter       16 -r 0x20-0x7e --symbols "$UI_PUNCT"
 gen barlow      24 -r 0x20-0x7e --symbols "$UI_PUNCT"
 gen barlow      20 -r 0x20-0x7e --symbols "$UI_PUNCT"
+
+# FontAwesome5 icon subset at the key-tile size (a13 icon pass, LVGL docs
+# main-modules/fonts/overview#symbols): keymap_screen.c labels carry FA5
+# codepoints ("▶" = U+F04B ...) and render through barlow_24's `fallback`.
+# The glyph set mirrors pad10a graphics/fonts/icons.c (arrows f060-063,
+# transport f04a-f04e) plus tab1a's volume/mute (f027/f028/f6a9, the bytes
+# pad10a CB_ICON_VOL_*/MUTE already ship).
+ICON_FACE="fontawesome5"
+ICON_RANGE="0xf027,0xf028,0xf04a,0xf04b,0xf04c,0xf04d,0xf04e,0xf060,0xf061,0xf062,0xf063,0xf0d7,0xf6a9"
+if [[ ! -s "$CACHE/$ICON_FACE.woff" ]]; then
+    echo "fetching fontawesome5 (LVGL built-in copy, SIL OFL) ..."
+    curl -fsSL --retry 3 -o "$CACHE/$ICON_FACE.woff" \
+        "https://lvgl.io/assets/others/FontAwesome5-Solid+Brands+Regular.woff"
+    shasum -a 256 "$CACHE/$ICON_FACE.woff" | tee "$CACHE/$ICON_FACE.woff.sha256"
+fi
+echo "generating lv_font_tab1a_icons_24 ..."
+npx --yes "$CONVERTER" \
+    --font "$CACHE/$ICON_FACE.woff" \
+    --size 24 --bpp 2 --no-compress \
+    --format lvgl --lv-font-name lv_font_tab1a_icons_24 \
+    --lv-include lvgl.h \
+    -r "$ICON_RANGE" \
+    -o "$OUT/lv_font_tab1a_icons_24.c"
+
+# Re-apply the fallback chain onto the regenerated key-tile face (the
+# converter always writes .fallback = NULL; keymap_screen.c's icon labels
+# break silently without this).
+python3 - "$OUT/lv_font_tab1a_barlow_24.c" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+t = p.read_text()
+if "lv_font_tab1a_icons_24" not in t:
+    # Anchor below the conditional-include block (LV_LVGL_H_INCLUDE_SIMPLE),
+    # next to the font's own guard: inside that #ifdef the declare compiles
+    # away for half the builds (bit us 2026-11-23).
+    anchor = "#ifndef LV_FONT_TAB1A_BARLOW_24"
+    t = t.replace(anchor,
+         "/* Coban tab1a addition (a13 icon pass): the key-tile labels mix text\n"
+         " * with FontAwesome5 icon codepoints; the subset font below carries the\n"
+         " * icons and is chained via .fallback (keep this line + the .fallback\n"
+         " * entry when regenerating via gen_fonts.sh -- the script re-applies\n"
+         " * both). */\n"
+         "LV_FONT_DECLARE(lv_font_tab1a_icons_24);\n\n" + anchor, 1)
+t = t.replace("    .fallback = NULL,", "    .fallback = &lv_font_tab1a_icons_24,")
+p.write_text(t)
+print("barlow_24 fallback chained")
+PYEOF
 
 echo "done -> $OUT"
