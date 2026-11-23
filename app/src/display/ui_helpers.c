@@ -123,6 +123,12 @@ lv_obj_t *zmk_ui_flex(lv_obj_t *parent, lv_flex_flow_t flow, int gap) {
     lv_obj_t *box = lv_obj_create(parent);
 
     lv_obj_remove_style_all(box);
+    /* Plain lv_obj is SCROLLABLE by default in this LVGL: a scrollable
+     * ancestor claims the finger after ~10 px (indev scroll_limit),
+     * rubber-bands, and cancels the pressed child (PRESS_LOST) — taps
+     * "die" on wobble. Screen paging is manual gesture code (screen_mgr),
+     * nothing here ever wants to scroll. */
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(box, flow);
     lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);

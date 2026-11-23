@@ -389,6 +389,10 @@ static lv_obj_t *page_get(int index) {
 
     if (page->obj == NULL) {
         page->obj = lv_obj_create(NULL);
+        /* Default-SCROLLABLE roots would hijack every press that drifts
+         * past the indev scroll_limit (see zmk_ui_flex): PRESS_LOST to
+         * the widget under the finger, tap lost. Paging is manual. */
+        lv_obj_remove_flag(page->obj, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_style(page->obj, zmk_display_style(ZMK_STYLE_SCREEN), 0);
         registry[index]->create(page->obj);
         if (registry_count > 1) {

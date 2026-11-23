@@ -504,6 +504,7 @@ static void dots_rebuild(unsigned int count) {
         lv_obj_t *dot = lv_obj_create(dots_row);
 
         lv_obj_remove_style_all(dot);
+        lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE); /* see zmk_ui_flex */
         lv_obj_add_style(dot, zmk_display_style(ZMK_STYLE_LAYER_DOT), 0);
         /* Each pip is a key-sized button: tap pip n -> layer n (owner
          * pass 5; this LVGL makes lv_obj clickable by default, but be
@@ -695,6 +696,7 @@ static void pip_event_cb(lv_event_t *e) {
 static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     screen_root = lv_obj_create(parent);
     lv_obj_remove_style_all(screen_root);
+    lv_obj_remove_flag(screen_root, LV_OBJ_FLAG_SCROLLABLE); /* see zmk_ui_flex */
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
 
     /* Layer indicator (bottom band, owner pass 5): the band itself is a
@@ -706,6 +708,7 @@ static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     lv_obj_set_size(band, ZMK_VKEY_COLS * TILE_W + (ZMK_VKEY_COLS - 1) * TILE_GAP, BAND_H);
     lv_obj_align(band, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_remove_flag(band, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(band, LV_OBJ_FLAG_SCROLLABLE); /* see zmk_ui_flex */
 
     dots_row = zmk_ui_flex(band, LV_FLEX_FLOW_ROW, TILE_GAP * 6);
     lv_obj_remove_flag(dots_row, LV_OBJ_FLAG_CLICKABLE);
@@ -718,6 +721,7 @@ static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
         lv_obj_t *tile = lv_obj_create(screen_root);
 
         lv_obj_remove_style_all(tile);
+        lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE); /* see zmk_ui_flex */
         lv_obj_add_style(tile, zmk_display_style(ZMK_STYLE_KEY_TILE), 0);
         lv_obj_set_size(tile, TILE_W, TILE_H);
         lv_obj_set_pos(tile, GRID_X + col * (TILE_W + TILE_GAP),
