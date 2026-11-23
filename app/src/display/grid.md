@@ -32,10 +32,18 @@ rotation if the panel ever proves it (see the driver's notes).
   prefer side-by-side splits (clock+calendar, ring+controls, cell grids)
   over tall stacks.
 - **Bottom furniture:** page dots at `-MARGIN/2` (pips occupy y 308..316),
-  captions (hints, unsync) at `-MARGIN*2` and `-MARGIN*4 - UNIT` on pages
-  that still use them. The clock page shows no captions (wave-1 audit);
-  its calendar lattice is exactly the 288 px content band, running down to
-  y 304 with the 7 px gap clear of the dots.
+  auto-hidden ~2 s after a navigation lands (owner pass 2026-11-23) —
+  they resurface only to confirm a swipe/page change, so they no longer
+  count as always-on furniture. Captions (hints, unsync) at `-MARGIN*2`
+  and `-MARGIN*4 - UNIT` on pages that still use them. The clock page
+  shows no captions (wave-1 audit); its calendar lattice is exactly the
+  288 px content band, running down to y 304 with the 7 px gap clear of
+  the dots. The pomodoro session bar
+  (a10 spirit reset) is a segmented 10 px pill strip on the very bottom
+  edge (work/rest blocks, widths proportional to their durations) — with
+  `MARGIN` 0 its centre sits under the page dots (drawn after the page,
+  so the dots win z-order); accepted (same-family fills), bench check
+  2026-11-22.
 
 ## Touch
 

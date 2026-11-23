@@ -175,6 +175,47 @@ static void restyle_dots(int index) {
     }
 }
 
+/* Page dots are a hint, not furniture (owner pass 2026-11-23): shown
+ * when a navigation lands, auto-hidden after a beat. Hiding covers ALL
+ * cached pages — during the slide animation the previous page's row is
+ * on screen too, and every row must go quiet together. */
+#define DOTS_HINT_MS 2000
+
+static void dots_set_visible(bool vis) {
+    for (int p = 0; p < MAX_SCREENS; p++) {
+        struct page *page = &pages[p];
+
+        if (page->obj == NULL || page->dots[0] == NULL) {
+            continue;
+        }
+        for (int i = 0; i < registry_count; i++) {
+            if (page->dots[i] != NULL) {
+                lv_obj_set_flag(page->dots[i], LV_OBJ_FLAG_HIDDEN, !vis);
+            }
+        }
+    }
+}
+
+static void dots_hide_work_cb(struct k_work *work);
+K_WORK_DEFINE(display_dots_hide_work, dots_hide_work_cb);
+
+static void dots_hide_timer_cb(struct k_timer *timer) {
+    ARG_UNUSED(timer);
+    k_work_submit_to_queue(zmk_display_work_q(), &display_dots_hide_work);
+}
+K_TIMER_DEFINE(display_dots_hide_timer, dots_hide_timer_cb, NULL);
+
+static void dots_hide_work_cb(struct k_work *work) {
+    ARG_UNUSED(work);
+    dots_set_visible(false);
+}
+
+static void dots_show_and_hint(void) {
+    dots_set_visible(true);
+    /* One-shot re-arm: every navigation restarts the beat. */
+    k_timer_start(&display_dots_hide_timer, K_MSEC(DOTS_HINT_MS), K_NO_WAIT);
+}
+
 /* ------------------------------------------------------------------ */
 /* TEMP debug overlay: on-glass touch readout (bench harness A06)      */
 /*                                                                     */
@@ -358,6 +399,10 @@ static lv_obj_t *page_get(int index) {
     return page->obj;
 }
 
+/* Persistence helpers (defined with the home-screen block below). */
+static int32_t persisted_home_idx;
+static void screens_settings_save(int index);
+
 static void nav_apply(void) {
     int target = atomic_get(&pending_nav);
 
@@ -392,6 +437,18 @@ static void nav_apply(void) {
     touch_dbg_refresh();
     atomic_set(&current_idx, target);
     restyle_dots(target);
+    dots_show_and_hint();
+
+    /* The last-shown page becomes tomorrow's home (owner pass
+     * 2026-11-23): every real navigation re-persists the splash target,
+     * so a reboot lands back where the user left off. No-op when the
+     * splash already landed on the persisted page (no boot-time write),
+     * and no debounce — swipes are rare enough for NVS. */
+    if (target != persisted_home_idx) {
+        persisted_home_idx = target;
+        screens_settings_save(target);
+    }
+
     LOG_INF("screen -> %d (%s)", target, registry[target]->name);
 }
 
@@ -435,6 +492,11 @@ int zmk_display_screen_prev(void) {
 
 /* ------------------------------------------------------------------ */
 /* Home screen persistence                                             */
+/*                                                                     */
+/* "Home" follows the last navigation (nav_apply re-persists it), so    */
+/* the post-splash page is wherever the user left off across reboots.  */
+/* zmk_display_screen_set_home() (a14's seam) overrides until the next */
+/* swipe.                                                              */
 /* ------------------------------------------------------------------ */
 
 #if IS_ENABLED(CONFIG_SETTINGS)
