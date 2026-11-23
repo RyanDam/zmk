@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  *
  * Shared skeleton for the "one settings blob per tunable" pattern used by
- * the tab1a subsystems (theme, home screen, clock format, stats, vkeymap,
+ * the tab1a subsystems (theme, home screen, clock format, stats,
  * pomodoro, anim bg): key match + size validation + read on load, save with
  * a uniform warning on failure. Field/value validation stays with the
  * owner — only it knows what a loaded value means.

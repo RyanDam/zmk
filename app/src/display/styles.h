@@ -84,6 +84,20 @@ enum zmk_display_style_id {
     ZMK_STYLE_TOUCH_GHOST,    /* invisible 44 px hit-target (a10 Cancel) */
     ZMK_STYLE_SCRIM,          /* modal dim: black 70 % (a10 dialog)      */
     ZMK_STYLE_CARD,           /* modal card: screen bg, rounded, padded  */
+    ZMK_STYLE_TEXT_KEY_LABEL, /* 24 barlow       (key-matrix tile labels, a13) */
+    ZMK_STYLE_KEY_TILE,       /* key-matrix tile: inactive fill 20 % (pad10a
+                               * style_key:14-21 — quiet until pressed)   */
+    ZMK_STYLE_KEY_TILE_PRESSED, /* same tile lit: inactive fill 100 %
+                                 * (pad10a style_key_pressed / layers_cb)  */
+    ZMK_STYLE_LAYER_DOT,    /* layer indicator pip w/ index label (pad10a
+                             * style_indice; base fill 10 %) */
+    ZMK_STYLE_LAYER_DOT_ACTIVE, /* pip while its layer is active: fill 50 %
+                                 * (owner pass 5: 100 % read as harsh) */
+    ZMK_STYLE_LAYER_DOT_PRESSED, /* pip under a finger: key-tile press fill
+                                  * (inactive colour, white index stays) */
+    ZMK_STYLE_TEXT_LAYER_NUM, /* pip index label: 20 barlow, dim + fake-bold */
+    ZMK_STYLE_TEXT_LAYER_NUM_ON, /* pip index overlay: primary (white) when
+                                  * its layer is active (base = TEXT_LAYER_NUM) */
     ZMK_STYLE_COUNT,
 };
 

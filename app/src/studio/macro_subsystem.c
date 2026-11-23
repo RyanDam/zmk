@@ -36,6 +36,7 @@ static bool encode_macro_info(pb_ostream_t *stream, const pb_field_t *field, voi
         info.index = i;
         info.max_steps = max_steps;
         // info.length = zmk_dynamic_macro_get_step_length(i);
+        snprintk(info.name, sizeof(info.name), "%s", zmk_dynamic_macro_get_name(i));
 
         if (!pb_encode_tag_for_field(stream, field)) {
             return false;
@@ -181,6 +182,24 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
                            zmk_macros_SetMacroDetailsResponse_SET_MACRO_DETAILS_RESP_OK);
 }
 
+zmk_studio_Response set_macro_name(const zmk_studio_Request *req) {
+    const zmk_macros_SetMacroNameRequest *set_req =
+        &req->subsystem.macros.request_type.set_macro_name;
+
+    LOG_DBG("idx %d, name \"%s\"", set_req->index, set_req->name);
+
+    int err = zmk_dynamic_macro_set_name(set_req->index, set_req->name);
+    if (err) {
+        return ZMK_RPC_SIMPLE_ERR(GENERIC);
+    }
+
+    // Staged like steps: persisted by save_changes, reverted by discard.
+    raise_zmk_studio_rpc_notification((struct zmk_studio_rpc_notification){
+        .notification = MACROS_Notification(unsaved_changes_status_changed, true)});
+
+    return MACROS_Response(set_macro_name, true);
+}
+
 zmk_studio_Response macros_check_unsaved_changes(const zmk_studio_Request *req) {
     bool unsaved = zmk_dynamic_macro_check_unsaved_changes();
     return MACROS_Response(check_unsaved_changes, unsaved);
@@ -218,6 +237,7 @@ zmk_studio_Response macros_discard_changes(const zmk_studio_Request *req) {
 ZMK_RPC_SUBSYSTEM_HANDLER(macros, get_macro_list, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(macros, get_macro_details, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(macros, set_macro_details, ZMK_STUDIO_RPC_HANDLER_SECURED);
+ZMK_RPC_SUBSYSTEM_HANDLER(macros, set_macro_name, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER_EX(macros, check_unsaved_changes, macros_check_unsaved_changes,
                              ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER_EX(macros, save_changes, macros_save_changes,

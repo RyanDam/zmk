@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 20 px
  * Bpp: 2
- * Opts: --font /Users/ryan/Documents/CobanStationeryAssets/Firmware/src/zmk/app/scripts/display-fonts/.cache/barlow.ttf --size 20 --bpp 2 --no-compress --format lvgl --lv-font-name lv_font_tab1a_barlow_20 --lv-include lvgl.h -o /Users/ryan/Documents/CobanStationeryAssets/Firmware/src/zmk/app/scripts/display-fonts/../../src/display/fonts/lv_font_tab1a_barlow_20.c -r 0x20-0x7e
+ * Opts: --font /Users/ryan/Documents/CobanStationeryAssets/Firmware/src/zmk/app/scripts/display-fonts/.cache/barlow.ttf --size 20 --bpp 2 --no-compress --format lvgl --lv-font-name lv_font_tab1a_barlow_20 --lv-include lvgl.h -o /Users/ryan/Documents/CobanStationeryAssets/Firmware/src/zmk/app/scripts/display-fonts/../../src/display/fonts/lv_font_tab1a_barlow_20.c -r 0x20-0x7e --symbols ·—…‹›
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -583,7 +583,25 @@ static LV_ATTRIBUTE_LARGE_CONST const uint8_t glyph_bitmap[] = {
     0x2f, 0x47, 0xe0,
 
     /* U+007E "~" */
-    0x6, 0x40, 0x43, 0xff, 0xbd, 0x24, 0x2f, 0x40
+    0x6, 0x40, 0x43, 0xff, 0xbd, 0x24, 0x2f, 0x40,
+
+    /* U+00B7 "·" */
+    0x4, 0x3d, 0x2c,
+
+    /* U+2014 "—" */
+    0x2a, 0xaa, 0xaa, 0x5f, 0xff, 0xff, 0xf0,
+
+    /* U+2026 "…" */
+    0x10, 0x5, 0x0, 0x4b, 0xc0, 0xf4, 0x2e, 0x78,
+    0xf, 0x1, 0xd0,
+
+    /* U+2039 "‹" */
+    0xa, 0x7, 0x43, 0x83, 0xc0, 0x78, 0xb, 0x40,
+    0xf0,
+
+    /* U+203A "›" */
+    0x28, 0x1, 0xe0, 0xb, 0x40, 0x3c, 0x7, 0x40,
+    0xe0, 0x3c, 0x0
 };
 
 
@@ -687,14 +705,21 @@ static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
     {.bitmap_index = 2627, .adv_w = 105, .box_w = 6, .box_h = 18, .ofs_x = 0, .ofs_y = -3},
     {.bitmap_index = 2654, .adv_w = 57, .box_w = 3, .box_h = 17, .ofs_x = 0, .ofs_y = -2},
     {.bitmap_index = 2667, .adv_w = 105, .box_w = 6, .box_h = 18, .ofs_x = 0, .ofs_y = -3},
-    {.bitmap_index = 2694, .adv_w = 164, .box_w = 10, .box_h = 3, .ofs_x = 0, .ofs_y = 4}
+    {.bitmap_index = 2694, .adv_w = 164, .box_w = 10, .box_h = 3, .ofs_x = 0, .ofs_y = 4},
+    {.bitmap_index = 2702, .adv_w = 70, .box_w = 4, .box_h = 3, .ofs_x = 0, .ofs_y = 4},
+    {.bitmap_index = 2705, .adv_w = 216, .box_w = 13, .box_h = 2, .ofs_x = 0, .ofs_y = 5},
+    {.bitmap_index = 2712, .adv_w = 261, .box_w = 14, .box_h = 3, .ofs_x = 1, .ofs_y = 0},
+    {.bitmap_index = 2723, .adv_w = 113, .box_w = 5, .box_h = 7, .ofs_x = 1, .ofs_y = 2},
+    {.bitmap_index = 2732, .adv_w = 123, .box_w = 6, .box_h = 7, .ofs_x = 1, .ofs_y = 2}
 };
 
 /*---------------------
  *  CHARACTER MAPPING
  *--------------------*/
 
-
+static const uint16_t unicode_list_1[] = {
+    0x0, 0x1f5d, 0x1f6f, 0x1f82, 0x1f83
+};
 
 /*Collect the unicode lists and glyph_id offsets*/
 static const lv_font_fmt_txt_cmap_t cmaps[] =
@@ -702,6 +727,10 @@ static const lv_font_fmt_txt_cmap_t cmaps[] =
     {
         .range_start = 32, .range_length = 95, .glyph_id_start = 1,
         .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY
+    },
+    {
+        .range_start = 183, .range_length = 8068, .glyph_id_start = 96,
+        .unicode_list = unicode_list_1, .glyph_id_ofs_list = NULL, .list_length = 5, .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY
     }
 };
 
@@ -724,7 +753,8 @@ static const uint8_t kern_left_class_mapping[] =
     0, 0, 32, 33, 34, 0, 35, 36,
     37, 33, 38, 0, 39, 40, 33, 33,
     3, 33, 37, 41, 42, 43, 0, 44,
-    44, 45, 44, 0, 0, 0, 0, 0
+    44, 45, 44, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0
 };
 
 /*Map glyph_ids to kern right classes*/
@@ -741,7 +771,8 @@ static const uint8_t kern_right_class_mapping[] =
     0, 0, 25, 26, 3, 3, 3, 27,
     28, 26, 29, 30, 26, 31, 32, 32,
     3, 32, 28, 32, 33, 27, 34, 35,
-    35, 36, 35, 37, 0, 0, 0, 0
+    35, 36, 35, 37, 0, 0, 0, 0,
+    0, 0, 0, 0, 0
 };
 
 /*Kern values between classes*/
@@ -988,7 +1019,7 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
     .cmaps = cmaps,
     .kern_dsc = &kern_classes,
     .kern_scale = 16,
-    .cmap_num = 1,
+    .cmap_num = 2,
     .bpp = 2,
     .kern_classes = 1,
     .bitmap_format = 0,

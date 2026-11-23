@@ -6,6 +6,8 @@
 
 #define DT_DRV_COMPAT zmk_behavior_dynamic_macro
 
+#include <string.h>
+
 #include <zephyr/device.h>
 #include <drivers/behavior.h>
 #include <zephyr/logging/log.h>
@@ -23,9 +25,62 @@ static struct zmk_dynamic_macro_step dynamic_macros[DM_COUNT][DM_MAX_STEPS];
 static int zmk_dynamic_macro_step_length[DM_COUNT];
 static bool unsaved_changes = false;
 static int dirty_macro_indices[DM_COUNT];
+static char macro_names[DM_COUNT][ZMK_DYNAMIC_MACRO_NAME_MAX];
+static int dirty_name_indices[DM_COUNT];
 
 #define DM_BINDING_SETTINGS_KEY "dynamic_macros/dm/%d/%d" // macro step
 #define DL_BINDING_SETTINGS_KEY "dynamic_macros/lm/%d"    // macro lenght
+#define DN_BINDING_SETTINGS_KEY "dynamic_macros/dn/%d"    // macro display name
+
+/* Change listeners (the keymap screen relabels its tiles on macro-name
+ * edits; vkeymap's model listener pattern, kept tiny). */
+#define DM_LISTENER_MAX 4
+static zmk_dynamic_macro_changed_cb dm_listeners[DM_LISTENER_MAX];
+
+int zmk_dynamic_macro_add_listener(zmk_dynamic_macro_changed_cb cb) {
+    for (int i = 0; i < DM_LISTENER_MAX; i++) {
+        if (dm_listeners[i] == cb) {
+            return 0;
+        }
+        if (dm_listeners[i] == NULL) {
+            dm_listeners[i] = cb;
+            return 0;
+        }
+    }
+    return -ENOSPC;
+}
+
+static void notify_macro_changed(uint32_t macro_idx) {
+    for (int i = 0; i < DM_LISTENER_MAX; i++) {
+        if (dm_listeners[i] != NULL) {
+            dm_listeners[i](macro_idx);
+        }
+    }
+}
+
+const char *zmk_dynamic_macro_get_name(uint32_t macro_idx) {
+    if (macro_idx >= DM_COUNT) {
+        return "";
+    }
+    return macro_names[macro_idx];
+}
+
+int zmk_dynamic_macro_set_name(uint32_t macro_idx, const char *name) {
+    if (macro_idx >= DM_COUNT || name == NULL ||
+        strnlen(name, ZMK_DYNAMIC_MACRO_NAME_MAX) >= ZMK_DYNAMIC_MACRO_NAME_MAX) {
+        return -EINVAL;
+    }
+
+    if (strcmp(macro_names[macro_idx], name) == 0) {
+        return 0;
+    }
+
+    strcpy(macro_names[macro_idx], name);
+    unsaved_changes = true;
+    dirty_name_indices[macro_idx] = 1;
+    notify_macro_changed(macro_idx);
+    return 0;
+}
 
 struct zmk_dynamic_macro_step_setting {
     zmk_behavior_local_id_t behavior_local_id;
@@ -237,13 +292,31 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
         LOG_DBG("Loaded length %d for macro %ld", length, macro_idx);
         zmk_dynamic_macro_step_length[macro_idx] = length;
         return 0;
+    } else if (settings_name_steq(name, "dn", &next) && next) {
+        char *endptr;
+        unsigned long macro_idx = strtoul(next, &endptr, 10);
+        if (*endptr != '\0') {
+            return -EINVAL;
+        }
+
+        if (macro_idx >= DM_COUNT) {
+            return -EINVAL;
+        }
+
+        ssize_t rlen = read_cb(cb_arg, macro_names[macro_idx], ZMK_DYNAMIC_MACRO_NAME_MAX - 1);
+        if (rlen < 0) {
+            return -EINVAL;
+        }
+        macro_names[macro_idx][rlen] = '\0';
+        LOG_DBG("Loaded name \"%s\" for macro %ld", macro_names[macro_idx], macro_idx);
+        return 0;
     }
     return -ENOENT;
 }
 
 static int dynamic_macros_handle_commit(void) {
-    // Commit all dirty macro changes to storage
-    // return zmk_dynamic_macro_save_changes();
+    // Settings load replaced every name/stage: let UIs relabel.
+    notify_macro_changed(ZMK_DYNAMIC_MACRO_ALL);
     return 0;
 }
 
@@ -266,6 +339,28 @@ SETTINGS_STATIC_HANDLER_DEFINE(dynamic_macros, "dynamic_macros", NULL, dynamic_m
 // SYS_INIT(dynamic_macros_settings_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 int zmk_dynamic_macro_save_changes(void) {
+    // Persist changed display names first (empty names are deleted, not stored)
+    for (int i = 0; i < DM_COUNT; i++) {
+        if (dirty_name_indices[i] == 0) {
+            continue;
+        }
+        dirty_name_indices[i] = 0;
+
+        static char name_setting_name[32];
+        snprintf(name_setting_name, sizeof(name_setting_name), DN_BINDING_SETTINGS_KEY, i);
+
+        if (macro_names[i][0] == '\0') {
+            settings_delete(name_setting_name);
+            continue;
+        }
+
+        int ret = settings_save_one(name_setting_name, macro_names[i], strlen(macro_names[i]) + 1);
+        if (ret < 0) {
+            LOG_ERR("Failed to save name for macro %d. Err code: %d", i, ret);
+            return ret;
+        }
+    }
+
     // Only save macros that have been modified
     for (int i = 0; i < DM_COUNT; i++) {
         if (dirty_macro_indices[i] == 0) {
@@ -338,8 +433,11 @@ int zmk_dynamic_macro_discard_changes(void) {
     memset(dynamic_macros, 0, sizeof(dynamic_macros));
     memset(zmk_dynamic_macro_step_length, 0, sizeof(zmk_dynamic_macro_step_length));
     memset(dirty_macro_indices, 0, sizeof(dirty_macro_indices));
+    memset(macro_names, 0, sizeof(macro_names));
+    memset(dirty_name_indices, 0, sizeof(dirty_name_indices));
     settings_load_subtree("dynamic_macros");
     unsaved_changes = false;
+    notify_macro_changed(ZMK_DYNAMIC_MACRO_ALL);
     return 0;
 }
 

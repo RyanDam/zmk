@@ -288,14 +288,20 @@ config ZMK_DISPLAY_ANIM_LOTTIE
 endif # ZMK_DISPLAY_ANIM
 
 config ZMK_DISPLAY_KEYMAP_SCREEN
-    bool "Virtual key matrix screen (4x4 soft-key grid)"
-    depends on ZMK_DISPLAY_SCREEN_MGR && ZMK_VKEYMAP
+    bool "Key matrix screen (3x4 virtual keys, pad10a layer-screen style)"
+    depends on ZMK_DISPLAY_SCREEN_MGR
     default y
     select LV_USE_LABEL
     help
-      Page rendering the vkeymap model: 4x4 touch tiles with press
-      flash (LVGL indev), soft-layer chips, and the live keymap layer
-      in the footer. Talks only to the zmk/vkeymap.h seam.
+      Page rendering the virtual half of the real keymap (positions
+      4..15 of the 4x4/16-position matrix; row 0 = the four h04 hardware
+      keys, off-screen) as the pad10a layer-screen frame: all drawn cells
+      are plain keys (grid on top), and the layer indicator pips at the
+      bottom double as buttons (tap pip n -> layer n), with touch tiles
+      whose press/
+      release edges fire through the same position-state path as
+      hardware keys. Tiles follow the active keymap layer; bindings
+      and macro names redraw live via the keymap/macro change events.
 
 config ZMK_DISPLAY_STATS_SCREEN
     bool "Hardware stats screen (feed seam + layouts)"

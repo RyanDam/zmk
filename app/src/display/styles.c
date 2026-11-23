@@ -43,7 +43,9 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
         {ZMK_STYLE_TEXT_TITLE_SEC, &lv_font_tab1a_inter_28, t->text_secondary},
         {ZMK_STYLE_TEXT_BODY, &lv_font_tab1a_inter_20, t->text_primary},
         {ZMK_STYLE_TEXT_CAPTION, &lv_font_tab1a_inter_16, t->text_secondary},
+        {ZMK_STYLE_TEXT_LAYER_NUM, &lv_font_tab1a_barlow_20, t->text_secondary},
         {ZMK_STYLE_TEXT_TABULAR, &lv_font_tab1a_barlow_20, t->text_primary},
+        {ZMK_STYLE_TEXT_KEY_LABEL, &lv_font_tab1a_barlow_24, t->text_primary},
         {ZMK_STYLE_TEXT_DAY, &lv_font_tab1a_barlow_24, t->text_primary},
         {ZMK_STYLE_TEXT_DAY_DIM, &lv_font_tab1a_barlow_24, t->text_primary},
         {ZMK_STYLE_TEXT_DAY_BOLD, &lv_font_tab1a_barlow_24, t->text_primary},
@@ -67,6 +69,18 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
      * not move. */
     lv_style_set_text_outline_stroke_width(&styles[ZMK_STYLE_TEXT_DAY_BOLD], 1);
     lv_style_set_text_outline_stroke_color(&styles[ZMK_STYLE_TEXT_DAY_BOLD], t->text_primary);
+
+    /* Layer-indicator index labels: always fake-bold (owner pass 5), in
+     * their own colour — dim when inactive, white when active (overlay
+     * below swaps both fill and stroke). */
+    lv_style_set_text_outline_stroke_width(&styles[ZMK_STYLE_TEXT_LAYER_NUM], 1);
+    lv_style_set_text_outline_stroke_color(&styles[ZMK_STYLE_TEXT_LAYER_NUM],
+                                           t->text_secondary);
+
+    /* Key-matrix tiles: the label fills the tile minus a margin and the
+       text centers inside it (owner pass 2026-11-23: labels drew flush
+       left in their box). */
+    lv_style_set_text_align(&styles[ZMK_STYLE_TEXT_KEY_LABEL], LV_TEXT_ALIGN_CENTER);
 
     /* fills */
     lv_style_reset(&styles[ZMK_STYLE_ACCENT]);
@@ -178,6 +192,54 @@ void zmk_display_styles_apply_theme(const struct zmk_display_theme *t) {
     lv_style_set_radius(&styles[ZMK_STYLE_CARD], ZMK_GRID_UNIT * 2);
     lv_style_set_pad_all(&styles[ZMK_STYLE_CARD], ZMK_GRID_UNIT * 2);
     lv_style_set_border_width(&styles[ZMK_STYLE_CARD], 0);
+
+    /* Key-matrix tiles (a13, pad10a parity): the visual language of
+     * pad10a's style_key / style_key_pressed / style_indice
+     * (graphics/screens/styles.c:94-139 + screen_layers.c:139-160) —
+     * inactive-hue fill at 20 %, same fill at 100 % while the KEY is
+     * down (event-driven, never touch-driven), text-primary 9 px
+     * squares as the layer indicator. The pixel sizes are the tab1a
+     * grid's (pad10a's 38x24 chips predate touch — the screen is a
+     * readout there; a 44 px touch minimum applies here). */
+    lv_style_reset(&styles[ZMK_STYLE_KEY_TILE]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_KEY_TILE], t->inactive);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_KEY_TILE], LV_OPA_20);
+    lv_style_set_radius(&styles[ZMK_STYLE_KEY_TILE], ZMK_GRID_UNIT);
+    lv_style_set_border_width(&styles[ZMK_STYLE_KEY_TILE], 0);
+
+    lv_style_reset(&styles[ZMK_STYLE_KEY_TILE_PRESSED]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_KEY_TILE_PRESSED], t->inactive);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_KEY_TILE_PRESSED], LV_OPA_COVER);
+    lv_style_set_radius(&styles[ZMK_STYLE_KEY_TILE_PRESSED], ZMK_GRID_UNIT);
+    lv_style_set_border_width(&styles[ZMK_STYLE_KEY_TILE_PRESSED], 0);
+
+    lv_style_reset(&styles[ZMK_STYLE_LAYER_DOT]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_LAYER_DOT], t->text_primary);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_LAYER_DOT], LV_OPA_10); /* active lit to 50 % */
+    /* Wide pips (owner passes 3-5: big, thumb-friendly indicator). */
+    lv_style_set_width(&styles[ZMK_STYLE_LAYER_DOT], ZMK_GRID_UNIT * 6);
+    lv_style_set_height(&styles[ZMK_STYLE_LAYER_DOT], ZMK_GRID_UNIT * 4);
+    lv_style_set_radius(&styles[ZMK_STYLE_LAYER_DOT], 6);
+    lv_style_set_border_width(&styles[ZMK_STYLE_LAYER_DOT], 0);
+
+    /* Colour overlay on the pip's index label: white fill AND bold stroke
+     * while its layer is active (added after the base style, so it wins). */
+    lv_style_reset(&styles[ZMK_STYLE_TEXT_LAYER_NUM_ON]);
+    lv_style_set_text_color(&styles[ZMK_STYLE_TEXT_LAYER_NUM_ON], t->text_primary);
+    lv_style_set_text_outline_stroke_width(&styles[ZMK_STYLE_TEXT_LAYER_NUM_ON], 1);
+    lv_style_set_text_outline_stroke_color(&styles[ZMK_STYLE_TEXT_LAYER_NUM_ON],
+                                           t->text_primary);
+
+    /* Pip states are pure style toggles (added on top of LAYER_DOT, later
+     * style wins): ACTIVE 50 % primary, PRESSED the key-tile press fill
+     * (owner pass 5: each pip behaves like a normal key). */
+    lv_style_reset(&styles[ZMK_STYLE_LAYER_DOT_ACTIVE]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_LAYER_DOT_ACTIVE], t->text_primary);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_LAYER_DOT_ACTIVE], LV_OPA_50);
+
+    lv_style_reset(&styles[ZMK_STYLE_LAYER_DOT_PRESSED]);
+    lv_style_set_bg_color(&styles[ZMK_STYLE_LAYER_DOT_PRESSED], t->inactive);
+    lv_style_set_bg_opa(&styles[ZMK_STYLE_LAYER_DOT_PRESSED], LV_OPA_COVER);
 }
 
 const lv_style_t *zmk_display_style(enum zmk_display_style_id id) {

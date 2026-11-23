@@ -23,6 +23,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/sensor_event.h>
+#include <zmk/events/keymap_changed.h>
 #include <zmk/touchpad.h>
 
 static zmk_keymap_layers_state_t _zmk_keymap_layer_locks = 0;
@@ -365,6 +366,8 @@ int zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer_id, uint16_t
     // TODO: Need a mutex to protect access to the keymap data?
     memcpy(&zmk_keymap[layer_id][storage_binding_idx], &binding, sizeof(binding));
 
+    raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = false});
+
     return 0;
 }
 
@@ -440,6 +443,8 @@ int zmk_keymap_move_layer(zmk_keymap_layer_index_t start_idx, zmk_keymap_layer_i
         keymap_layer_orders[dest_idx] = val;
     }
 
+    raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
+
     return 0;
 }
 
@@ -458,6 +463,7 @@ int zmk_keymap_add_layer(void) {
         for (int candidate_id = 0; candidate_id < ZMK_KEYMAP_LAYERS_LEN; candidate_id++) {
             if (!(seen_layer_ids & BIT(candidate_id))) {
                 keymap_layer_orders[index] = candidate_id;
+                raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
                 return index;
             }
         }
@@ -485,6 +491,8 @@ int zmk_keymap_remove_layer(zmk_keymap_layer_index_t index) {
 
     LOG_HEXDUMP_DBG(keymap_layer_orders, ZMK_KEYMAP_LAYERS_LEN, "Order");
 
+    raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
+
     return 0;
 }
 
@@ -497,6 +505,8 @@ int zmk_keymap_restore_layer(zmk_keymap_layer_id_t id, zmk_keymap_layer_index_t 
     }
 
     keymap_layer_orders[at_index] = id;
+
+    raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
 
     return 0;
 }
@@ -516,6 +526,8 @@ int zmk_keymap_set_layer_name(zmk_keymap_layer_id_t id, const char *name, size_t
     }
 
     WRITE_BIT(changed_layer_names, id, 1);
+
+    raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
 
     return 0;
 }
@@ -784,6 +796,8 @@ int zmk_keymap_discard_changes(void) {
             memset(zmk_keymap_layer_sensor_pending_changes[l], 0, SENSOR_PENDING_ARRAY_SIZE);
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
         }
+
+        raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
     }
 
 #if IS_ENABLED(CONFIG_ZMK_TOUCHPAD)
@@ -1319,6 +1333,8 @@ static int keymap_handle_commit(void) {
     }
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 #endif
+
+    raise_zmk_keymap_changed((struct zmk_keymap_changed){.structural = true});
 
     return 0;
 }

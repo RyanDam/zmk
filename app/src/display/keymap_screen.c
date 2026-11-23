@@ -3,21 +3,35 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Virtual key matrix screen for the Coban Tab 1a (backlog a13).
+ * Key matrix screen for the Coban Tab 1a (backlog a13, redesigned after the
+ * owner audit 2026-11-23).
  *
- * The pad10a layer screen (graphics/screens/screen_layers.c) drew the
- * keymap read-only with style_key tiles; this page goes one step further
- * and is the input: tapping a tile fires the cell's ZMK binding through
- * the vkeymap model, exactly like a hardware key would. The screen only
- * ever talks to <zmk/vkeymap.h> — the acceptance grep for the seam.
+ * The tab's keys are REAL keymap positions (zmk-config cobantab1a.keymap,
+ * 4 rows x 4 cols): row 0 (positions 0..3) is the four PHYSICAL keys
+ * (h04) — never drawn — and this page renders the other 12, the virtual
+ * grid (positions 4..15), like pad10a's layer screen
+ * (graphics/screens/screen_layers.c) draws its dynamic keymap. Touching
+ * a tile feeds the position through the exact position-state path a
+ * scannable matrix uses — raise_zmk_position_state_changed() on
+ * press and on release, timestamps taken at the touch edges — so press,
+ * hold, tap-hold, layermasks and macros behave exactly like a physical
+ * key. Studio edits these same positions with its physical-key RPC; the
+ * tile flash follows the real key events (pad10a layers_cb pattern), never
+ * raw touch, so h04 hardware keys and Studio edits light the grid too.
  *
- * Touch here is pure LVGL (the a13 indev feeds PRESSED/CLICKED), unlike
- * the tap-detector pages: press-flash needs the down edge, and clicks
- * inside a tile never look like a swipe to the manager.
+ * Frame parity with pad10a: layer indicator squares (style_indice), tiles
+ * that read as quiet 20 % fills and light to 100 % while the KEY is down
+ * (style_key / layers_cb:139-160). ALL drawn cells are plain keys — unlike
+ * pad10a, there are no encoder seats and no special-cased cells (owner
+ * pass 5): every tile fires its binding. Layer switching is the
+ * indicator's job: the pips at the bottom are buttons (tap pip n ->
+ * layer n), and the physical row's keys carry per-layer `&to` prev/next
+ * bindings, so the screen only ever shows the layer the device is
+ * actually on. Only MACROS carry user-visible names; layers are plain
+ * numbered pips (owner pass 3).
  *
- * Soft layers are a model concept (grid contents); the footer also shows
- * the real keymap layer so the two can be watched side by side until
- * h04's hardware keys and a14's editing make that distinction richer.
+ * The old parallel "vkeymap" model (its own layers/cells/settings blob)
+ * is deleted: one matrix, one source of truth.
  */
 
 #include <string.h>
@@ -28,11 +42,17 @@
 
 #include <lvgl.h>
 
+#include <zmk/behavior_dynamic_macro.h>
 #include <zmk/display.h>
 #include <zmk/display/screens.h>
+#include <zmk/events/keymap_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
-#include <zmk/vkeymap.h>
+#include <zmk/matrix.h>
+
+#include <dt-bindings/zmk/hid_usage.h>
+#include <dt-bindings/zmk/hid_usage_pages.h>
 
 #include "styles.h"
 #include "ui_helpers.h"
@@ -41,212 +61,485 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAGE_NAME "keymap"
 
-#define TILE_SIZE (ZMK_GRID_UNIT * 6) /* 48 px, > touch min     */
-#define TILE_GAP ZMK_GRID_UNIT        /* 8 px                   */
-#define GRID_W (ZMK_VKEYMAP_COLS * TILE_SIZE + (ZMK_VKEYMAP_COLS - 1) * TILE_GAP)
-#define GRID_X ((ZMK_GRID_SCREEN_W - GRID_W) / 2)
-#define GRID_Y (ZMK_GRID_UNIT * 11) /* below title + caption row  */
+/* Keep in step with the zmk-config cobantab1a matrix geometry: keymap row
+ * 0 (positions 0..3) is the four PHYSICAL keys (h04) — not drawn here —
+ * and the drawn 3x4 grid is positions 4..15. */
+#define ZMK_PHYS_ROW 4
+#define ZMK_VKEY_ROWS 3
+#define ZMK_VKEY_COLS 4
+#define ZMK_VKEY_CELLS (ZMK_VKEY_ROWS * ZMK_VKEY_COLS)
+BUILD_ASSERT(ZMK_PHYS_ROW + ZMK_VKEY_CELLS == ZMK_KEYMAP_LEN,
+             "screen grid + physical row must match the keymap size");
+
+#define TILE_GAP ZMK_GRID_UNIT                             /* 8 px  */
+#define TILE_W                                               \
+    ((ZMK_GRID_SCREEN_W - ZMK_GRID_UNIT * 3 -               \
+      (ZMK_VKEY_COLS - 1) * TILE_GAP) / ZMK_VKEY_COLS)       /* 108  */
+#define TILE_H (TILE_W - ZMK_GRID_UNIT * 4)                 /* 76    */
+#define GRID_X                                                \
+    ((ZMK_GRID_SCREEN_W -                                     \
+      (ZMK_VKEY_COLS * TILE_W + (ZMK_VKEY_COLS - 1) * TILE_GAP)) / 2)
+#define GRID_Y ZMK_GRID_UNIT /* keys to the top (owner pass 5)    */
+#define BAND_H (ZMK_GRID_UNIT * 7) /* indicator band height        */
+#define GRID_BOT (GRID_Y + ZMK_VKEY_ROWS * TILE_H + (ZMK_VKEY_ROWS - 1) * TILE_GAP)
+BUILD_ASSERT(GRID_BOT + ZMK_GRID_UNIT + BAND_H <= ZMK_GRID_SCREEN_H,
+             "grid + indicator band must fit the screen");
 
 static lv_obj_t *screen_root;
-static lv_obj_t *tiles[ZMK_VKEYMAP_CELLS];
-static lv_obj_t *tile_labels[ZMK_VKEYMAP_CELLS];
-static lv_obj_t *chips[ZMK_VKEYMAP_LAYERS];
-static lv_obj_t *kbd_layer_label;
-static unsigned int soft_layer;
-static char tile_cache[ZMK_VKEYMAP_CELLS][16];
-static lv_opa_t tile_opa_cache[ZMK_VKEYMAP_CELLS];
-
-static void tile_labels_refresh(void);
+static lv_obj_t *tiles[ZMK_VKEY_CELLS];
+static lv_obj_t *tile_labels[ZMK_VKEY_CELLS];
+static char tile_cache[ZMK_VKEY_CELLS][16];
+static bool tile_lit[ZMK_VKEY_CELLS];
+static lv_obj_t *dots_row;
+static lv_obj_t *dots[ZMK_KEYMAP_LAYERS_LEN];
+static lv_obj_t *dots_num[ZMK_KEYMAP_LAYERS_LEN];
+static bool dot_active_cache[ZMK_KEYMAP_LAYERS_LEN];
+static unsigned int dot_count;
 
 /* ------------------------------------------------------------------ */
-/* Fire + reload work (display work queue owns all LVGL touching)      */
+/* Firing: touch edges -> real key positions                            */
 /* ------------------------------------------------------------------ */
 
-static unsigned int fire_idx;
+/* Ring so two fast taps can't rebind a pending edge; the timestamp is
+ * captured at the touch edge (LVGL thread), executed on the display work
+ * queue like every other page action — same work-queue context a kscan
+ * driver raises from. */
+struct key_edge {
+    uint32_t position;
+    bool pressed;
+    int64_t timestamp;
+};
 
-ZMK_UI_WORK_DEFINE(reload_work, reload_work_cb) {
+#define EDGE_RING 8
+static struct key_edge edges[EDGE_RING];
+static uint8_t edges_in, edges_out;
+
+ZMK_UI_WORK_DEFINE(edge_work, edge_work_cb) {
     ARG_UNUSED(work);
-    tile_labels_refresh();
-    for (unsigned int l = 0; l < ZMK_VKEYMAP_LAYERS && l < ARRAY_SIZE(chips); l++) {
-        if (chips[l] != NULL) {
-            lv_label_set_text(lv_obj_get_child(chips[l], 0), zmk_vkeymap_layer_name(l));
+    while (edges_out != edges_in) {
+        struct key_edge *e = &edges[edges_out];
+
+        edges_out = (edges_out + 1) % EDGE_RING;
+
+        struct zmk_position_state_changed ev = {
+            .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+            .position = e->position,
+            .state = e->pressed,
+            .timestamp = e->timestamp,
+        };
+
+        int err = raise_zmk_position_state_changed(ev);
+
+        if (err) {
+            LOG_WRN("keymap screen edge raise failed (err %d)", err);
         }
     }
 }
 
-ZMK_UI_WORK_DEFINE(fire_work, fire_work_cb) {
+static void post_edge(uint32_t position, bool pressed) {
+    struct key_edge *slot = &edges[edges_in];
+
+    slot->position = position;
+    slot->pressed = pressed;
+    slot->timestamp = k_uptime_get();
+    edges_in = (edges_in + 1) % EDGE_RING;
+
+    zmk_ui_post(&edge_work);
+}
+
+/* ------------------------------------------------------------------ */
+/* Layer switching (the indicator pips fire this)                       */
+/* ------------------------------------------------------------------ */
+
+#define NAV_IDLE 0
+#define NAV_GOTO 1 /* jump straight to nav_goto's layer index (pip tap) */
+static volatile uint8_t nav_cmd;
+static volatile uint8_t nav_goto;
+
+static unsigned int layer_count(void);
+
+/* Layer switching is the indicator pips' job (tap pip n -> layer n): the
+ * grid's 12 tiles are all plain keys (owner pass 5 — pad10a's encoder
+ * seats are NOT special here). */
+
+ZMK_UI_WORK_DEFINE(nav_work, nav_work_cb) {
     ARG_UNUSED(work);
-    int err = zmk_vkeymap_fire(soft_layer, fire_idx);
 
-    if (err && err != -EINVAL) {
-        LOG_WRN("keymap screen fire L%u C%u failed (err %d)", soft_layer, fire_idx, err);
-    }
-}
-
-/* vkeymap model changed (shell, settings reload, a14): redraw labels. */
-static void vkeymap_changed_cb(void) { zmk_ui_post(&reload_work); }
-
-/* ------------------------------------------------------------------ */
-/* Tiles                                                               */
-/* ------------------------------------------------------------------ */
-
-static void tile_event_cb(lv_event_t *e) {
-    lv_obj_t *tile = lv_event_get_target(e);
-    lv_event_code_t code = lv_event_get_code(e);
-    unsigned int idx = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
-
-    switch (code) {
-    case LV_EVENT_PRESSED:
-        lv_obj_add_style(tile, zmk_display_style(ZMK_STYLE_TOUCH_PRESSED), 0);
-        break;
-    case LV_EVENT_RELEASED:
-    case LV_EVENT_PRESS_LOST:
-        lv_obj_remove_style(tile, zmk_display_style(ZMK_STYLE_TOUCH_PRESSED), 0);
-        break;
-    case LV_EVENT_CLICKED:
-        fire_idx = idx;
-        zmk_ui_post(&fire_work);
-        break;
-    default:
-        break;
-    }
-}
-
-static void tile_labels_refresh(void) {
-    for (unsigned int i = 0; i < ZMK_VKEYMAP_CELLS; i++) {
-        const struct zmk_vkeymap_cell *cell = zmk_vkeymap_cell_get(soft_layer, i);
-        const char *text;
-        lv_opa_t opa;
-
-        if (tile_labels[i] == NULL || cell == NULL) {
-            continue;
-        }
-        text = cell->name[0] ? cell->name : (cell->behavior[0] ? "?" : "—");
-        /* cached: a reload that changes nothing must not invalidate */
-        zmk_ui_set_text(tile_cache[i], sizeof(tile_cache[i]), tile_labels[i], text);
-
-        /* unassigned tiles sit visually dead */
-        opa = cell->behavior[0] ? LV_OPA_COVER : LV_OPA_30;
-        if (tile_opa_cache[i] != opa) {
-            lv_obj_set_style_bg_opa(tiles[i], opa, 0);
-            tile_opa_cache[i] = opa;
-        }
-    }
-}
-
-static void grid_build(void) {
-    for (unsigned int i = 0; i < ZMK_VKEYMAP_CELLS; i++) {
-        unsigned int row = i / ZMK_VKEYMAP_COLS;
-        unsigned int col = i % ZMK_VKEYMAP_COLS;
-
-        lv_obj_t *tile = lv_obj_create(screen_root);
-
-        lv_obj_remove_style_all(tile);
-        lv_obj_add_style(tile, zmk_display_style(ZMK_STYLE_TOUCH), 0);
-        lv_obj_set_size(tile, TILE_SIZE, TILE_SIZE);
-        lv_obj_set_pos(tile, GRID_X + col * (TILE_SIZE + TILE_GAP),
-                       GRID_Y + row * (TILE_SIZE + TILE_GAP));
-        lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-        /* one dispatcher for all events (review pass: 4 registrations per
-         * tile were 64 event objects for the same function) */
-        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
-        tiles[i] = tile;
-
-        lv_obj_t *lbl = zmk_ui_label(tile, ZMK_STYLE_TEXT_BODY);
-
-        lv_obj_center(lbl);
-        tile_labels[i] = lbl;
-    }
-    tile_labels_refresh();
-}
-
-/* ------------------------------------------------------------------ */
-/* Soft-layer chips                                                    */
-/* ------------------------------------------------------------------ */
-
-static void chip_event_cb(lv_event_t *e) {
-    unsigned int layer = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
-
-    if (layer == soft_layer) {
+    if (nav_cmd != NAV_GOTO) {
         return;
     }
-    soft_layer = layer;
-    LOG_INF("keymap screen soft layer -> %u (%s)", layer, zmk_vkeymap_layer_name(layer));
 
-    for (unsigned int l = 0; l < ZMK_VKEYMAP_LAYERS && l < ARRAY_SIZE(chips); l++) {
-        if (chips[l] == NULL) {
-            continue;
-        }
-        zmk_ui_style_toggle(chips[l], zmk_display_style(ZMK_STYLE_ACCENT), l == soft_layer);
-    }
-    tile_labels_refresh();
-}
+    unsigned int target = nav_goto;
+    zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id((zmk_keymap_layer_index_t)target);
 
-static void chips_build(void) {
-    lv_obj_t *row = zmk_ui_flex(screen_root, LV_FLEX_FLOW_ROW, TILE_GAP);
-
-    lv_obj_align(row, LV_ALIGN_TOP_RIGHT, -ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
-
-    for (unsigned int l = 0; l < ZMK_VKEYMAP_LAYERS; l++) {
-        lv_obj_t *chip = lv_obj_create(row);
-
-        lv_obj_remove_style_all(chip);
-        lv_obj_add_style(chip, zmk_display_style(ZMK_STYLE_TOUCH), 0);
-        lv_obj_set_size(chip, LV_SIZE_CONTENT, ZMK_GRID_TOUCH_MIN);
-        lv_obj_set_style_pad_hor(chip, ZMK_GRID_UNIT * 2, 0);
-        lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(chip, chip_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)l);
-
-        lv_obj_t *lbl = zmk_ui_label(chip, ZMK_STYLE_TEXT_CAPTION);
-
-        lv_label_set_text(lbl, zmk_vkeymap_layer_name(l));
-        lv_obj_center(lbl);
-        chips[l] = chip;
-    }
-    /* active soft layer reads accent-filled (registry style composition) */
-    lv_obj_add_style(chips[soft_layer], zmk_display_style(ZMK_STYLE_ACCENT), 0);
-}
-
-/* ------------------------------------------------------------------ */
-/* Real keymap layer highlight (a13 acceptance)                        */
-/* ------------------------------------------------------------------ */
-
-static char kbd_layer_cache[40];
-
-static void kbd_layer_update(void) {
-    zmk_keymap_layer_index_t idx = zmk_keymap_highest_layer_active();
-    const char *name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(idx));
-    char buf[40];
-
-    if (kbd_layer_label == NULL) {
+    nav_cmd = NAV_IDLE;
+    if (id == ZMK_KEYMAP_LAYER_ID_INVAL) {
         return;
     }
-    if (name != NULL) {
-        snprintk(buf, sizeof(buf), "kbd layer: %s", name);
+
+    LOG_INF("keymap screen layer -> %u", target);
+    zmk_keymap_layer_to(id, false);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tile labels from the keymap                                          */
+/* ------------------------------------------------------------------ */
+
+/* Compact labels for the behaviors a tab1a cell commonly carries. The
+ * device-name strings are the behavior nodes' devicetree node names
+ * (behaviors.dtsi) — what zmk_behavior_get_binding() matches. Unknown
+ * behaviors fall back to the device name, truncated: never a wrong lie,
+ * occasionally verbose. */
+static struct {
+    const char *dev;
+    const char *fmt; /* %lu = param1 */
+} DEV_LABELS[] = {
+    {"momentary_layer", "MO %lu"},
+    {"to_layer", "TO %lu"},
+    {"toggle_layer", "TG %lu"},
+    {"transparent", "…"}, /* inherits the layer below (owner pass 5) */
+    {"key_repeat", "REPT"},
+    {"caps_word", "CAPS"},
+    {"sticky_key", "STKY"},
+    {"bluetooth", "BT %lu"},
+    {"outputs", "OUT %lu"},
+    {"macro", "MAC %lu"},
+};
+
+static void key_press_label(char *out, size_t n, uint32_t page, uint32_t usage) {
+    if (page == HID_USAGE_KEY) {
+        if (usage >= HID_USAGE_KEY_KEYBOARD_A && usage <= HID_USAGE_KEY_KEYBOARD_Z) {
+            snprintk(out, n, "%c", (char)('A' + (usage - HID_USAGE_KEY_KEYBOARD_A)));
+        } else if (usage >= 0x1E && usage <= 0x27) { /* 1..9,0 (HID usages) */
+            snprintk(out, n, "%c", usage == 0x27 ? '0' : (char)('1' + (usage - 0x1E)));
+        } else if (usage >= 0x3A && usage <= 0x45) { /* F1..F12 */
+            snprintk(out, n, "F%lu", usage - 0x3A + 1);
+        } else if (usage >= 0xE0 && usage <= 0xE7) { /* mods: LCTL..LGUI, RCTL..RGUI */
+            static const char *const mods[8] = {"LC", "LS", "LA", "LG",
+                                                "RC", "RS", "RA", "RG"};
+            snprintk(out, n, "%s", mods[usage - 0xE0]);
+        } else {
+            switch (usage) {
+            case 0x28:
+                strcpy(out, "ENT");
+                break;
+            case 0x29:
+                strcpy(out, "ESC");
+                break;
+            case 0x2A:
+                strcpy(out, "BSP");
+                break;
+            case 0x2B:
+                strcpy(out, "TAB");
+                break;
+            case 0x2C:
+                strcpy(out, "SPC");
+                break;
+            case 0x4B:
+                strcpy(out, "PGU");
+                break;
+            case 0x4E:
+                strcpy(out, "PGD");
+                break;
+            case 0x4F:
+                strcpy(out, ">");
+                break;
+            case 0x50:
+                strcpy(out, "<");
+                break;
+            case 0x51:
+                strcpy(out, "v");
+                break;
+            case 0x52:
+                strcpy(out, "^");
+                break;
+            default:
+                strcpy(out, "?");
+                break;
+            }
+        }
+    } else if (page == HID_USAGE_CONSUMER) {
+        switch (usage) {
+        case HID_USAGE_CONSUMER_PLAY_PAUSE:
+            strcpy(out, "PLAY");
+            break;
+        case HID_USAGE_CONSUMER_SCAN_NEXT_TRACK:
+            strcpy(out, "NEXT");
+            break;
+        case HID_USAGE_CONSUMER_SCAN_PREVIOUS_TRACK:
+            strcpy(out, "PREV");
+            break;
+        case HID_USAGE_CONSUMER_STOP:
+            strcpy(out, "STOP");
+            break;
+        case HID_USAGE_CONSUMER_MUTE:
+            strcpy(out, "MUTE");
+            break;
+        case HID_USAGE_CONSUMER_VOLUME_INCREMENT:
+            strcpy(out, "VOL+");
+            break;
+        case HID_USAGE_CONSUMER_VOLUME_DECREMENT:
+            strcpy(out, "VOL-");
+            break;
+        default:
+            strcpy(out, "?");
+            break;
+        }
     } else {
-        snprintk(buf, sizeof(buf), "kbd layer: %u", (unsigned int)idx);
+        strcpy(out, "?");
     }
-    zmk_ui_set_text(kbd_layer_cache, sizeof(kbd_layer_cache), kbd_layer_label, buf);
 }
 
-ZMK_UI_WORK_DEFINE(kbd_layer_work, kbd_layer_work_cb) {
+static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *out, size_t n) {
+    const struct zmk_behavior_binding *b = zmk_keymap_get_layer_binding_at_idx(layer, position);
+
+    if (b == NULL || b->behavior_dev == NULL) {
+        strcpy(out, "—");
+        return;
+    }
+    if (strcmp(b->behavior_dev, "none") == 0) {
+        strcpy(out, "—");
+        return;
+    }
+    if (strcmp(b->behavior_dev, "dynamic_macro") == 0) {
+        const char *name = zmk_dynamic_macro_get_name(b->param1);
+
+        if (name[0] != '\0') {
+            snprintk(out, n, "%s", name);
+        } else {
+            snprintk(out, n, "M%lu", b->param1 + 1);
+        }
+        return;
+    }
+    if (strcmp(b->behavior_dev, "key_press") == 0) {
+        key_press_label(out, n, b->param1, b->param2);
+        return;
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(DEV_LABELS); i++) {
+        if (strcmp(b->behavior_dev, DEV_LABELS[i].dev) == 0) {
+            snprintk(out, n, DEV_LABELS[i].fmt, b->param1);
+            return;
+        }
+    }
+    snprintk(out, n, "%.*s", (int)(n - 1), b->behavior_dev);
+}
+
+/* ------------------------------------------------------------------ */
+/* Refresh (display work queue)                                         */
+/* ------------------------------------------------------------------ */
+
+static void dots_rebuild(unsigned int count);
+static void pip_event_cb(lv_event_t *e);
+
+static unsigned int layer_count(void) {
+    unsigned int n = 0;
+
+    while (n < ZMK_KEYMAP_LAYERS_LEN &&
+           zmk_keymap_layer_index_to_id((zmk_keymap_layer_index_t)n) != ZMK_KEYMAP_LAYER_ID_INVAL) {
+        n++;
+    }
+    return n;
+}
+
+static void dots_rebuild(unsigned int count) {
+    for (unsigned int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
+        if (dots[i] != NULL) {
+            lv_obj_del(dots[i]); /* takes the index label with it */
+            dots[i] = NULL;
+        }
+        dots_num[i] = NULL;
+    }
+
+    for (unsigned int i = 0; i < count; i++) {
+        lv_obj_t *dot = lv_obj_create(dots_row);
+
+        lv_obj_remove_style_all(dot);
+        lv_obj_add_style(dot, zmk_display_style(ZMK_STYLE_LAYER_DOT), 0);
+        /* Each pip is a key-sized button: tap pip n -> layer n (owner
+         * pass 5; this LVGL makes lv_obj clickable by default, but be
+         * explicit since we rely on it). */
+        lv_obj_add_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+        /* Invisible touch padding (owner pass 5: 48x32 is a small target):
+         * +24 px on every side makes the hit box ~96x68 — adjacent pips'
+         * zones butt up exactly (gap is 48), and vertically it spans from
+         * the grid's bottom edge to the screen edge. Pixels unchanged. */
+        lv_obj_set_ext_click_area(dot, TILE_GAP * 3);
+        lv_obj_add_event_cb(dot, pip_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
+
+        /* Layer number in the pip's centre (1-based for humans; ZMK still
+         * calls these layers 0..n-1 in MO/TO bindings and Studio). */
+        lv_obj_t *num = zmk_ui_label(dot, ZMK_STYLE_TEXT_LAYER_NUM);
+
+        lv_obj_center(num);
+        lv_label_set_text_fmt(num, "%u", i + 1);
+        dots[i] = dot;
+        dots_num[i] = num;
+    }
+    /* Fresh pips have no state styles: re-apply from scratch. */
+    memset(dot_active_cache, 0, sizeof(dot_active_cache));
+    dot_count = count;
+}
+
+static void refresh(void) {
+    /* Boot race: settings load raises keymap/layer events long before the
+     * screen manager has built this page (stats_screen.c pattern). */
+    if (screen_root == NULL) {
+        return;
+    }
+
+    zmk_keymap_layer_index_t cur = zmk_keymap_highest_layer_active();
+    zmk_keymap_layer_id_t layer = zmk_keymap_layer_index_to_id(cur);
+    unsigned int count = layer_count();
+    char buf[16];
+
+    if (count != dot_count) {
+        dots_rebuild(count);
+    }
+
+    for (unsigned int i = 0; i < count; i++) {
+        bool active = (i == (unsigned int)cur);
+
+        if (dots[i] == NULL || dot_active_cache[i] == active) {
+            continue;
+        }
+        dot_active_cache[i] = active;
+        zmk_ui_style_toggle(dots[i], zmk_display_style(ZMK_STYLE_LAYER_DOT_ACTIVE), active);
+        if (dots_num[i] != NULL) {
+            zmk_ui_style_toggle(dots_num[i], zmk_display_style(ZMK_STYLE_TEXT_LAYER_NUM_ON),
+                                active);
+        }
+    }
+
+    if (layer == ZMK_KEYMAP_LAYER_ID_INVAL) {
+        return;
+    }
+
+    for (unsigned int pos = 0; pos < ZMK_VKEY_CELLS; pos++) {
+        if (tile_labels[pos] == NULL) {
+            continue;
+        }
+        binding_label(pos + ZMK_PHYS_ROW, layer, buf, sizeof(buf));
+        zmk_ui_set_text(tile_cache[pos], sizeof(tile_cache[pos]), tile_labels[pos], buf);
+    }
+}
+
+static void lit_apply(void) {
+    for (unsigned int pos = 0; pos < ZMK_VKEY_CELLS; pos++) {
+        if (tiles[pos] == NULL) {
+            continue;
+        }
+        zmk_ui_style_toggle(tiles[pos], zmk_display_style(ZMK_STYLE_KEY_TILE_PRESSED),
+                            tile_lit[pos]);
+    }
+}
+
+ZMK_UI_WORK_DEFINE(refresh_work, refresh_work_cb) {
     ARG_UNUSED(work);
-    kbd_layer_update();
+    refresh();
 }
 
+ZMK_UI_WORK_DEFINE(lit_work, lit_work_cb) {
+    ARG_UNUSED(work);
+    lit_apply();
+}
+
+/* ------------------------------------------------------------------ */
+/* Event plumbing                                                       */
+/* ------------------------------------------------------------------ */
+
+/* The grid mirrors the REAL layer (pad10a layer_state_set_user): every
+ * layer change - hardware keys (h04), Studio, nav buttons - relabels. */
 static int layer_changed_event_cb(const zmk_event_t *eh) {
     ARG_UNUSED(eh);
-    if (kbd_layer_label != NULL) {
-        zmk_ui_post(&kbd_layer_work);
-    }
+    zmk_ui_post(&refresh_work);
     return 0;
 }
 
 ZMK_LISTENER(keymap_screen, layer_changed_event_cb);
 ZMK_SUBSCRIPTION(keymap_screen, zmk_layer_state_changed);
 
+/* Bindings/layers changed under us (Studio RPC, vkey shell, settings). */
+static int keymap_changed_event_cb(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    zmk_ui_post(&refresh_work);
+    return 0;
+}
+
+ZMK_LISTENER(keymap_screen_tbl, keymap_changed_event_cb);
+ZMK_SUBSCRIPTION(keymap_screen_tbl, zmk_keymap_changed);
+
+/* Tile flash from the key events themselves (pad10a layers_cb): press-
+ * mode macros hold the tile lit, hardware keys light it too. */
+static int position_changed_event_cb(const zmk_event_t *eh) {
+    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
+
+    if (ev != NULL && ev->position >= ZMK_PHYS_ROW &&
+        ev->position < ZMK_PHYS_ROW + ZMK_VKEY_CELLS) {
+        tile_lit[ev->position - ZMK_PHYS_ROW] = ev->state;
+        zmk_ui_post(&lit_work);
+    }
+    return 0;
+}
+
+ZMK_LISTENER(keymap_screen_pos, position_changed_event_cb);
+ZMK_SUBSCRIPTION(keymap_screen_pos, zmk_position_state_changed);
+
+/* Macro names show on the tiles: rename -> relabel (Studio or shell). */
+static void macro_changed_cb(uint32_t macro_idx) {
+    ARG_UNUSED(macro_idx);
+    zmk_ui_post(&refresh_work);
+}
+
 /* ------------------------------------------------------------------ */
-/* Reload + build                                                      */
+/* Tile input                                                           */
+/* ------------------------------------------------------------------ */
+
+static void tile_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    unsigned int pos = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
+
+    /* All 12 cells are plain keys: touch edges fire the position, the
+     * flash follows the real key event in position_changed_event_cb. */
+    switch (code) {
+    case LV_EVENT_PRESSED:
+        post_edge(pos, true);
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        post_edge(pos, false);
+        break;
+    default:
+        break;
+    }
+}
+
+/* Each layer pip behaves like a normal key (owner pass 5): its own fill
+ * lights up under the finger (key-tile press style) and falls back on
+ * release/press-lost; releasing on the pip jumps straight to that layer. */
+static void pip_event_cb(lv_event_t *e) {
+    lv_obj_t *pip = lv_event_get_target(e);
+    unsigned int idx = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
+
+    switch (lv_event_get_code(e)) {
+    case LV_EVENT_PRESSED:
+        lv_obj_add_style(pip, zmk_display_style(ZMK_STYLE_LAYER_DOT_PRESSED), 0);
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        lv_obj_remove_style(pip, zmk_display_style(ZMK_STYLE_LAYER_DOT_PRESSED), 0);
+        break;
+    case LV_EVENT_CLICKED:
+        nav_goto = idx;
+        nav_cmd = NAV_GOTO;
+        zmk_ui_post(&nav_work);
+        break;
+    default:
+        break;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Build                                                                */
 /* ------------------------------------------------------------------ */
 
 static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
@@ -254,24 +547,49 @@ static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     lv_obj_remove_style_all(screen_root);
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
 
-    lv_obj_t *title = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_TITLE);
+    /* Layer indicator (bottom band, owner pass 5): the band itself is a
+     * passive frame — the individual pips are the buttons (tap pip n ->
+     * layer n, key-style press fill); ‹/› step prev/next with wrap. */
+    lv_obj_t *band = lv_obj_create(screen_root);
 
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, ZMK_GRID_MARGIN);
-    lv_label_set_text(title, "Keys");
+    lv_obj_remove_style_all(band);
+    lv_obj_set_size(band, ZMK_VKEY_COLS * TILE_W + (ZMK_VKEY_COLS - 1) * TILE_GAP, BAND_H);
+    lv_obj_align(band, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_remove_flag(band, LV_OBJ_FLAG_CLICKABLE);
 
-    chips_build();
-    grid_build();
+    dots_row = zmk_ui_flex(band, LV_FLEX_FLOW_ROW, TILE_GAP * 6);
+    lv_obj_remove_flag(dots_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(dots_row);
 
-    kbd_layer_label = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_CAPTION);
-    lv_obj_align(kbd_layer_label, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, ZMK_GRID_MARGIN * 4);
-    kbd_layer_update();
+    for (unsigned int pos = 0; pos < ZMK_VKEY_CELLS; pos++) {
+        unsigned int row = pos / ZMK_VKEY_COLS;
+        unsigned int col = pos % ZMK_VKEY_COLS;
 
-    lv_obj_t *hint = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_CAPTION);
+        lv_obj_t *tile = lv_obj_create(screen_root);
 
-    lv_obj_align(hint, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN * 11, ZMK_GRID_MARGIN * 4);
-    lv_label_set_text(hint, "tap a key to fire it");
+        lv_obj_remove_style_all(tile);
+        lv_obj_add_style(tile, zmk_display_style(ZMK_STYLE_KEY_TILE), 0);
+        lv_obj_set_size(tile, TILE_W, TILE_H);
+        lv_obj_set_pos(tile, GRID_X + col * (TILE_W + TILE_GAP),
+                       GRID_Y + row * (TILE_H + TILE_GAP));
+        lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+        /* user_data = the REAL keymap position (physical row offsets it) */
+        lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_ALL,
+                            (void *)(uintptr_t)(pos + ZMK_PHYS_ROW));
+        tiles[pos] = tile;
+        tile_lit[pos] = false;
 
-    zmk_vkeymap_add_listener(vkeymap_changed_cb);
+        lv_obj_t *lbl = zmk_ui_label(tile, ZMK_STYLE_TEXT_KEY_LABEL);
+
+        lv_obj_set_width(lbl, TILE_W - TILE_GAP);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+        lv_obj_center(lbl);
+        tile_labels[pos] = lbl;
+    }
+
+    zmk_dynamic_macro_add_listener(macro_changed_cb);
+    dots_rebuild(layer_count());
+    refresh();
     return parent;
 }
 

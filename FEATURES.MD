@@ -14,7 +14,8 @@ See `git diff main...HEAD` for the full change set.
 - New `zmk,behavior-dynamic-macro` behavior (`app/src/behaviors/behavior_dynamic_macro.c`): macros editable at runtime, up to `ZMK_DYNAMIC_MACROS_COUNT` (default 16) macros with `ZMK_DYNAMIC_MACROS_MAX_STEPS` (default 64) steps each.
 - Step modes: tap / press / release, with per-step wait time; steps reference any behavior binding.
 - Persistence via Zephyr settings: save / discard / unsaved-changes check (`zmk_dynamic_macro_*` API in `app/include/zmk/behavior_dynamic_macro.h`).
-- Studio RPC macro subsystem for editing macros from ZMK Studio (`app/src/studio/macro_subsystem.c`).
+- Per-macro display names (pad10a parity): `zmk_dynamic_macro_get/set_name()`, persisted as `dynamic_macros/dn/<i>` and staged like steps; change listeners (`zmk_dynamic_macro_add_listener`) let UIs relabel live.
+- Studio RPC macro subsystem for editing macros from ZMK Studio (`app/src/studio/macro_subsystem.c`), incl. `macros.set_macro_name` + `MacroInfo.name`.
 
 ## MPR121 touchpad
 
@@ -36,6 +37,8 @@ See `git diff main...HEAD` for the full change set.
 - Keymaps support multiple bindings per sensor (`ZMK_KEYMAP_SENSORS_MAX_BINDINGS`, default 2: clockwise / counter-clockwise) — `app/src/keymap.c`.
 - Sensor rotate behavior reworked: bindings now read from the keymap (supports Studio-loaded bindings), mouse emulation via binding params, macro bindings for rotate sensors, and encoder layer-handling fix — `app/src/behaviors/behavior_sensor_rotate_common.c`.
 - `ec11` driver: debounce added and trigger handling improved.
+- New `zmk_keymap_changed` event (`app/src/events/keymap_changed.c`): raised whenever the live keymap table changes underneath a UI — runtime binding edits (Studio RPC / `zmk_keymap_set_layer_binding_at_idx`), settings commit/reload, discard, layer add/remove/rename/reorder — so display pages can follow without caching bindings.
+- `vkey` dev shell (`app/src/vkey_shell.c`, `CONFIG_ZMK_VKEY_SHELL`): bench rebind/clear of keymap positions and dynamic-macro renames over console (`vkey show|bind|clear|save|discard|macro-name|macro-save`), speaking the same keymap APIs Studio uses.
 - Sensor init/binding load fixes.
 
 ## Studio RPC

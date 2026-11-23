@@ -374,25 +374,16 @@ menuconfig ZMK_ASSETS
       built by app/scripts/display-assets/pack_assets.py). Players and
       the a15 upload path both speak only this API (backlog a12).
 
-menuconfig ZMK_VKEYMAP
-    bool "Virtual key matrix model (soft-key grid firing ZMK bindings)"
-    help
-      N x M grid of cells, each holding a ZMK behavior binding
-      (dynamic macros by default), fired through
-      zmk_behavior_invoke_binding() like a hardware key. Lives outside
-      the display module so a14's Studio RPC edits the same model
-      (backlog a13); the page lives in the display module.
-
-if ZMK_VKEYMAP
-
-config ZMK_VKEYMAP_SHELL
-    bool "Dev shell (vkeymap show/macro/bind/clear)"
+config ZMK_VKEY_SHELL
+    bool "Key-matrix dev shell (vkey show/bind/clear/save/macro-name)"
     depends on SHELL
     help
-      Bench/dev hook to assign names and bindings to cells without a
-      rebuild; the screen redraws via the model's change listener.
-
-endif # ZMK_VKEYMAP
+      Bench/dev hook to rebind keymap positions and rename dynamic
+      macros over console until the Studio RPC transport is wired
+      (a14). Speaks the same keymap APIs Studio uses, so the tab1a
+      keymap screen and Studio stay consistent. The tab's virtual keys
+      are real keymap positions (zmk-config cobantab1a.keymap) — there
+      is no separate vkeymap model anymore (a13 audit).
 
 menuconfig ZMK_RGB_UNDERGLOW
     bool "RGB Addressable LED Underglow"

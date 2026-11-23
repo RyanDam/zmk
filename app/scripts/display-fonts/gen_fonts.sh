@@ -17,7 +17,7 @@
 #   dmserif      48 display serif   (clock style alt, a09)
 #   inter        28 title  (ASCII + Vietnamese: a10 quote screen)
 #                20 body  16 caption    (ASCII + UI punct: · — …)
-#   barlow       24 calendar days  20 tabular UI alt (stats, a11)
+#   barlow       24 calendar days + key tiles (a13)  20 tabular UI alt (stats, a11)
 #
 set -euo pipefail
 
@@ -52,9 +52,10 @@ VIET_RANGES='0x20-0xFF,0x102-0x103,0x110-0x111,0x1A0-0x1B0,0x300-0x309,0x31B,0x3
 
 # Punctuation the UI text actually carries beyond ASCII (owner report
 # 2026-11-23: missing glyphs drew as squares): middle-dot separators in
-# the pomo dialog facts, the keymap em dash, the debug ellipsis. Needed
-# by every face that renders TEXT_BODY/TEXT_CAPTION/TEXT_TITLE.
-UI_PUNCT='·—…'
+# the pomo dialog facts, the keymap em dash, the debug ellipsis, and the
+# key screen's ‹/› layer-nav tiles (a13 redesign). Needed by every face
+# that renders TEXT_BODY/TEXT_CAPTION/TEXT_TITLE/TEXT_KEY_LABEL.
+UI_PUNCT='·—…‹›'
 
 gen() { # gen <face> <size> <-r range | --symbols syms>
     local face="$1" size="$2"; shift 2
@@ -89,7 +90,7 @@ gen dmserif     48 --symbols "$HERO_SYMBOLS"
 gen inter       28 -r "$VIET_RANGES"
 gen inter       20 -r 0x20-0x7e --symbols "$UI_PUNCT"
 gen inter       16 -r 0x20-0x7e --symbols "$UI_PUNCT"
-gen barlow      24 -r 0x20-0x7e
-gen barlow      20 -r 0x20-0x7e
+gen barlow      24 -r 0x20-0x7e --symbols "$UI_PUNCT"
+gen barlow      20 -r 0x20-0x7e --symbols "$UI_PUNCT"
 
 echo "done -> $OUT"

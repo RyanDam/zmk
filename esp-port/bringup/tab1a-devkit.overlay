@@ -38,23 +38,10 @@
         ;
 };
 
-&keymap_transform0 {
-    columns = <2>;
-    rows = <2>;
-    map = <
-        TRC(0,0) TRC(0,1)
-        TRC(1,0) TRC(1,1)
-    >;
-};
-
-&physical_layout0 {
-    keys  //                     w   h    x    y     rot    rx    ry
-        = <&key_physical_attrs 100 100    0    0       0     0     0>
-        , <&key_physical_attrs 100 100  100    0       0     0     0>
-        , <&key_physical_attrs 100 100    0  100       0     0     0>
-        , <&key_physical_attrs 100 100  100  100       0     0     0>
-        ;
-};
+/* No transform/physical-layout overrides here: the shield dtsi already
+ * carries the final 4x4/16-position shape (physical row + virtual-grid
+ * sentinel cells) that cobantab1a.keymap's bindings require; only the
+ * bench wiring above differs from the product matrix. */
 
 / {
     /* VBAT sense for the harness probe (p01 will add the battery model).

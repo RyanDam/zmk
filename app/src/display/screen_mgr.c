@@ -140,6 +140,10 @@ static void build_dots(struct page *page, int index) {
     for (int i = 0; i < n; i++) {
         lv_obj_t *pip = lv_obj_create(page->obj);
         lv_obj_remove_style_all(pip);
+        /* Readout only: plain lv_obj is CLICKABLE by default in this LVGL,
+         * and these hint pips must never eat a page's touch (they hover
+         * right over the key screen's bottom band). */
+        lv_obj_remove_flag(pip, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_size(pip, dot, dot);
         lv_obj_set_style_radius(pip, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(pip, LV_OPA_COVER, 0);
