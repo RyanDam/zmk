@@ -153,6 +153,9 @@ menuconfig ZMK_DISPLAY_SCREEN_MGR
     bool "Screen manager + touch shell (pages, swipe nav, boot splash, idle backlight)"
     depends on ZMK_DISPLAY_DESIGN_SYSTEM
     select LV_USE_LABEL
+    select LV_USE_IMAGE
+    select LV_USE_RLE
+    select LV_BIN_DECODER_RAM_LOAD
     help
       Replaces the single hard-wired status screen with a page system
       (workspace backlog a08): screens self-register, swipe left/right on
@@ -161,6 +164,11 @@ menuconfig ZMK_DISPLAY_SCREEN_MGR
       unless the blank timeout is 0 — any touch brings it back. Other features
       suppress the idle policy through zmk_display_blank_lock(). Requires the
       design system (a07) for styling.
+
+      The boot splash shows the owner art
+      (src/display/images/coban_bootscreen.c, an LVGL I2+RLE blob:
+      4 grey levels, ~2 KB flash, 38 KB RAM while shown — hence the
+      LV_USE_IMAGE/LV_USE_RLE/LV_BIN_DECODER_RAM_LOAD selects).
 
 if ZMK_DISPLAY_SCREEN_MGR
 

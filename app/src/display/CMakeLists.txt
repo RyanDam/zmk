@@ -19,6 +19,8 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_SCREEN_MGR app PRIVATE
     screen_mgr.c
     boot_screen.c
     ui_helpers.c
+    # boot splash art (generated: app/scripts/display-images/gen_bootscreen.py)
+    images/coban_bootscreen.c
 )
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_POMODORO_SCREEN app PRIVATE
     pomodoro_screen.c
