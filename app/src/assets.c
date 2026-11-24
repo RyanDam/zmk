@@ -81,6 +81,11 @@ int zmk_asset_read(const struct zmk_asset_info *asset, uint32_t off, void *buf, 
     if (off > asset->len || len > asset->len - off) {
         return -EINVAL;
     }
+    if (asset->rom != NULL) {
+        /* Built-in asset: mapped flash inside the app image. */
+        memcpy(buf, asset->rom + off, len);
+        return 0;
+    }
     return read_at(asset->offset + off, buf, len);
 }
 
@@ -104,6 +109,40 @@ const struct zmk_asset_info *zmk_asset_find(const char *name) {
     return NULL;
 }
 
+/* Name lookup inside the live table; @p n bounds it (merge in progress). */
+static int table_find(const char *name, int n) {
+    for (int i = 0; i < n; i++) {
+        if (strcmp(table[i].name, name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Built-in (firmware-embedded) assets first, so every read path works
+ * even with a blank/corrupt partition — see zmk/assets.h. */
+static int table_seed_builtin(void) {
+    int n = 0;
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM_BUILTIN)
+    int bn = 0;
+    const struct zmk_asset_info *bt = zmk_assets_builtin_table(&bn);
+
+    for (int i = 0; i < bn && n < ENTRY_MAX; i++) {
+        if (bt[i].rom == NULL || bt[i].len == 0) {
+            LOG_WRN("built-in '%s' has no data - skipped", bt[i].name);
+            continue;
+        }
+        table[n++] = bt[i];
+    }
+    if (n > 0) {
+        LOG_INF("built-in assets: %d", n);
+    }
+#endif
+
+    return n;
+}
+
 static int probe(void) {
     struct file_header header;
     struct file_entry entries[ENTRY_MAX];
@@ -121,7 +160,7 @@ static int probe(void) {
         return err;
     }
     if (memcmp(header.magic, HEADER_MAGIC, sizeof(header.magic)) != 0) {
-        LOG_INF("no packed asset image (or bad magic) - static theme fallback");
+        LOG_INF("no packed asset image (or bad magic) - built-in/static fallback");
         return -ENOENT;
     }
     count = header.entry_count;
@@ -140,7 +179,7 @@ static int probe(void) {
         return err;
     }
 
-    int kept = 0;
+    int merged = 0;
     uint32_t manifest_end = HEADER_SIZE + count * ENTRY_SIZE;
 
     for (uint32_t i = 0; i < count; i++) {
@@ -153,7 +192,22 @@ static int probe(void) {
             LOG_WRN("asset '%s' out of bounds - skipped", e->name);
             continue;
         }
-        struct zmk_asset_info *info = &table[kept++];
+
+        /* Partition wins by name: override the built-in slot in place,
+         * so a host upload replaces the factory default. */
+        int slot = table_find(e->name, table_count);
+
+        if (slot < 0) {
+            if (table_count >= ENTRY_MAX) {
+                LOG_WRN("asset table full (%u) - skipping '%s'", ENTRY_MAX, e->name);
+                continue;
+            }
+            slot = table_count++;
+        } else if (table[slot].rom != NULL) {
+            LOG_INF("asset '%s' overrides built-in", e->name);
+        }
+
+        struct zmk_asset_info *info = &table[slot];
 
         memcpy(info->name, e->name, sizeof(info->name));
         info->name[sizeof(info->name) - 1] = '\0';
@@ -161,6 +215,8 @@ static int probe(void) {
         info->len = e->len;
         info->kind = e->kind;
         info->fps = e->fps;
+        info->rom = NULL;
+        merged++;
 
         if (info->fps > 15) {
             /* ~16 fps full-refresh ceiling (cobantab1a.overlay:151-169) */
@@ -169,22 +225,28 @@ static int probe(void) {
         }
     }
 
-    table_count = kept;
-    store_ready = kept > 0;
-    LOG_INF("assets: %u entries (%s)", kept, store_ready ? "ready" : "none valid");
+    LOG_INF("partition: %u entries merged, store holds %d", merged, table_count);
     return 0;
 }
 
 static int assets_init(void) {
-    int err = probe();
+    int err;
 
+    table_count = table_seed_builtin();
+    err = probe();
     if (err && err != -ENOENT) {
-        LOG_WRN("asset store offline (err %d)", err);
+        LOG_WRN("asset store offline (err %d) - %d built-in assets remain", err, table_count);
     }
-    table_count = table_count < 0 ? 0 : table_count;
+    store_ready = table_count > 0;
     return 0; /* never blocks boot: fallback is the static theme */
 }
 
+void zmk_assets_probe_early(void) { (void)assets_init(); }
+
 /* After the flash driver; before the display app work queue first
- * renders (APPLICATION + app priority). */
+ * renders (APPLICATION + app priority). The display main also calls
+ * zmk_assets_probe_early() before building pages — persisted-home
+ * restoration can create a page (and its first gif open) before
+ * this init runs, and an unprobed store answers "no assets" to
+ * everything (bench 2026-11-24: home=anim page booted black). */
 SYS_INIT(assets_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);

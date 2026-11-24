@@ -274,6 +274,31 @@ menuconfig ZMK_DISPLAY_ANIM
 
 if ZMK_DISPLAY_ANIM
 
+config ZMK_DISPLAY_ANIM_BUILTIN
+    bool "Ship a built-in default animation in the firmware image"
+    default y
+    help
+      Embeds app/src/display/assets/animbg.gif in the app image and
+      registers it as the built-in "animbg" asset, so a device with a
+      blank assets partition still animates (ESP32 flash is mapped;
+      the store streams from the image through the normal read seam).
+      Partition assets override built-ins by name, so host uploads
+      (a15) keep the last word. ~2 MB of image size. The stock blob
+      is bench fan-art — replace it with licensed art before product
+      units ship (a12 decision note). Replacement GIFs must be full
+      opaque frames (no transparency, no interlacing) — see the
+      encode rules in backlogs/a12.
+
+config ZMK_DISPLAY_ANIM_SCREEN
+    bool "Standalone animation page"
+    default y
+    select LV_USE_GIF
+    help
+      Extra swipeable page (after the keymap page) that plays the
+      animation assets full-bleed: "animbg" first, tap cycles the
+      other GIFs in the store. Plays independently of the animated-
+      background setting, which only scopes other screens.
+
 config ZMK_DISPLAY_ANIM_LOTTIE
     bool "Lottie playback (ThorVG vector renderer)"
     select LV_USE_VECTOR_GRAPHIC

@@ -38,9 +38,24 @@ struct zmk_asset_info {
     char name[ZMK_ASSET_NAME_MAX]; /* without extension, e.g. "animbg"  */
     uint32_t offset;               /* byte offset inside the partition  */
     uint32_t len;
-    uint16_t kind; /* enum zmk_asset_kind               */
-    uint16_t fps;  /* authored frame rate (0 = native)  */
+    uint16_t kind; /* enum zmk_asset_kind                               */
+    uint16_t fps;  /* authored frame rate (0 = native)                  */
+    /** Non-NULL for built-in (firmware-embedded) assets: a
+     *  memory-mapped pointer, served straight from the app image.
+     *  NULL = partition-backed; the zmk_asset_read() seam branches
+     *  on it, so callers never care where a byte comes from. */
+    const uint8_t *rom;
 };
+
+/**
+ * Built-in asset table (a12): assets embedded in the firmware image,
+ * listed first by zmk_asset_count()/get()/find(). Entries in the
+ * `assets` partition with the same name override the built-in slot,
+ * so a host upload always wins over the factory default. The table
+ * exists only with CONFIG_ZMK_DISPLAY_ANIM_BUILTIN; the store seeds
+ * itself from it, callers go through the normal API.
+ */
+const struct zmk_asset_info *zmk_assets_builtin_table(int *count);
 
 /** Number of valid assets in the store (0 = absent/corrupt image). */
 int zmk_asset_count(void);
@@ -54,5 +69,16 @@ const struct zmk_asset_info *zmk_asset_find(const char *name);
 /** Read @p len bytes of asset data from @p off. @retval 0 / -errno */
 int zmk_asset_read(const struct zmk_asset_info *asset, uint32_t off, void *buf, uint32_t len);
 
-/** True once a valid image has been parsed (drives "assets ready" UI). */
+/** True once at least one asset is available (partition image or
+ *  built-in) — drives the "assets ready" UI. */
 bool zmk_asset_ready(void);
+
+/**
+ * Probe the store right now (idempotent enough for the display main's
+ * pre-page-build call: a second pass re-reads the partition and
+ * re-merges; nobody has open handles that early in boot). The SYS_INIT
+ * at APPLICATION priority can land after the display work queue has
+ * already built the restored home page — first gif opens would then
+ * see an unprobed store and fail.
+ */
+void zmk_assets_probe_early(void);

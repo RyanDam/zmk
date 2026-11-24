@@ -37,6 +37,15 @@ target_sources_ifdef(CONFIG_ZMK_STATS app PRIVATE src/stats.c)
 target_sources_ifdef(CONFIG_ZMK_VKEY_SHELL app PRIVATE src/vkey_shell.c)
 target_sources_ifdef(CONFIG_ZMK_VKEY_BENCH app PRIVATE src/vkey_bench.c)
 target_sources_ifdef(CONFIG_ZMK_ASSETS app PRIVATE src/assets.c)
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_ANIM_BUILTIN app PRIVATE src/assets_builtin.c)
+if(CONFIG_ZMK_DISPLAY_ANIM_BUILTIN)
+# The built-in default GIF is embedded at build time via .incbin from
+# src/display/assets/animbg.gif — committing the generated ~13 MB C
+# array is not an option (see src/assets_builtin.c).
+target_compile_definitions(app PRIVATE
+    ZMK_ANIMBG_GIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/src/display/assets/animbg.gif
+)
+endif()
 target_sources(app PRIVATE src/behavior.c)
 target_sources_ifdef(CONFIG_ZMK_KSCAN_SIDEBAND_BEHAVIORS app PRIVATE src/kscan_sideband_behaviors.c)
 target_sources(app PRIVATE src/matrix_transform.c)
