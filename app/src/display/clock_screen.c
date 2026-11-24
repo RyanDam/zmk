@@ -10,7 +10,8 @@
  * visibility) were cut to a deliberate minimum. The page now composes
  * two widget modules in one of three layouts:
  *
- *   CLOCK_ONLY      huge HH:MM centred (144 px), small date caption on top
+ *   CLOCK_ONLY      huge HH:MM centred (144 px), small date caption
+ *                   just above the digits (pomodoro-focus spacing)
  *   CALENDAR_ONLY   year top-left + month name top-right, full month grid
  *   FUSION          stacked clock (hour over minute, 72 px) left,
  *                   month grid right, symmetric split
@@ -178,11 +179,36 @@ static void add_calendar(bool header, uint16_t header_w, uint16_t grid_w, uint16
 
 /* ---------------- layout 0: CLOCK ONLY ------------------------------- */
 
-static void build_clock_only(void) {
-    l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
-    lv_obj_align(l_date, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN);
+/* Date caption follows the digit box, not the page — the pomodoro
+ * focus caption's mechanism (pomodoro_screen.c CAP_ABOVE_COUNTDOWN,
+ * anchored 32 px above the identical 144 px HERO_XL digit box) with
+ * more air: 48 px (owner pass 2026-11-24: 32 still too tight, and
+ * pinned at the page top it sat at the screen edge). */
+#define CLOCK_DATE_ABOVE (ZMK_GRID_UNIT * 6)
 
+static void build_clock_only(void) {
+    /* Hero exactly at screen centre (owner pass 2026-11-24); the date
+     * hangs above it on the same vertical axis. */
     add_clock(clock_root, ZMK_CLOCK_SIZE_HUGE, LV_ALIGN_CENTER, 0, 0);
+
+    l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
+
+    /* Page-wide box + centred text (pomodoro caption's trick):
+     * lv_obj_align_to positions once, against the label's CURRENT
+     * width — an auto-sized label is still empty here (width 0), so
+     * it would start at the centre line and grow rightwards into a
+     * right-aligned look when the date is written. A fixed full-width
+     * box is symmetric around the centre line for any text. */
+    lv_obj_set_width(l_date, lv_pct(100));
+    lv_obj_set_style_text_align(l_date, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *hero = zmk_clock_widget_obj(clock_w);
+
+    if (hero != NULL) {
+        lv_obj_align_to(l_date, hero, LV_ALIGN_TOP_MID, 0, -CLOCK_DATE_ABOVE);
+    } else {
+        lv_obj_align(l_date, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN);
+    }
 }
 
 /* ---------------- layout 1: CALENDAR ONLY ---------------------------- */
