@@ -14,7 +14,6 @@
 
 #include <lvgl.h>
 
-#include "anim.h"
 #include "styles.h"
 
 /* Owner art 2026-11-23 (full-bleed logo, replaces the text splash):
@@ -33,14 +32,13 @@ lv_obj_t *zmk_display_boot_screen_create(void) {
     lv_image_set_src(img, &coban_bootscreen);
     lv_obj_center(img);
 
-    /* a12: boot animation (when the "boot" asset exists) over the art */
-#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
-    if (zmk_anim_available("boot")) {
-        if (zmk_anim_create(screen, "boot") == NULL) {
-            /* keep the static splash; logged once by the store/player */
-        }
-    }
-#endif
+    /* The splash is the brand art, always (owner ruling 2026-11-24).
+     * a12 briefly layered a "boot" GIF asset over it; the only such
+     * asset ever made was a dev spinner that sat right on the logo,
+     * and once GIFs opened for real (tell_cb fix) it read as "the
+     * spinner replaced the boot screen". No asset may cover the
+     * splash; if a15 ever wants a boot animation it needs its own
+     * design, not an overlay here. */
 
     return screen;
 }
