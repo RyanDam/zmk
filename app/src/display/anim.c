@@ -17,6 +17,7 @@
  * the DELETE event.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
@@ -368,6 +369,59 @@ static lv_obj_t *anim_gif_player(lv_obj_t *parent, const char *asset, lv_event_c
     return gif;
 }
 
+/*
+ * Black scrim between the still-frame GIF and the page's widgets
+ * (owner 2026-11-24: busy art makes screen content hard to read).
+ * Rides the shared player's lifecycle exactly - created, re-parented
+ * and deleted together, pinned directly above it (index 1) and below
+ * the widgets - and never clickable/scrollable, so touch passes
+ * through. Raw LVGL opacity: CONFIG default 51 (= 20%); 0 disables. The
+ * 200 ms sync tick is the only writer of the LVGL style, so the
+ * shell/settings thread stays out of the display thread's tree.
+ */
+static lv_obj_t *bg_tint;
+static uint8_t anim_tint_opa = CONFIG_ZMK_DISPLAY_ANIM_TINT_OPA;
+static uint8_t tint_applied; /* opa the live object currently shows */
+
+static void anim_tint_died(lv_event_t *e) {
+    ARG_UNUSED(e);
+    bg_tint = NULL;
+}
+
+static void anim_tint_sync(lv_obj_t *target) {
+    bool on_player;
+
+    if (anim_tint_opa == 0) {
+        if (bg_tint != NULL) {
+            lv_obj_delete(bg_tint);
+        }
+        return;
+    }
+
+    if (bg_tint == NULL) {
+        bg_tint = lv_obj_create(target);
+        lv_obj_remove_style_all(bg_tint);
+        lv_obj_set_size(bg_tint, lv_pct(100), lv_pct(100));
+        lv_obj_set_style_bg_color(bg_tint, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(bg_tint, anim_tint_opa, 0);
+        lv_obj_remove_flag(bg_tint, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(bg_tint, anim_tint_died, LV_EVENT_DELETE, NULL);
+    } else if (lv_obj_get_parent(bg_tint) != target) {
+        lv_obj_set_parent(bg_tint, target);
+    }
+
+    if (tint_applied != anim_tint_opa) { /* invalidate only on change */
+        lv_obj_set_style_bg_opa(bg_tint, anim_tint_opa, 0);
+        tint_applied = anim_tint_opa;
+    }
+
+    /* Z-order, explicitly: the page's widgets were built before the
+     * scrim arrives, so a fresh child would land ON TOP of them -
+     * the same last-child trap as the player (pin to index 0/1). */
+    on_player = bg_shared != NULL && lv_obj_get_parent(bg_shared) == target;
+    lv_obj_move_to_index(bg_tint, on_player ? 1 : 0);
+}
+
 /* pad10a rule (owner 2026-11-24, ported from Pad 10A's behaviour):
  * animation plays ONLY on the dedicated anim page. Everywhere else
  * the shared GIF background is a frozen frame: the widget stays
@@ -397,6 +451,9 @@ static void anim_bg_sync(void) {
     if (!zmk_anim_bg_enabled()) {
         if (bg_shared != NULL) {
             lv_obj_delete(bg_shared); /* clears bg_shared via the cb */
+        }
+        if (bg_tint != NULL) {
+            lv_obj_delete(bg_tint);
         }
         return;
     }
@@ -430,13 +487,13 @@ static void anim_bg_sync(void) {
 
             lv_timer_set_repeat_count(freeze, 1); /* fires once, self-deletes */
         }
-        return;
-    }
-    if (lv_obj_get_parent(bg_shared) != target) {
+    } else if (lv_obj_get_parent(bg_shared) != target) {
         lv_obj_set_parent(bg_shared, target);
         lv_obj_move_to_index(bg_shared, 0); /* background = bottom */
     }
     /* No resume: backgrounds are still frames off the anim page. */
+
+    anim_tint_sync(target); /* readability scrim, index 1 (see above) */
 }
 
 static void anim_tick_cb(lv_timer_t *timer) {
@@ -533,18 +590,41 @@ void zmk_anim_bg_set(bool on) {
     LOG_INF("anim bg %s", on ? "on" : "off");
 }
 
+uint8_t zmk_anim_tint_get(void) { return anim_tint_opa; }
+
+void zmk_anim_tint_set(uint8_t opa) {
+    anim_tint_opa = opa;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    zmk_settings_blob_save("display/anim/tint", &opa, sizeof(opa), "anim tint");
+#endif
+    LOG_INF("anim tint: opa %u%s", opa, opa == 0 ? " (off)" : "");
+    /* LVGL style applied by the next 200 ms sync tick: the display
+     * thread owns the object tree, the shell thread does not. */
+}
+
 #if IS_ENABLED(CONFIG_SETTINGS)
 static int anim_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                     void *cb_arg) {
     uint8_t val;
     int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "bg", &val, sizeof(val), "anim bg");
 
-    if (err <= 0) {
-        return err;
+    if (err != 0) {
+        if (err < 0) {
+            return err;
+        }
+        anim_bg = val != 0;
+        LOG_INF("anim bg setting loaded: %s", anim_bg ? "on" : "off");
+        return 0;
     }
-    anim_bg = val != 0;
-    LOG_INF("anim bg setting loaded: %s", anim_bg ? "on" : "off");
-    return 0;
+
+    err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "tint", &val, sizeof(val),
+                                 "anim tint");
+    if (err > 0) {
+        anim_tint_opa = val;
+        LOG_INF("anim tint setting loaded: opa %u", val);
+        return 0;
+    }
+    return err;
 }
 
 SETTINGS_STATIC_HANDLER_DEFINE(display_anim, "display/anim", NULL, anim_settings_handle_set, NULL,
@@ -571,13 +651,26 @@ static int cmd_animbg(const struct shell *sh, size_t argc, char **argv) {
 
             shell_print(sh, "  %-16s kind=%u len=%u fps=%u", a->name, a->kind, a->len, a->fps);
         }
+    } else if (argc >= 2 && strcmp(argv[1], "tint") == 0) {
+        if (argc == 3) {
+            char *end;
+            long v = strtol(argv[2], &end, 10);
+
+            if (*end != '\0' || v < 0 || v > 255) {
+                shell_error(sh, "tint opa must be 0-255");
+                return -EINVAL;
+            }
+            zmk_anim_tint_set((uint8_t)v);
+        }
+        shell_print(sh, "anim tint opa: %u", zmk_anim_tint_get());
     } else {
-        shell_print(sh, "anim bg: %s (usage: animbg on|off|list)",
+        shell_print(sh, "anim bg: %s (usage: animbg on|off|list|tint [0-255])",
                     zmk_anim_bg_enabled() ? "on" : "off");
     }
     return 0;
 }
 
-SHELL_CMD_REGISTER(animbg, NULL, "Animated background toggle + asset list (a12)", cmd_animbg);
+SHELL_CMD_REGISTER(animbg, NULL, "Animated background toggle + asset list + tint (a12)",
+                   cmd_animbg);
 
 #endif /* CONFIG_SHELL */

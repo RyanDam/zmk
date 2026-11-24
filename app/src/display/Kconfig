@@ -299,6 +299,19 @@ config ZMK_DISPLAY_ANIM_SCREEN
       other GIFs in the store. Plays independently of the animated-
       background setting, which only scopes other screens.
 
+config ZMK_DISPLAY_ANIM_TINT_OPA
+    int "Black tint opacity over page-background GIFs (0-255)"
+    range 0 255
+    default 51
+    help
+      Flat black scrim between the still background GIF and each
+      page's widgets, so screen content stays readable over busy
+      art (a12 owner 2026-11-24; default 51 = 20%, the owner's
+      tuned value). Applies to every page except the dedicated
+      anim page, and only while the animated background itself is
+      on. 0 disables. Runtime knob: `animbg tint <0-255>`,
+      persisted at settings "display/anim" key "tint".
+
 config ZMK_DISPLAY_ANIM_LOTTIE
     bool "Lottie playback (ThorVG vector renderer)"
     select LV_USE_VECTOR_GRAPHIC

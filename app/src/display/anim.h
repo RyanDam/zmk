@@ -27,6 +27,17 @@ lv_obj_t *zmk_anim_gif_create(lv_obj_t *parent, const char *name);
 /** True if a named asset exists and this build can play it. */
 bool zmk_anim_available(const char *name);
 
+/**
+ * Background scrim over the still-frame GIF on non-anim pages
+ * (a12 owner 2026-11-24: busy art makes content hard to read).
+ * Raw LVGL opacity 0-255, black; 0 disables. Kconfig
+ * ZMK_DISPLAY_ANIM_TINT_OPA is the default; runtime changes via
+ * zmk_anim_tint_set() (shell: `animbg tint <0-255>`) apply within
+ * one 200 ms sync tick and persist at settings display/anim/tint.
+ */
+uint8_t zmk_anim_tint_get(void);
+void zmk_anim_tint_set(uint8_t opa);
+
 /** Create the named GIF *or* Lottie (dispatch on the asset kind). */
 lv_obj_t *zmk_anim_create(lv_obj_t *parent, const char *name);
 
