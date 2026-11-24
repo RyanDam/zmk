@@ -385,6 +385,15 @@ config ZMK_VKEY_SHELL
       are real keymap positions (zmk-config cobantab1a.keymap) — there
       is no separate vkeymap model anymore (a13 audit).
 
+config ZMK_VKEY_BENCH
+    bool "Firmware-resident keymap tap loop (BLE wedge bench)"
+    help
+      Raises real keymap press+release edges (position 9, 80 ms hold)
+      every 500 ms starting 12 s after boot — a self-typing HID
+      notification source that needs no console, so BLE wedge repros
+      survive a zero-console build (backlog c03). Off in product
+      builds; enable via bringup confs only.
+
 menuconfig ZMK_RGB_UNDERGLOW
     bool "RGB Addressable LED Underglow"
     select LED_STRIP
