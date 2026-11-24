@@ -22,6 +22,10 @@
 #                Extra devicetree overlay, applied after the shield's own one
 #                (e.g. esp-port/bringup/spi-path.overlay, which puts the panel
 #                back on the SPI controller instead of the MSPI one)
+#   -M, --cmake-arg <arg>
+#                Extra raw CMake argument for the build (repeatable), e.g.
+#                -M "-DEXTRA_CFLAGS=-DCONFIG_BT_LE_50_FEATURES_SUPPORTED=0"
+#                for preprocessor-level bring-up experiments
 #   -h, --help   Show help
 #
 # The cobantab1a shield (overlay + keymap + conf) lives in the external ZMK
@@ -105,6 +109,7 @@ DO_FLASH=no
 NO_BLOBS=no
 CONF_FILE=""
 OVERLAY_FILE=""
+CMAKE_ARGS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -130,6 +135,15 @@ while [ $# -gt 0 ]; do
         exit 2
       fi
       OVERLAY_FILE="$2"
+      shift
+      ;;
+    -M|--cmake-arg)
+      if [ $# -lt 2 ]; then
+        echo "ERROR: $1 needs an argument" >&2
+        usage >&2
+        exit 2
+      fi
+      CMAKE_ARGS="$CMAKE_ARGS $2"
       shift
       ;;
     -h|--help)
@@ -212,7 +226,7 @@ echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
 # fallback, so it goes on the command line.
 west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
-     -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS
+     -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS $CMAKE_ARGS
 
 if [ "$DO_FLASH" = yes ]; then
   echo "=== flashing $BUILD_DIR ==="

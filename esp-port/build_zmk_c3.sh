@@ -62,6 +62,14 @@ while [ $# -gt 0 ]; do
     -f|--flash)
       DO_FLASH=yes
       ;;
+    -C|--conf)
+      if [ $# -lt 2 ]; then
+        echo "ERROR: $1 needs an argument" >&2
+        exit 2
+      fi
+      CONF_FILE="$2"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -108,6 +116,9 @@ SHIELD=esp32c3_matrix_fixture
 BUILD_DIR=build/c3-zmk
 
 EXTRA_ARGS=""
+if [ -n "${CONF_FILE:-}" ]; then
+  EXTRA_ARGS="$EXTRA_ARGS -DEXTRA_CONF_FILE=$ROOT/$CONF_FILE"
+fi
 if [ "$NO_BLOBS" = yes ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DCONFIG_BUILD_ONLY_NO_BLOBS=y"
 fi

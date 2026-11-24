@@ -1,0 +1,21 @@
+[    0.0s] port /dev/cu.usbmodem83101
+[    0.1s] RTS reset pulsed
+[    2.5s] link line: True
+[    4.5s] shell alive; slow hammer (0.7 Hz)
+[   13.2s] shell silent — confirming
+[   14.8s] SHELL DEAF at tap 5
+[   14.8s] ============================================================
+[   14.8s] >>> SHELL DEAF: USER — look at Mac Bluetooth menu NOW and
+[   14.8s] >>> NEXT 60s: is 'Coban Tab 1A' still CONNECTED? then
+[   14.8s] ============================================================
+[   14.8s] shell revival probe for 60s (BLE visual check meanwhile)...
+[   16.4s] SHELL=deaf
+[   23.0s] SHELL=deaf
+[   29.6s] SHELL=deaf
+[   36.2s] SHELL=deaf
+[   42.8s] SHELL=deaf
+[   49.4s] SHELL=deaf
+[   56.0s] SHELL=deaf
+[   62.7s] SHELL=deaf
+[   69.3s] SHELL=deaf
+[   75.9s] SHELL=deaf

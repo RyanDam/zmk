@@ -1,0 +1,107 @@
+diff --git a/app/Kconfig b/app/Kconfig
+index 1ba8e621..a49d9cf2 100644
+--- a/app/Kconfig
++++ b/app/Kconfig
+@@ -176,9 +176,8 @@ config ZMK_USB_DEVICE
+ menuconfig ZMK_BLE
+     bool "BLE (HID over GATT)"
+     select BT
+-    select BT_SMP
+-    select BT_SMP_SC_PAIR_ONLY
+-    select BT_SMP_APP_PAIRING_ACCEPT
++    # a13 A19 bench experiment: SMP selects lifted so BT_SMP=n can be
++    # set (open-link wedge discrimination). REVERT after the experiment.
+     select BT_PERIPHERAL
+     select BT_DIS
+     imply BT_DEVICE_NAME_DYNAMIC
+@@ -385,6 +384,15 @@ config ZMK_VKEY_SHELL
+       are real keymap positions (zmk-config cobantab1a.keymap) — there
+       is no separate vkeymap model anymore (a13 audit).
+ 
++config ZMK_VKEY_BENCH
++    bool "Firmware-resident position-edge hammer (a13 forensics)"
++    help
++      Brings up BLE like normal, then self-fires press/release on one
++      keymap position forever from the system workqueue — with SHELL
++      and LOG compiled OUT, so the notification path is exercised with
++      ZERO console traffic. Isolation probe for the a13 wedge (console
++      vs pure BLE TX). Bench only; never product.
++
+ menuconfig ZMK_RGB_UNDERGLOW
+     bool "RGB Addressable LED Underglow"
+     select LED_STRIP
+diff --git a/app/src/ble.c b/app/src/ble.c
+index f363b1a7..a5544bc8 100644
+--- a/app/src/ble.c
++++ b/app/src/ble.c
+@@ -601,7 +601,9 @@ static void le_param_updated(struct bt_conn *conn, uint16_t interval, uint16_t l
+ static struct bt_conn_cb conn_callbacks = {
+     .connected = connected,
+     .disconnected = disconnected,
++#ifdef CONFIG_BT_SMP
+     .security_changed = security_changed,
++#endif
+     .le_param_updated = le_param_updated,
+ };
+ 
+@@ -689,6 +691,7 @@ static void auth_pairing_complete(struct bt_conn *conn, bool bonded) {
+     update_advertising();
+ };
+ 
++#ifdef CONFIG_BT_SMP /* a19 A19: auth API vanishes without SMP */
+ static struct bt_conn_auth_cb zmk_ble_auth_cb_display = {
+     .pairing_accept = auth_pairing_accept,
+ // .passkey_display = auth_passkey_display,
+@@ -702,6 +705,7 @@ static struct bt_conn_auth_cb zmk_ble_auth_cb_display = {
+ static struct bt_conn_auth_info_cb zmk_ble_auth_info_cb_display = {
+     .pairing_complete = auth_pairing_complete,
+ };
++#endif /* CONFIG_BT_SMP (auth cbs) */
+ 
+ static void zmk_ble_ready(int err) {
+     LOG_DBG("ready? %d", err);
+@@ -745,8 +749,10 @@ static int zmk_ble_complete_startup(void) {
+ #endif // IS_ENABLED(CONFIG_ZMK_BLE_CLEAR_BONDS_ON_START)
+ 
+     bt_conn_cb_register(&conn_callbacks);
++#ifdef CONFIG_BT_SMP
+     bt_conn_auth_cb_register(&zmk_ble_auth_cb_display);
+     bt_conn_auth_info_cb_register(&zmk_ble_auth_info_cb_display);
++#endif
+ 
+     zmk_ble_ready(0);
+ 
+diff --git a/app/src/hog.c b/app/src/hog.c
+index c7d9b861..aa7b2d2c 100644
+--- a/app/src/hog.c
++++ b/app/src/hog.c
+@@ -324,7 +324,9 @@ void send_keyboard_report_callback(struct k_work *work) {
+ 
+         int err = bt_gatt_notify_cb(conn, &notify_params);
+         if (err == -EPERM) {
++#ifdef CONFIG_BT_SMP
+             bt_conn_set_security(conn, BT_SECURITY_L2);
++#endif
+         } else if (err) {
+             LOG_DBG("Error notifying %d", err);
+         }
+@@ -376,7 +378,9 @@ void send_consumer_report_callback(struct k_work *work) {
+ 
+         int err = bt_gatt_notify_cb(conn, &notify_params);
+         if (err == -EPERM) {
++#ifdef CONFIG_BT_SMP
+             bt_conn_set_security(conn, BT_SECURITY_L2);
++#endif
+         } else if (err) {
+             LOG_DBG("Error notifying %d", err);
+         }
+@@ -429,7 +433,9 @@ void send_mouse_report_callback(struct k_work *work) {
+ 
+         int err = bt_gatt_notify_cb(conn, &notify_params);
+         if (err == -EPERM) {
++#ifdef CONFIG_BT_SMP
+             bt_conn_set_security(conn, BT_SECURITY_L2);
++#endif
+         } else if (err) {
+             LOG_DBG("Error notifying %d", err);
+         }

@@ -46,6 +46,31 @@ Still useful without any instrument code:
   side issues (storage error 261 + HCI timeout assert). See
   [`../tab1a-bench-runbook.md`](../tab1a-bench-runbook.md).
 
+**c03 toolbox (ESP32-S3 live-BLE wedge — full context in the workspace
+backlog `backlogs/c03-s3-ble-link-wedge.md`):** the 2026-11-24 bisection
+confs of dead ends were cleaned out; what remains is the working set.
+
+- `tab1a-ble-noconsole.conf` — minimal self-typing repro (console/shell
+  compiled out, `CONFIG_ZMK_VKEY_BENCH` raises real HID key edges every
+  500 ms). ~10 s to wedge once a central reconnects.
+- `tab1a-ble-rlfix.conf` — same with console + link logging: capture the
+  mode-(b) last words (`security_changed` → `le_param_updated` → silence).
+- `tab1a-ble-smpoff.conf` — A19 open-link build (SMP fully off; phones
+  cannot pair with it by design). Needs
+  `a19-smpoff-experiment.patch` (source hacks are reverted in the tree —
+  the Kconfig hunk must never be committed).
+- `c3-ble-bench.conf` — the ESP32-C3 CONTROL build (same bench, survives;
+  this is what isolates the bug to the S3 side).
+- `c3-central/` + `c3-central-capture.py` — open-link BLE central for
+  esp32c3_supermini (no pairing; logs NOTIFY counts, disconnect reason,
+  time-to-death). Built once, never run: the c03 next-step #1.
+- `patches/hci_esp32-rl-emul-and-recv-wait.patch` — the two zephyr driver
+  experiments (zephyr/ is reset clean; re-apply from here if needed).
+- `logs/` — preserved death evidence (`dumpall.log` = mode-(b) last
+  words; `repro-v3.log` = tap-5 burst death).
+- `a13-upstream-report-draft.md` — near-complete upstream report, ready
+  to file.
+
 Remember the one rule these experiments ran on: the panel has no reset line, so
 **a USB unplug is its only reset** — a picture surviving a reflash is a picture
 the new firmware did not touch, and a polluted panel (stray sleep commands)

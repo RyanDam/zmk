@@ -1,0 +1,90 @@
+diff --git a/drivers/bluetooth/hci/hci_esp32.c b/drivers/bluetooth/hci/hci_esp32.c
+index cc355c469b..d7b7fd8e2b 100644
+--- a/drivers/bluetooth/hci/hci_esp32.c
++++ b/drivers/bluetooth/hci/hci_esp32.c
+@@ -490,6 +490,41 @@ static uint16_t bt_esp32_get_vs_opcode(struct net_buf *buf)
+ 	return sys_le16_to_cpu(hdr->opcode);
+ }
+ 
++/* a13 experiment (2026-11-24): the ESP32-S3 BLE controller blob dies a
++ * SoC-level, JTAG-deaf deadlock with the resolving-list commands as the
++ * last coherent words (A5/A6 BT-DBG logs end at "opcode 0x2027"
++ * (LE Add Device to Resolving List) on every bonded reconnect — which
++ * is exactly the repro: RTS reset -> bonded auto-reconnect -> wedges
++ * seconds later once traffic moves). CONFIG_BT_PRIVACY is off, so the
++ * host only programs the RL for bonded-peer bookkeeping; a peripheral
++ * never needs the controller to resolve anything. Emulate the RL
++ * commands here, like the driver already emulates the VS ones.
++ */
++static int bt_esp32_handle_rl_cmd(const struct device *dev, struct net_buf *buf)
++{
++	uint16_t opcode = bt_esp32_get_vs_opcode(buf);
++	uint8_t status = 0;
++
++	switch (opcode) {
++	case BT_HCI_OP_LE_ADD_DEV_TO_RL:
++	case BT_HCI_OP_LE_REM_DEV_FROM_RL:
++	case BT_HCI_OP_LE_CLEAR_RL:
++		LOG_WRN("RL cmd 0x%04x emulated (blob-crash workaround)", opcode);
++		return bt_esp32_vs_send_cmd_complete(dev, opcode, &status, sizeof(status));
++	case BT_HCI_OP_LE_READ_RL_SIZE: {
++		struct bt_hci_rp_le_read_rl_size rp = { .status = 0, .rl_size = 0 };
++
++		return bt_esp32_vs_send_cmd_complete(dev, opcode, &rp, sizeof(rp));
++	}
++	case BT_HCI_OP_LE_READ_PEER_RPA:
++	case BT_HCI_OP_LE_READ_LOCAL_RPA:
++		status = BT_HCI_ERR_UNKNOWN_CONN_ID;
++		return bt_esp32_vs_send_cmd_complete(dev, opcode, &status, sizeof(status));
++	default:
++		return -ENOTSUP;
++	}
++}
++
+ static int bt_esp32_handle_vs_cmd(const struct device *dev, struct net_buf *buf)
+ {
+ 	uint16_t opcode;
+@@ -745,19 +780,39 @@ static int bt_esp32_send(const struct device *dev, struct net_buf *buf)
+ 		return err;
+ 	}
+ 
++	err = bt_esp32_handle_rl_cmd(dev, buf);
++	if (err == 0) {
++		net_buf_unref(buf);
++		return 0;
++	}
++
+ 	err = 0;
+ 
+ 	if (k_sem_take(&hci_send_sem, HCI_BT_ESP32_TIMEOUT) != 0) {
+ 		LOG_ERR("Send packet timeout error");
+ 		err = -ETIMEDOUT;
+-	} else {
+-		if (!esp_vhci_host_check_send_available()) {
+-			LOG_WRN("VHCI not available, sending anyway");
++	}
++
++	/* a13 experiment: never force a packet into the vendor blob while
++	 * its VHCI input is full — that corrupts the controller FIFO and
++	 * wedges the whole chip silently (observed as instant death on the
++	 * first HID notification burst with a live link). Wait for the
++	 * navii (send-available) callback instead.
++	 */
++	while (!err) {
++		if (esp_vhci_host_check_send_available()) {
++			break;
++		}
++		LOG_WRN("VHCI not available, waiting for controller");
++		if (k_sem_take(&hci_send_sem, HCI_BT_ESP32_TIMEOUT) != 0) {
++			LOG_ERR("Send packet timeout waiting for VHCI");
++			err = -ETIMEDOUT;
++			break;
+ 		}
+-		esp_vhci_host_send_packet(buf->data, buf->len);
+ 	}
+ 
+ 	if (!err) {
++		esp_vhci_host_send_packet(buf->data, buf->len);
+ 		net_buf_unref(buf);
+ 	}
+ 
