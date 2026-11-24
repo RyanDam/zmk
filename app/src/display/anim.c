@@ -224,7 +224,7 @@ lv_obj_t *zmk_anim_gif_create(lv_obj_t *parent, const char *name) {
     lv_obj_center(gif);
     lv_obj_remove_flag(gif, LV_OBJ_FLAG_CLICKABLE);
 
-    LOG_INF("anim: playing gif '%s' (%u bytes, %u fps spec)", asset->name, asset->len, asset->fps);
+    LOG_INF("anim: gif '%s' open (%u bytes, %u fps spec)", asset->name, asset->len, asset->fps);
     return gif;
 }
 
@@ -340,9 +340,10 @@ static struct anim_slot anim_slots[ANIM_SLOTS_MAX];
 static lv_timer_t *anim_tick_timer;
 
 /* LVGL auto-pauses an invisible gif from its own next tick (the timer
- * stays paused, nothing re-checks visibility); resume belongs to us.
- * One shared timer walks the registrations — resuming an
- * already-running gif is a no-op, and hidden players never decode. */
+ * stays paused, nothing re-checks visibility). Only the dedicated
+ * full-page players animate, so the shared timer resumes those when
+ * their page shows; the shared background stays paused everywhere
+ * (pad10a still-frame rule above). */
 static void anim_shared_died(lv_event_t *e) {
     ARG_UNUSED(e);
     bg_shared = NULL;
@@ -365,6 +366,28 @@ static lv_obj_t *anim_gif_player(lv_obj_t *parent, const char *asset, lv_event_c
     lv_obj_add_event_cb(gif, died, LV_EVENT_DELETE, user);
 
     return gif;
+}
+
+/* pad10a rule (owner 2026-11-24, ported from Pad 10A's behaviour):
+ * animation plays ONLY on the dedicated anim page. Everywhere else
+ * the shared GIF background is a frozen frame: the widget stays
+ * visible under the page's widgets (art without the decoder cost),
+ * and nothing about the setting changes - `animbg on` shows the
+ * still, `off` removes it. The player decodes one frame after
+ * creation, then we pause its timer; a frozen player costs zero
+ * decode time and auto-pauses while hidden. */
+#define ANIM_BG_FREEZE_MS 300 /* >= one art frame (100-120 ms) + jitter */
+
+static void anim_bg_freeze_cb(lv_timer_t *timer) {
+    lv_obj_t *gif = lv_timer_get_user_data(timer);
+
+    /* Identity guard: a player deleted before this fired is gone
+     * (bg_shared nulled by the DELETE event); a *freshly recreated*
+     * one matching identity gets frozen a frame early at worst,
+     * and the next toggle restores the still. */
+    if (bg_shared == gif) {
+        lv_gif_pause(gif);
+    }
 }
 
 static void anim_bg_sync(void) {
@@ -393,13 +416,27 @@ static void anim_bg_sync(void) {
 
     if (bg_shared == NULL) {
         bg_shared = anim_gif_player(target, "animbg", anim_shared_died, NULL);
+        if (bg_shared != NULL) {
+            /* The page is fully built when the player materialises
+             * (creation happens on the tick, not at attach), so the
+             * gif arrives as the LAST child - on top of everything,
+             * and its parent never "changes" afterwards, so the
+             * re-parent path below would never demote it. Pin it to
+             * the bottom or the page renders as just the anim frame
+             * (bench 2026-11-24). */
+            lv_obj_move_to_index(bg_shared, 0);
+            lv_timer_t *freeze =
+                lv_timer_create(anim_bg_freeze_cb, ANIM_BG_FREEZE_MS, bg_shared);
+
+            lv_timer_set_repeat_count(freeze, 1); /* fires once, self-deletes */
+        }
         return;
     }
     if (lv_obj_get_parent(bg_shared) != target) {
         lv_obj_set_parent(bg_shared, target);
         lv_obj_move_to_index(bg_shared, 0); /* background = bottom */
     }
-    lv_gif_resume(bg_shared);
+    /* No resume: backgrounds are still frames off the anim page. */
 }
 
 static void anim_tick_cb(lv_timer_t *timer) {
