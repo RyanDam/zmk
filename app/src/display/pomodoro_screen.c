@@ -67,6 +67,9 @@
 
 #include "styles.h"
 #include "ui_helpers.h"
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+#include "anim.h"
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -654,6 +657,12 @@ static lv_obj_t *pomo_build(lv_obj_t *parent) {
     ui.root = lv_obj_create(parent);
     lv_obj_remove_style_all(ui.root);
     lv_obj_set_size(ui.root, lv_pct(100), lv_pct(100));
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+    /* a12 owner pass: animated background under the disc/digits/quote,
+     * same setting as the other pages, lifecycle in anim.c. */
+    zmk_anim_bg_attach(ui.root, PAGE_NAME);
+#endif
 
     /* Painter's order: disc, then quote/digits on top. The disc is not
      * clickable — the tap detector reads raw input, and a clickable

@@ -45,6 +45,9 @@
 
 #include "styles.h"
 #include "ui_helpers.h"
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+#include "anim.h"
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -348,6 +351,12 @@ static lv_obj_t *stats_page_create(lv_obj_t *parent) {
     screen_root = lv_obj_create(parent);
     lv_obj_remove_style_all(screen_root);
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+    /* a12 owner pass: animated background on every page, not just the
+     * clock — under the widgets, same setting, lifecycle in anim.c. */
+    zmk_anim_bg_attach(screen_root, PAGE_NAME);
+#endif
 
     layout_build();
     stats_update();

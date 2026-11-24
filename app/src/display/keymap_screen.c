@@ -56,6 +56,9 @@
 
 #include "styles.h"
 #include "ui_helpers.h"
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+#include "anim.h"
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -711,6 +714,12 @@ static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     lv_obj_remove_style_all(screen_root);
     lv_obj_remove_flag(screen_root, LV_OBJ_FLAG_SCROLLABLE); /* see zmk_ui_flex */
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
+
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
+    /* a12 owner pass: animated background under the tiles (the bench
+     * checks touch still feels clean with the decoder running). */
+    zmk_anim_bg_attach(screen_root, PAGE_NAME);
+#endif
 
     /* Layer indicator (bottom band, owner pass 5): the band itself is a
      * passive frame — the individual pips are the buttons (tap pip n ->

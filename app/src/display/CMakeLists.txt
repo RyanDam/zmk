@@ -37,6 +37,9 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_DEBUG_LAYOUT app PRIVATE
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_ANIM app PRIVATE
     anim.c
 )
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_ANIM_SCREEN app PRIVATE
+    anim_screen.c
+)
 if(CONFIG_ZMK_DISPLAY_SCREEN_MGR AND CONFIG_ZMK_NOTIFY)
 target_sources(app PRIVATE notify_visual.c)
 endif()
