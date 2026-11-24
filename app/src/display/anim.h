@@ -28,8 +28,31 @@ bool zmk_anim_available(const char *name);
 /** Create the named GIF *or* Lottie (dispatch on the asset kind). */
 lv_obj_t *zmk_anim_create(lv_obj_t *parent, const char *name);
 
-/* Animated background behind the clock (pad10a parity), persisted at
+/* Animated background setting (pad10a parity; since the owner pass
+ * 2026-11-24 it scopes the background on all pages), persisted at
  * settings "display/anim" key "bg". The a15 RPC or the dev shell
  * (`animbg on|off`) toggles it; screens only read it. */
 bool zmk_anim_bg_enabled(void);
 void zmk_anim_bg_set(bool on);
+
+/**
+ * Register @p parent as the root of bg page @p page_name for the
+ * shared background player (a12 owner pass 2026-11-24: backgrounds on
+ * ALL pages, one SHARED player re-parented to the visible one — a
+ * player per page blows the PSRAM LVGL heap once every page exists,
+ * and pages persist after their first visit). The player follows the
+ * `animbg on|off` setting live; a page's rebuild just calls this again
+ * with the refreshed root. Idempotent; returns nothing to show yet —
+ * the player materialises on the next 200 ms tick.
+ *
+ * @param page_name the screen-manager page this subtree belongs to
+ *                  (string literal — registrations match by identity)
+ */
+void zmk_anim_bg_attach(lv_obj_t *parent, const char *page_name);
+
+/**
+ * Same lifecycle, ungated by the bg setting: a dedicated animation
+ * page plays even with backgrounds off (that toggle scopes OTHER
+ * screens only). GIF assets only (pause/resume is a gif API).
+ */
+lv_obj_t *zmk_anim_page_attach(lv_obj_t *parent, const char *page_name, const char *asset);

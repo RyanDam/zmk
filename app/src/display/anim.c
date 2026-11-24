@@ -27,6 +27,7 @@
 #include <lvgl.h>
 
 #include <zmk/assets.h>
+#include <zmk/display/screens.h>
 
 #include "anim.h"
 
@@ -38,7 +39,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* LVGL filesystem drive 'A:' over the asset store                     */
 /* ------------------------------------------------------------------ */
 
-#define FS_SLOTS 4
+#define FS_SLOTS 6 /* shared bg + dedicated player + boot splash + slack */
 
 struct fs_file {
     const struct zmk_asset_info *asset;
@@ -120,31 +121,40 @@ static lv_fs_res_t fs_seek_cb(lv_fs_drv_t *drv, void *file_p, uint32_t pos, lv_f
         return LV_FS_RES_INV_PARAM;
     }
 
-    uint32_t target;
+    /* LVGL's drive API carries seek offsets as uint32_t; a signed
+     * interpretation keeps a decoder's peek-backward (negative) seek
+     * legal instead of silently rejecting it. */
+    int32_t off = (int32_t)pos;
+    int32_t target;
 
     switch (whence) {
     case LV_FS_SEEK_SET:
-        target = pos;
+        target = off;
         break;
     case LV_FS_SEEK_CUR:
-        if (pos > f->asset->len || f->pos > f->asset->len - pos) {
-            return LV_FS_RES_INV_PARAM;
-        }
-        target = f->pos + pos;
+        target = (int32_t)f->pos + off;
         break;
     case LV_FS_SEEK_END:
-        if (pos > f->asset->len) {
-            return LV_FS_RES_INV_PARAM;
-        }
-        target = f->asset->len - pos;
+        target = (int32_t)f->asset->len + off;
         break;
     default:
         return LV_FS_RES_INV_PARAM;
     }
-    if (target > f->asset->len) {
+    if (target < 0 || target > (int32_t)f->asset->len) {
         return LV_FS_RES_INV_PARAM;
     }
-    f->pos = target;
+    f->pos = (uint32_t)target;
+    return LV_FS_RES_OK;
+}
+
+static lv_fs_res_t fs_tell_cb(lv_fs_drv_t *drv, void *file_p, uint32_t *pos_p) {
+    struct fs_file *f = file_p;
+
+    ARG_UNUSED(drv);
+    if (f == NULL || f->asset == NULL || pos_p == NULL) {
+        return LV_FS_RES_INV_PARAM;
+    }
+    *pos_p = f->pos;
     return LV_FS_RES_OK;
 }
 
@@ -162,6 +172,12 @@ static void anim_fs_register(void) {
     drv.close_cb = fs_close_cb;
     drv.read_cb = fs_read_cb;
     drv.seek_cb = fs_seek_cb;
+    /* Mandatory for the GIF decoder: it sizes the file via
+     * seek(END)+tell, and lv_fs_tell() silently leaves the size unset
+     * without a tell callback -> GIF_EARLY_EOF on every open (the
+     * 2026-11-21 v1 missed this because nothing ever reached the
+     * glass; a flash-size read is the first thing the decoder does). */
+    drv.tell_cb = fs_tell_cb;
     lv_fs_drv_register(&drv);
 }
 
@@ -186,6 +202,16 @@ lv_obj_t *zmk_anim_gif_create(lv_obj_t *parent, const char *name) {
     lv_obj_t *gif = lv_gif_create(parent);
 
     lv_gif_set_src(gif, path);
+
+    /* Open is lazy-failing: allocation/decode problems leave an empty
+     * image (the bench's "black anim page"). Surface it instead of
+     * logging a lie about playing. */
+    if (!lv_gif_is_loaded(gif)) {
+        LOG_ERR("anim: '%s' failed to open (asset unreadable?)", asset->name);
+        lv_obj_del(gif);
+        return NULL;
+    }
+
     lv_obj_center(gif);
     lv_obj_remove_flag(gif, LV_OBJ_FLAG_CLICKABLE);
 
@@ -268,6 +294,179 @@ lv_obj_t *zmk_anim_create(lv_obj_t *parent, const char *name) {
     default:
         return NULL;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Page attach: one shared background + dedicated full-page players    */
+/* ------------------------------------------------------------------ */
+
+/* A GIF player holds a native-size ARGB canvas (worst case full-screen
+ * 480x320 = 614 KB) from the LVGL heap (one 2 MB pool for the whole
+ * UI) plus an 'A:' file slot. One player per page exhausts both once every page exists
+ * (pages persist
+ * after their first visit) and the over-budget pages silently render
+ * black (bench 2026-11-24: the anim page was). Backgrounds therefore
+ * share ONE player that is re-parented to the visible page; only the
+ * dedicated full-page player (the anim page: may show another asset)
+ * exists alongside it. At most two players ever. */
+
+#define ANIM_BG_PAGES_MAX 6 /* clock, pomodoro, stats, keymap + 2 */
+#define ANIM_SLOTS_MAX 2    /* dedicated players (anim page today) */
+#define ANIM_TICK_MS 200
+
+struct anim_bg_page {
+    const char *page_name; /* identity compare: callers pass literals */
+    lv_obj_t *root;        /* subtree root, refreshed on rebuilds     */
+};
+
+static struct anim_bg_page bg_pages[ANIM_BG_PAGES_MAX];
+static lv_obj_t *bg_shared; /* NULL = not built / died with its page */
+
+struct anim_slot {
+    lv_obj_t *gif; /* NULL = free (or the gif died with its page)   */
+    const char *page_name;
+};
+
+static struct anim_slot anim_slots[ANIM_SLOTS_MAX];
+static lv_timer_t *anim_tick_timer;
+
+/* LVGL auto-pauses an invisible gif from its own next tick (the timer
+ * stays paused, nothing re-checks visibility); resume belongs to us.
+ * One shared timer walks the registrations — resuming an
+ * already-running gif is a no-op, and hidden players never decode. */
+static void anim_shared_died(lv_event_t *e) {
+    ARG_UNUSED(e);
+    bg_shared = NULL;
+}
+
+static void anim_slot_died(lv_event_t *e) {
+    struct anim_slot *slot = lv_event_get_user_data(e);
+
+    slot->gif = NULL;
+}
+
+static lv_obj_t *anim_gif_player(lv_obj_t *parent, const char *asset, lv_event_cb_t died,
+                                 void *user) {
+    lv_obj_t *gif = zmk_anim_gif_create(parent, asset);
+
+    if (gif == NULL) {
+        return NULL;
+    }
+    lv_gif_set_auto_pause_invisible(gif, true);
+    lv_obj_add_event_cb(gif, died, LV_EVENT_DELETE, user);
+
+    return gif;
+}
+
+static void anim_bg_sync(void) {
+    lv_obj_t *target = NULL;
+    int cur;
+
+    if (!zmk_anim_bg_enabled()) {
+        if (bg_shared != NULL) {
+            lv_obj_delete(bg_shared); /* clears bg_shared via the cb */
+        }
+        return;
+    }
+
+    cur = zmk_display_screen_current();
+    for (int i = 0; i < ANIM_BG_PAGES_MAX; i++) {
+        if (bg_pages[i].page_name != NULL &&
+            zmk_display_screen_find(bg_pages[i].page_name) == cur) {
+            target = bg_pages[i].root;
+            break;
+        }
+    }
+    if (target == NULL) {
+        return; /* e.g. the anim page: park the shared player paused
+                 * on its last page (canvas retained, decoder idle) */
+    }
+
+    if (bg_shared == NULL) {
+        bg_shared = anim_gif_player(target, "animbg", anim_shared_died, NULL);
+        return;
+    }
+    if (lv_obj_get_parent(bg_shared) != target) {
+        lv_obj_set_parent(bg_shared, target);
+        lv_obj_move_to_index(bg_shared, 0); /* background = bottom */
+    }
+    lv_gif_resume(bg_shared);
+}
+
+static void anim_tick_cb(lv_timer_t *timer) {
+    int cur = zmk_display_screen_current();
+
+    ARG_UNUSED(timer);
+
+    anim_bg_sync();
+
+    for (int i = 0; i < ANIM_SLOTS_MAX; i++) {
+        if (anim_slots[i].gif != NULL &&
+            zmk_display_screen_find(anim_slots[i].page_name) == cur) {
+            lv_gif_resume(anim_slots[i].gif);
+        }
+    }
+}
+
+/* Slot for a (re)build: the page's own slot first (identity compare —
+ * callers pass string literals), else the first unclaimed slot. */
+static struct anim_slot *anim_slot_get(const char *page_name) {
+    struct anim_slot *free_slot = NULL;
+
+    for (int i = 0; i < ANIM_SLOTS_MAX; i++) {
+        if (anim_slots[i].gif != NULL) {
+            continue;
+        }
+        if (anim_slots[i].page_name == page_name) {
+            return &anim_slots[i];
+        }
+        if (free_slot == NULL && anim_slots[i].page_name == NULL) {
+            free_slot = &anim_slots[i];
+        }
+    }
+    return free_slot;
+}
+
+static void anim_tick_start(void) {
+    if (anim_tick_timer == NULL) {
+        anim_tick_timer = lv_timer_create(anim_tick_cb, ANIM_TICK_MS, NULL);
+    }
+}
+
+void zmk_anim_bg_attach(lv_obj_t *parent, const char *page_name) {
+    struct anim_bg_page *free_e = NULL;
+
+    for (int i = 0; i < ANIM_BG_PAGES_MAX; i++) {
+        if (bg_pages[i].page_name == page_name) {
+            bg_pages[i].root = parent; /* rebuild: refresh the root */
+            return;
+        }
+        if (free_e == NULL && bg_pages[i].page_name == NULL) {
+            free_e = &bg_pages[i];
+        }
+    }
+
+    if (free_e == NULL) {
+        LOG_WRN("anim: no bg registration for page '%s'", page_name);
+        return;
+    }
+    free_e->page_name = page_name;
+    free_e->root = parent;
+    anim_tick_start();
+}
+
+lv_obj_t *zmk_anim_page_attach(lv_obj_t *parent, const char *page_name, const char *asset) {
+    struct anim_slot *slot = anim_slot_get(page_name);
+
+    if (slot == NULL) {
+        LOG_WRN("anim: no slot for page '%s'", page_name);
+        return NULL;
+    }
+    slot->page_name = page_name;
+    slot->gif = anim_gif_player(parent, asset, anim_slot_died, slot);
+    anim_tick_start();
+
+    return slot->gif;
 }
 
 /* ------------------------------------------------------------------ */

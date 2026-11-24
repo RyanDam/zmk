@@ -252,12 +252,12 @@ static void clock_build_layout(void) {
     date_cache[0] = '\0';
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
-    /* a12: animated background (pad10a parity). Created before any
-     * widget so it paints underneath; not clickable, so the tap
-     * detector and swipes are untouched. */
-    if (zmk_anim_bg_enabled() && zmk_anim_available("animbg")) {
-        zmk_anim_create(clock_root, "animbg");
-    }
+    /* a12: animated background under everything (pad10a parity),
+     * created before any widget so it paints underneath; not
+     * clickable, so the tap detector and swipes are untouched.
+     * One shared player across pages (anim.c) — the budget for a
+     * player per page does not exist. */
+    zmk_anim_bg_attach(clock_root, "clock");
 #endif
 
     switch (cfg.layout) {

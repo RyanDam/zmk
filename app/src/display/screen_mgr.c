@@ -34,6 +34,7 @@
 
 #include <lvgl.h>
 
+#include <zmk/assets.h>
 #include <zmk/display.h>
 #include <zmk/display/screens.h>
 
@@ -799,6 +800,13 @@ K_TIMER_DEFINE(splash_timer, splash_timer_cb, NULL);
 
 int zmk_display_screen_mgr_init(void) {
     int home_idx = 0;
+
+    /* Before any gif opens (the splash's own + the persisted-home page
+     * built shortly after): the store's SYS_INIT runs at APPLICATION
+     * priority, which is NOT guaranteed to precede this first page
+     * build — an unprobed store answers "no assets" and the first
+     * frames render black (bench 2026-11-24). */
+    zmk_assets_probe_early();
 
     zmk_ui_indev_init(); /* clickable widgets need LVGL pointer events */
 
