@@ -201,6 +201,15 @@ lv_obj_t *zmk_anim_gif_create(lv_obj_t *parent, const char *name) {
 
     lv_obj_t *gif = lv_gif_create(parent);
 
+    /* Render straight into the panel's own depth (RGB565) instead of
+     * the widget's ARGB8888 default: halves PSRAM traffic (307 KB vs
+     * 614 KB canvas at 480x320, decode writes included) and lets the
+     * full-screen blit take the same-format opaque-copy path rather
+     * than per-pixel ARGB blending - the dominant per-frame cost on
+     * this full-refresh panel (bench lag pass 2026-11-24). 8-bit GIF
+     * art means 565 loses nothing visible. */
+    lv_gif_set_color_format(gif, LV_COLOR_FORMAT_RGB565);
+
     lv_gif_set_src(gif, path);
 
     /* Open is lazy-failing: allocation/decode problems leave an empty
