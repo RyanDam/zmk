@@ -114,6 +114,13 @@ struct key_edge {
 static struct key_edge edges[EDGE_RING];
 static uint8_t edges_in, edges_out;
 
+/* Per-position held state: post_edge mirrors the kscan contract (edges
+ * only on real transitions). Without it LVGL's PRESS_LOST + RELEASED
+ * pair for one drag-tap fires TWO releases, and ghost capacitive hits
+ * can fire presses that never belonged — unpaired edges corrupt the
+ * keymap's per-position layer state and the HID reports (stuck keys). */
+static bool edge_held[ZMK_PHYS_ROW + ZMK_VKEY_CELLS];
+
 ZMK_UI_WORK_DEFINE(edge_work, edge_work_cb) {
     ARG_UNUSED(work);
     while (edges_out != edges_in) {
@@ -137,8 +144,14 @@ ZMK_UI_WORK_DEFINE(edge_work, edge_work_cb) {
 }
 
 static void post_edge(uint32_t position, bool pressed) {
-    struct key_edge *slot = &edges[edges_in];
+    struct key_edge *slot;
 
+    if (position >= ARRAY_SIZE(edge_held) || edge_held[position] == pressed) {
+        return;
+    }
+    edge_held[position] = pressed;
+
+    slot = &edges[edges_in];
     slot->position = position;
     slot->pressed = pressed;
     slot->timestamp = k_uptime_get();
