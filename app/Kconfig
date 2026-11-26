@@ -209,7 +209,6 @@ config ZMK_BLE_EXPERIMENTAL_FEATURES
 
 config ZMK_BLE_PASSKEY_ENTRY
     bool "Require passkey entry on the keyboard to complete pairing"
-    select RING_BUFFER
 
 config BT_SMP_ALLOW_UNAUTH_OVERWRITE
     imply ZMK_BLE_PASSKEY_ENTRY

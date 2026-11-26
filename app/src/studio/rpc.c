@@ -89,10 +89,12 @@ static bool rpc_read_cb(pb_istream_t *stream, uint8_t *buf, size_t count) {
 
     do {
         uint8_t *buffer;
-        uint32_t len = ring_buf_get_claim(&rpc_rx_buf, &buffer, count - write_offset);
+        /* get_ptr hands back the whole contiguous run, so cap it at what the
+         * caller still needs: write_offset indexes their buffer. */
+        uint32_t len = MIN(ring_buf_get_ptr(&rpc_rx_buf, &buffer, 0), count - write_offset);
 
         if (len > 0) {
-            for (int i = 0; i < len; i++) {
+            for (uint32_t i = 0; i < len; i++) {
                 if (studio_framing_process_byte(&rpc_framing_state, buffer[i])) {
                     buf[write_offset++] = buffer[i];
                 }
@@ -101,7 +103,7 @@ static bool rpc_read_cb(pb_istream_t *stream, uint8_t *buf, size_t count) {
             k_sem_take(&rpc_rx_sem, K_FOREVER);
         }
 
-        ring_buf_get_finish(&rpc_rx_buf, len);
+        ring_buf_consume(&rpc_rx_buf, len);
     } while (write_offset < count && rpc_framing_state != FRAMING_STATE_EOF);
 
     if (rpc_framing_state == FRAMING_STATE_EOF) {
@@ -132,13 +134,17 @@ static bool rpc_tx_buffer_write(pb_ostream_t *stream, const uint8_t *buf, size_t
     void *user_data = stream->state;
     size_t written = 0;
 
-    bool escape_byte_already_written = false;
     int64_t wait_start = k_uptime_get();
     do {
         uint32_t write_idx = 0;
+        size_t in_idx = 0;
 
+        /* Claimed by available space, not by the remaining payload: an escaped
+         * byte needs two slots, so a one-byte window must fall through to the
+         * back-pressure path below instead of stalling the loop. The payload
+         * bound is in_idx < count - written. */
         uint8_t *write_buf;
-        uint32_t claim_len = ring_buf_put_claim(&rpc_tx_buf, &write_buf, count - written);
+        uint32_t claim_len = ring_buf_put_ptr(&rpc_tx_buf, &write_buf, 0);
 
         if (claim_len == 0) {
             if (k_uptime_delta(&wait_start) > RPC_TX_BUF_DRAIN_TIMEOUT_MS) {
@@ -150,36 +156,39 @@ static bool rpc_tx_buffer_write(pb_ostream_t *stream, const uint8_t *buf, size_t
             continue;
         }
 
-        int escapes_written = 0;
-        for (int i = 0; i < claim_len && write_idx < claim_len; i++) {
-            uint8_t b = buf[written + i];
+        /* An escaped byte needs two slots, so a window whose last slot is left
+         * is not big enough: stop there and let the next claim write the escape
+         * and the byte together, rather than committing a lone escape and
+         * losing the byte it stands for. */
+        while (in_idx < count - written && write_idx < claim_len) {
+            uint8_t b = buf[written + in_idx];
+            bool needs_escape = false;
+
             switch (b) {
             case FRAMING_EOF:
             case FRAMING_ESC:
             case FRAMING_SOF:
-                // Care to be taken. We may need to write the escape byte,
-                // but that's the last available spot for this claim, so we track
-                // if the escape has already been written in the previous iteration
-                // of our loop.
-                if (!escape_byte_already_written) {
-                    escapes_written++;
-                    write_buf[write_idx++] = FRAMING_ESC;
-                    escape_byte_already_written = true;
-                    if (write_idx >= claim_len) {
-                        LOG_WRN("Skipping on, no room to write escape and real byte");
-                        continue;
-                    }
-                }
+                needs_escape = true;
+                break;
             default:
-                write_buf[write_idx++] = b;
-                escape_byte_already_written = false;
                 break;
             }
+
+            if (needs_escape && write_idx + 1 >= claim_len) {
+                break;
+            }
+
+            if (needs_escape) {
+                write_buf[write_idx++] = FRAMING_ESC;
+            }
+
+            write_buf[write_idx++] = b;
+            in_idx++;
         }
 
-        ring_buf_put_finish(&rpc_tx_buf, write_idx);
+        ring_buf_commit(&rpc_tx_buf, write_idx);
 
-        written += (write_idx - escapes_written);
+        written += in_idx;
 
         selected_transport->tx_notify(&rpc_tx_buf, write_idx, false, user_data);
     } while (written < count);

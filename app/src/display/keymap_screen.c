@@ -191,19 +191,19 @@ ZMK_UI_WORK_DEFINE(nav_work, nav_work_cb) {
  * name: verbose rather than wrong. */
 static struct {
     const char *dev;
-    const char *fmt; /* %lu = param1 */
+    const char *fmt; /* %u = param1 */
 } DEV_LABELS[] = {
-    {"momentary_layer", "MO %lu"},
-    {"to_layer", "TO %lu"},
-    {"toggle_layer", "TG %lu"},
-    {"key_toggle", "KT %lu"},
+    {"momentary_layer", "MO %u"},
+    {"to_layer", "TO %u"},
+    {"toggle_layer", "TG %u"},
+    {"key_toggle", "KT %u"},
     {"transparent", ICON_CARET_DOWN}, /* inherits the layer below (pad10a
                                        * caret-down, owner pass 5) */
     {"key_repeat", "REPT"},
     {"caps_word", "CAPSW"},
-    {"macro", "MAC %lu"},
-    {"backlight", "BL %lu"},
-    {"rgb_underglow", "RGB %lu"},
+    {"macro", "MAC %u"},
+    {"backlight", "BL %u"},
+    {"rgb_underglow", "RGB %u"},
     {"ext_power", "PWR"},
     {"soft_off", "SOFF"},
     {"studio_unlock", "STUD"},
@@ -276,7 +276,7 @@ static void mods_prefix(char *p, size_t n, uint32_t mods) {
 
 /* Full ZMK keycode ((page << 16) | usage) -> shortest honest label. */
 static void keycode_base(char *base, size_t n, uint32_t keycode) {
-    uint32_t page = ZMK_HID_USAGE_PAGE(keycode);
+    uint8_t page = ZMK_HID_USAGE_PAGE(keycode); /* the page field is 8 bits wide */
     uint16_t usage = ZMK_HID_USAGE_ID(keycode);
 
     if (page == HID_USAGE_KEY) {
@@ -285,9 +285,9 @@ static void keycode_base(char *base, size_t n, uint32_t keycode) {
         } else if (usage >= 0x1E && usage <= 0x27) { /* 1..9,0 (HID usages) */
             snprintk(base, n, "%c", usage == 0x27 ? '0' : (char)('1' + (usage - 0x1E)));
         } else if (usage >= 0x3A && usage <= 0x45) { /* F1..F12 */
-            snprintk(base, n, "F%lu", usage - 0x3A + 1);
+            snprintk(base, n, "F%u", (unsigned int)(usage - 0x3A + 1));
         } else if (usage >= 0x68 && usage <= 0x73) { /* F13..F24 */
-            snprintk(base, n, "F%lu", usage - 0x68 + 13);
+            snprintk(base, n, "F%u", (unsigned int)(usage - 0x68 + 13));
         } else if (usage >= 0xE0 && usage <= 0xE7) { /* mods: LCTL..LGUI, RCTL..RGUI */
             static const char *const mod_usage[8] = {"LC", "LS", "LA", "LG",
                                                      "RC", "RS", "RA", "RG"};
@@ -362,13 +362,13 @@ static void keycode_base(char *base, size_t n, uint32_t keycode) {
             break;
         }
     } else {
-        snprintk(base, n, "?%lX.%02X", (unsigned long)page, usage);
+        snprintk(base, n, "?%X.%02X", (unsigned int)page, usage);
     }
 }
 
 /* &kp and any plain keycode caller: "S/ENT", "CG/K", "PLAY" ... */
 static void key_press_label(char *out, size_t n, uint32_t keycode, uint32_t mods) {
-    char base[8];
+    char base[9]; /* "?FF.FFFF": the widest label keycode_base() can build */
     char pre[5];
 
     keycode_base(base, sizeof(base), keycode);
@@ -398,7 +398,7 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
         if (name[0] != '\0') {
             snprintk(out, n, "%s", name);
         } else {
-            snprintk(out, n, "M%lu", b->param1 + 1);
+            snprintk(out, n, "M%u", (unsigned int)(b->param1 + 1));
         }
         return;
     }
@@ -408,7 +408,7 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
     }
     /* Composite bindings show both halves: "S/A", "MO1/ENT", "STK/G". */
     if (strcmp(b->behavior_dev, "mod_tap") == 0) {
-        char base[8];
+        char base[9];
         char pre[5];
 
         keycode_base(base, sizeof(base), b->param2);
@@ -417,14 +417,14 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
         return;
     }
     if (strcmp(b->behavior_dev, "layer_tap") == 0) {
-        char base[8];
+        char base[9];
 
         keycode_base(base, sizeof(base), b->param2);
-        snprintk(out, n, "MO%lu/%s", b->param1, base);
+        snprintk(out, n, "MO%u/%s", (unsigned int)b->param1, base);
         return;
     }
     if (strcmp(b->behavior_dev, "sticky_key") == 0) {
-        char base[8];
+        char base[9];
 
         keycode_base(base, sizeof(base), b->param1);
         snprintk(out, n, "STK/%s", base);
@@ -432,7 +432,7 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
     }
     if (strcmp(b->behavior_dev, "bluetooth") == 0) {
         if (b->param1 <= 4) {
-            snprintk(out, n, "BT%lu", b->param1); /* &bt 0..4 = profile slot */
+            snprintk(out, n, "BT%u", (unsigned int)b->param1); /* &bt 0..4 = profile slot */
         } else {
             strcpy(out, "BT"); /* SEL/NEXT/PREV/CLEAR... */
         }
@@ -444,7 +444,7 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
     }
     for (size_t i = 0; i < ARRAY_SIZE(DEV_LABELS); i++) {
         if (strcmp(b->behavior_dev, DEV_LABELS[i].dev) == 0) {
-            snprintk(out, n, DEV_LABELS[i].fmt, b->param1);
+            snprintk(out, n, DEV_LABELS[i].fmt, (unsigned int)b->param1);
             return;
         }
     }

@@ -32,8 +32,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static lv_obj_t *banner;
 static lv_timer_t *banner_timer;
 
-static void banner_fade_exec(lv_obj_t *obj, int32_t v) {
-    lv_obj_set_style_text_opa(obj, (lv_opa_t)v, 0);
+static void banner_fade_exec(void *obj, int32_t v) {
+    lv_obj_set_style_text_opa((lv_obj_t *)obj, (lv_opa_t)v, 0);
 }
 
 static void banner_hide_timer_cb(lv_timer_t *timer) {

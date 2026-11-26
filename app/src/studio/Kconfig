@@ -41,7 +41,6 @@ menuconfig ZMK_STUDIO_RPC
     select SETTINGS
     select ZMK_BEHAVIOR_METADATA
     select ZMK_BEHAVIOR_LOCAL_IDS
-    select RING_BUFFER
     select ZMK_KEYMAP_SETTINGS_STORAGE
     select ZMK_KEYMAP_LAYER_REORDERING
     help
@@ -56,7 +55,6 @@ DT_CHOSEN_ZMK_STUDIO_RPC_UART := zmk,studio-rpc-uart
 config ZMK_STUDIO_TRANSPORT_UART
     bool "Serial"
     select SERIAL
-    select RING_BUFFER
     default y if $(dt_chosen_enabled,$(DT_CHOSEN_ZMK_STUDIO_RPC_UART))
 
 if ZMK_STUDIO_TRANSPORT_UART
@@ -86,7 +84,6 @@ endif
 
 config ZMK_STUDIO_TRANSPORT_BLE
     bool "BLE (GATT)"
-    select RING_BUFFER
     select BT_USER_DATA_LEN_UPDATE
     depends on ZMK_BLE
     default y

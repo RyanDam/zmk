@@ -32,13 +32,13 @@ static void tx_notify(struct ring_buf *tx_ring_buf, size_t written, bool msg_don
 #else
         struct ring_buf *tx_buf = zmk_rpc_get_tx_buf();
         uint8_t *buf;
-        uint32_t claim_len;
-        while ((claim_len = ring_buf_get_claim(tx_buf, &buf, tx_buf->size)) > 0) {
-            for (int i = 0; i < claim_len; i++) {
+        uint32_t chunk_len;
+        while ((chunk_len = ring_buf_get_ptr(tx_buf, &buf, 0)) > 0) {
+            for (uint32_t i = 0; i < chunk_len; i++) {
                 uart_poll_out(uart_dev, buf[i]);
             }
 
-            ring_buf_get_finish(tx_buf, claim_len);
+            ring_buf_consume(tx_buf, chunk_len);
         }
 #endif
     }
@@ -50,19 +50,20 @@ static void uart_rx_main(void) {
     for (;;) {
         uint8_t *buf;
         struct ring_buf *ring_buf = zmk_rpc_get_rx_buf();
-        uint32_t claim_len = ring_buf_put_claim(ring_buf, &buf, 1);
+        uint32_t room = ring_buf_put_ptr(ring_buf, &buf, 0);
 
-        if (claim_len < 1) {
-            LOG_WRN("NO CLAIM ABLE TO BE HAD");
+        if (room < 1) {
+            LOG_WRN("No room in the RPC RX ring");
             k_sleep(K_MSEC(1));
             continue;
         }
 
         if (uart_poll_in(uart_dev, buf) < 0) {
-            ring_buf_put_finish(ring_buf, 0);
+            /* Nothing was written, so nothing is committed: the slot stays
+             * free for the next pass. */
             k_sleep(K_MSEC(1));
         } else {
-            ring_buf_put_finish(ring_buf, 1);
+            ring_buf_commit(ring_buf, 1);
             zmk_rpc_rx_notify();
         }
     }
@@ -111,11 +112,11 @@ static void serial_cb(const struct device *dev, void *user_data) {
         struct ring_buf *buf = zmk_rpc_get_rx_buf();
         do {
             uint8_t *buffer;
-            len = ring_buf_put_claim(buf, &buffer, buf->size);
+            len = ring_buf_put_ptr(buf, &buffer, 0);
             if (len > 0) {
                 last_read = uart_fifo_read(uart_dev, buffer, len);
 
-                ring_buf_put_finish(buf, last_read);
+                ring_buf_commit(buf, last_read);
                 total_read += last_read;
             } else {
                 LOG_ERR("Dropping incoming RPC byte, insufficient room in the RX buffer. Bump "
@@ -135,16 +136,16 @@ static void serial_cb(const struct device *dev, void *user_data) {
         uint32_t total_sent = 0;
         while ((len = ring_buf_size_get(tx_buf)) > 0) {
             uint8_t *buf;
-            uint32_t claim_len = ring_buf_get_claim(tx_buf, &buf, tx_buf->size);
+            uint32_t avail = ring_buf_get_ptr(tx_buf, &buf, 0);
 
-            if (claim_len == 0) {
+            if (avail == 0) {
                 continue;
             }
 
-            int sent = uart_fifo_fill(uart_dev, buf, claim_len);
+            int sent = uart_fifo_fill(uart_dev, buf, avail);
             total_sent += MAX(sent, 0);
 
-            ring_buf_get_finish(tx_buf, MAX(sent, 0));
+            ring_buf_consume(tx_buf, MAX(sent, 0));
         }
 
         LOG_DBG("UART RPC transport: TX %u byte(s) on %s", total_sent, uart_dev->name);

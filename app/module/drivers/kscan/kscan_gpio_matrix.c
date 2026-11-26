@@ -305,18 +305,6 @@ static int kscan_matrix_enable(const struct device *dev) {
     return kscan_matrix_read(dev);
 }
 
-static int kscan_matrix_disable(const struct device *dev) {
-    struct kscan_matrix_data *data = dev->data;
-
-    k_work_cancel_delayable(&data->work);
-
-#if USE_INTERRUPTS
-    return kscan_matrix_interrupt_disable(dev);
-#else
-    return 0;
-#endif
-}
-
 static int kscan_matrix_init_input_inst(const struct device *dev, const struct kscan_gpio *gpio) {
     if (!device_is_ready(gpio->spec.port)) {
         LOG_ERR("GPIO is not ready: %s", gpio->spec.port->name);
@@ -461,6 +449,18 @@ static int kscan_matrix_init(const struct device *dev) {
 }
 
 #if IS_ENABLED(CONFIG_PM_DEVICE)
+
+static int kscan_matrix_disable(const struct device *dev) {
+    struct kscan_matrix_data *data = dev->data;
+
+    k_work_cancel_delayable(&data->work);
+
+#if USE_INTERRUPTS
+    return kscan_matrix_interrupt_disable(dev);
+#else
+    return 0;
+#endif
+}
 
 static int kscan_matrix_pm_action(const struct device *dev, enum pm_device_action action) {
     switch (action) {

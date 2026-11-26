@@ -8,6 +8,8 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 struct behavior_indicator_config {
     bool indicate_battery;
     bool indicate_layer;
@@ -60,3 +62,5 @@ static const struct behavior_driver_api behavior_indicator_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_indicator_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(IND_INST)
+
+#endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

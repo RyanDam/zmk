@@ -21,7 +21,6 @@ config ZMK_SPLIT_WIRED
     default y
     depends on DT_HAS_ZMK_WIRED_SPLIT_ENABLED
     select SERIAL
-    select RING_BUFFER
     select CRC
 
 config ZMK_SPLIT_PERIPHERAL_HID_INDICATORS

@@ -89,9 +89,10 @@ static struct k_work_q upload_wq;
 static atomic_t gc_busy;
 
 static int upload_wq_start(void) {
+    static const struct k_work_queue_config queue_config = {.name = "asset_upload"};
+
     k_work_queue_start(&upload_wq, upload_wq_stack, K_KERNEL_STACK_SIZEOF(upload_wq_stack),
-                       K_PRIO_PREEMPT(7), NULL);
-    k_thread_name_set(&upload_wq.thread, "asset_upload");
+                       K_PRIO_PREEMPT(7), &queue_config);
     return 0;
 }
 
@@ -301,7 +302,8 @@ static void flush_work_fn(struct k_work *work) {
                                               .kind = s->kind,
                                               .fps = s->fps,
                                               .crc = s->want_crc};
-            snprintf(list[n].name, sizeof(list[n].name), "%s", s->name);
+            snprintf(list[n].name, sizeof(list[n].name), "%.*s", (int)sizeof(list[n].name) - 1,
+                     s->name);
             n++;
         }
 

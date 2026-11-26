@@ -17,14 +17,14 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 void zmk_split_wired_poll_out(struct ring_buf *tx_buf, const struct device *uart) {
     uint8_t *buf;
-    uint32_t claim_len;
-    while ((claim_len = ring_buf_get_claim(tx_buf, &buf, MIN(32, tx_buf->size))) > 0) {
-        LOG_HEXDUMP_DBG(buf, claim_len, "TX Bytes");
-        for (int i = 0; i < claim_len; i++) {
+    uint32_t chunk_len;
+    while ((chunk_len = MIN(ring_buf_get_ptr(tx_buf, &buf, 0), (uint32_t)32)) > 0) {
+        LOG_HEXDUMP_DBG(buf, chunk_len, "TX Bytes");
+        for (uint32_t i = 0; i < chunk_len; i++) {
             uart_poll_out(uart, buf[i]);
         }
 
-        ring_buf_get_finish(tx_buf, claim_len);
+        ring_buf_consume(tx_buf, chunk_len);
     }
 }
 
@@ -33,14 +33,14 @@ int zmk_split_wired_poll_in(struct ring_buf *rx_buf, const struct device *uart,
                             zmk_split_wired_process_tx_callback_t process_data_cb) {
     uint8_t *buf;
     uint32_t read = 0;
-    uint32_t claim_len = ring_buf_put_claim(rx_buf, &buf, ring_buf_space_get(rx_buf));
-    if (claim_len < 1) {
+    uint32_t room = ring_buf_put_ptr(rx_buf, &buf, 0);
+    if (room < 1) {
         LOG_WRN("No room available for reading in from the serial port");
         return -ENOSPC;
     }
 
     bool all_read = false;
-    while (read < claim_len) {
+    while (read < room) {
         if (uart_poll_in(uart, buf + read) < 0) {
             all_read = true;
             break;
@@ -49,7 +49,7 @@ int zmk_split_wired_poll_in(struct ring_buf *rx_buf, const struct device *uart,
         read++;
     }
 
-    ring_buf_put_finish(rx_buf, read);
+    ring_buf_commit(rx_buf, read);
 
     if (ring_buf_size_get(rx_buf) > 0) {
         if (process_data_work) {
@@ -74,11 +74,11 @@ void zmk_split_wired_fifo_read(const struct device *dev, struct ring_buf *buf,
     uint32_t last_read = 0, len = 0;
     do {
         uint8_t *buffer;
-        len = ring_buf_put_claim(buf, &buffer, buf->size);
+        len = ring_buf_put_ptr(buf, &buffer, 0);
         if (len > 0) {
             last_read = uart_fifo_read(dev, buffer, len);
 
-            ring_buf_put_finish(buf, last_read);
+            ring_buf_commit(buf, last_read);
         } else {
             LOG_ERR("Dropping incoming RPC byte, insufficient room in the RX buffer. Bump "
                     "CONFIG_ZMK_STUDIO_RPC_RX_BUF_SIZE.");
@@ -98,15 +98,15 @@ void zmk_split_wired_fifo_fill(const struct device *dev, struct ring_buf *tx_buf
     uint32_t len;
     while ((len = ring_buf_size_get(tx_buf)) > 0) {
         uint8_t *buf;
-        uint32_t claim_len = ring_buf_get_claim(tx_buf, &buf, tx_buf->size);
+        uint32_t avail = ring_buf_get_ptr(tx_buf, &buf, 0);
 
-        if (claim_len <= 0) {
+        if (avail == 0) {
             break;
         }
 
-        int sent = uart_fifo_fill(dev, buf, claim_len);
+        int sent = uart_fifo_fill(dev, buf, avail);
 
-        ring_buf_get_finish(tx_buf, MAX(sent, 0));
+        ring_buf_consume(tx_buf, MAX(sent, 0));
 
         if (sent <= 0) {
             break;
@@ -129,9 +129,12 @@ enum ASYNC_STATE_BITS {
 
 void zmk_split_wired_async_tx(struct zmk_split_wired_async_state *state) {
     uint8_t *buf;
-    uint32_t claim_len = ring_buf_get_claim(state->tx_buf, &buf, ring_buf_size_get(state->tx_buf));
+    /* tx_buf stays half-read across uart_tx(): the matching
+     * ring_buf_consume() runs in the UART_TX_DONE callback with the length the
+     * UART actually shifted, so nothing else may read from tx_buf in between. */
+    uint32_t claim_len = ring_buf_get_ptr(state->tx_buf, &buf, 0);
 
-    if (claim_len <= 0) {
+    if (claim_len == 0) {
         return;
     }
 
@@ -185,7 +188,7 @@ static void async_uart_cb(const struct device *dev, struct uart_event *ev, void 
         break;
     case UART_TX_DONE:
         LOG_DBG("TX Done %d", ev->data.tx.len);
-        ring_buf_get_finish(state->tx_buf, ev->data.tx.len);
+        ring_buf_consume(state->tx_buf, ev->data.tx.len);
         if (ring_buf_size_get(state->tx_buf) > 0) {
             zmk_split_wired_async_tx(state);
         } else {

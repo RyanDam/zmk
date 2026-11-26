@@ -71,14 +71,14 @@ static ssize_t write_rpc_req(struct bt_conn *conn, const struct bt_gatt_attr *at
     struct ring_buf *rpc_buf = zmk_rpc_get_rx_buf();
     while (copied < len) {
         uint8_t *buffer;
-        uint32_t claim_len = ring_buf_put_claim(rpc_buf, &buffer, len - copied);
+        uint32_t room = MIN(ring_buf_put_ptr(rpc_buf, &buffer, 0), len - copied);
 
-        if (claim_len > 0) {
-            memcpy(buffer, ((uint8_t *)buf) + copied, claim_len);
-            copied += claim_len;
+        if (room > 0) {
+            memcpy(buffer, ((uint8_t *)buf) + copied, room);
+            copied += room;
         }
 
-        ring_buf_put_finish(rpc_buf, claim_len);
+        ring_buf_commit(rpc_buf, room);
     }
 
     zmk_rpc_rx_notify();
@@ -157,12 +157,14 @@ static void notif_rpc_tx_cb(struct k_work *work) {
         uint16_t added = 0;
         while (added < notify_size && ring_buf_size_get(tx_buf) > 0) {
             uint8_t *buf;
-            int len = ring_buf_get_claim(tx_buf, &buf, notify_size - added);
+            /* get_ptr reports the whole contiguous run, so cap it at the room
+             * left in indicate_buffer, which is what the claim used to do. */
+            uint32_t len = MIN(ring_buf_get_ptr(tx_buf, &buf, 0), (uint32_t)(notify_size - added));
 
             memcpy(indicate_buffer + added, buf, len);
 
             added += len;
-            ring_buf_get_finish(tx_buf, len);
+            ring_buf_consume(tx_buf, len);
         }
 
         rpc_indicate_params.len = added;

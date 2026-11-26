@@ -21,6 +21,16 @@ if(CONFIG_ZMK_BEHAVIOR_LOCAL_IDS)
   zephyr_linker_sources(DATA_SECTIONS include/linker/zmk-behavior-local-id-map.ld)
 endif()
 
+# The Espressif SoC linker scripts put .text in a segment the ELF loader also
+# marks writable (readelf shows it as RWE), which ld reports as an RWX LOAD
+# segment. Flash contents are write-protected by the SPI cache, so the flag is
+# script bookkeeping rather than a writable code region; keep ld quiet without
+# touching the west-managed scripts. The property expands to nothing on linkers
+# that do not know the option.
+if(CONFIG_SOC_FAMILY_ESPRESSIF_ESP32)
+  zephyr_link_libraries($<TARGET_PROPERTY:linker,no_warn_rwx_segments>)
+endif()
+
 zephyr_syscall_header(${APPLICATION_SOURCE_DIR}/include/drivers/behavior.h)
 zephyr_syscall_header(${APPLICATION_SOURCE_DIR}/include/drivers/input_processor.h)
 zephyr_syscall_header(${APPLICATION_SOURCE_DIR}/include/drivers/ext_power.h)
