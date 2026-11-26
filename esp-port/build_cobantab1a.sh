@@ -189,7 +189,9 @@ fi
 
 BOARD=cobantab1a/esp32s3/procpu/zmk
 SHIELD=cobantab1a
-BUILD_DIR=build/cobantab1a
+# Env override so variants (e.g. the b06 tab1a-usb build) get their own dir
+# without clobbering the default build/cobantab1a.
+BUILD_DIR="${BUILD_DIR_OVERRIDE:-build/cobantab1a}"
 
 EXTRA_ARGS=""
 if [ "$NO_BLOBS" = yes ]; then

@@ -1,0 +1,74 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ *
+ * Coban Tab 1a — b06 OTG variant fragment (build target `tab1a-usb`).
+ * NOT part of the shield's default files: esp-port/build_cobantab1a.sh -O
+ * applies it AFTER the shield overlay, so every chosen here wins.
+ *
+ * Unfused board, runtime-only PHY hand-off: at reset GPIO19/20 still belong
+ * to USB-Serial/JTAG (ROM download + `./flash.sh tab1a` keep working on this
+ * build too), and the Zephyr DWC2 UDC driver hands them to the OTG
+ * controller when the device stack starts
+ * (usb_wrap_hal_phy_set_external(false) -> S3 OTG_CONF.pad_enable = 1). Any
+ * reset reverts. No eFuse is involved — decision of record:
+ * zmk/../docs/b06-efuse-usb-phy-sel-report.md + b06 plan rev 2.
+ */
+
+/ {
+    chosen {
+        /* Two CDC-ACM interfaces on the one DWC2 composite, mirroring the
+         * pad boards' snippet pair (studio-rpc-usb-uart + zmk-usb-logging):
+         * Studio RPC keeps its own port, console + shell get a dedicated
+         * "ZMK Logging" port. This is load-bearing twice over:
+         *  - a UART device carries exactly one IRQ callback, so a shell
+         *    sharing the RPC's CDC would silently evict the RPC transport's
+         *    RX callback (the original b06 bench bug);
+         *  - the S3 core has num-in-eps = 6 (DTS), which is exactly
+         *    EP0 + HID + 2x(CDC data + CDC notify).
+         *
+         * USB console caveat: logs before the composite enumerates are
+         * lost — early bring-up logs still need the P1 wire (uart0 stays
+         * enabled below; the ROM loader answers there and on every reset,
+         * so esptool recovery is unaffected). */
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
+
+        /* Re-bind the Studio RPC "uart" transport from UART0 (a14 bench
+         * path) to the CDC-ACM shim below — one OTG cable then carries
+         * HID + RPC, and the a14 node harness works unchanged over the
+         * USB CDC device. */
+        zmk,studio-rpc-uart = &studio_cdc_uart;
+    };
+};
+
+/* Node label ZMK requires (app/src/usb.c #error otherwise); enables the
+ * SoC's DWC2 device controller (esp32s3_common.dtsi, second compatible
+ * "snps,dwc2" instantiates drivers/usb/udc/udc_dwc2.c). */
+zephyr_udc0: &usb_otg {
+    status = "okay";
+
+    /* CDC-ACM UART-API shim: app/src/usb.c registers every
+     * zephyr,cdc-acm-uart child of zephyr_udc0 in the HID+CDC composite
+     * (same pattern as app/snippets/studio-rpc-usb-uart on the pads). */
+    studio_cdc_uart: studio_cdc_uart {
+        compatible = "zephyr,cdc-acm-uart";
+        label = "ZMK Studio RPC";
+    };
+
+    /* Second CDC: the console + shell port, mirroring the pads'
+     * zmk-usb-logging snippet (app/snippets/zmk-usb-logging). Carries the
+     * ZMK log stream and the interactive shell so USB-C debugging needs
+     * no P1 wire. */
+};
+
+/* Pads are OTG's at runtime — leave nothing bound to the Serial/JTAG
+ * controller so there is no dead console device behind the move. */
+&usb_serial {
+    status = "disabled";
+};
+
+&usb_serial {
+    status = "okay";
+};

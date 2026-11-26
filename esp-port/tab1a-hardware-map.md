@@ -19,7 +19,7 @@ Sources: `ref/JC3248W535EN/README.md:64-88` (pin tables),
 | SoM | JC3248W535EN-S3 — ESP32-S3 N16R8 (16 MB flash, 8 MB OPI PSRAM) |
 | Zephyr board | `cobantab1a/esp32s3/procpu/zmk` (`zmk/app/boards/others/cobantab1a/`) |
 | Panel | AXS15231B 320×480 QSPI + capacitive touch (I2C `0x3B`) — bring-up done, b05 |
-| USB | native USB-Serial/JTAG on 19/20 (console + flashing) |
+| USB | native USB-Serial/JTAG on 19/20 (console + flashing). On the `tab1a-usb` build (b06) the running app hands 19/20 to the OTG controller (HID + Studio CDC) — runtime `usb_wrap` switch, reverts at reset, no eFuse |
 
 ## GPIO allocation (sorted)
 
@@ -40,7 +40,7 @@ Sources: `ref/JC3248W535EN/README.md:64-88` (pin tables),
 | 16 | harness col / spare | free | |
 | 17 | P3 — DS1302 SCLK (proposed) | reserved (h02) | clearly exposed on P3/P4 |
 | 18 | P3 — DS1302 IO (proposed) | reserved (h02) | clearly exposed on P3/P4 |
-| 19/20 | USB D-/D+ | **used** | never repurpose |
+| 19/20 | USB D-/D+ | **used** | never repurpose **in firmware**; on the `tab1a-usb` build the USB device stack drives them as OTG at runtime (reverts at reset — no eFuse; see `tab1a-bench-runbook.md` §b06) |
 | 21 | QSPI D0 | **used** | `overlay:46` |
 | 38 | Panel TE | spare | routed, currently unused by the driver |
 | 39/40 | QSPI D2/D3 | **used** | `overlay:64-67` |

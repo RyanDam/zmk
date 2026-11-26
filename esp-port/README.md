@@ -35,13 +35,22 @@ under `docs/docs/hardware-integration/`.
 | 5 — C3 BLE board | `b02` | in progress (board + fixture merged to `feat/esp32`, hardware tests pending) |
 | 6 — S3 BLE board | `b03` | in progress (board + fixture merged to `feat/esp32`, hardware tests pending) |
 | 7 — BLE power/reliability | `d03` | not started |
-| 8 — S3 USB HID (conditional) | `b04` | not started |
+| 8 — S3 USB HID (conditional) | `b04` | not started — but b06 (2026-11-25) proved wired USB HID + Studio CDC on tab1a **unfused** via runtime PHY switch (`tab1a-usb` build); b04's remaining scope is boot-mode/fused production questions only |
 | 9 — Optional capabilities | `a03`, `a04`, `a05` | not started |
 | 9b — cobantab1a display module (Phase 9b display class) | `b05` | in progress (board def + AXS15231B display/touch drivers + shield compile-verified; hardware bring-up pending) |
 | 10 — Docs/CI/release policy | `f01` | not started |
 
 ## Decisions
 
+- **2026-11-25 — b06: Studio-over-USB + wired HID on tab1a need NO eFuse.**
+  Deep-dive (`docs/b06-efuse-usb-phy-sel-report.md` in the workspace repo):
+  `USB_PHY_SEL` only decides *boot-mode* pad ownership; at runtime the Zephyr
+  DWC2-ESP UDC driver hands pads 19/20 from USB-Serial/JTAG to OTG via
+  `usb_wrap` (`OTG_CONF.pad_enable`, already in the driver path on S3), and
+  every reset reverts — recovery/flashing on an unfused chip stays
+  Serial/JTAG, so the `tab1a-usb` variant is fully reversible (plan rev 2:
+  zero eFuse writes allowed). The 2026-10-02 note's "Phase 6/8" plan is thus
+  realized in software only; burning stays a b04 production question.
 - **2026-10-02 — Studio-over-USB is a critical product feature; the C3 cannot
   provide it.** The C3 has no USB OTG, and ZMK's Studio UART RPC transport is
   only selected when a ZMK USB *endpoint* is active (`app/src/studio/rpc.c`
@@ -103,6 +112,29 @@ under `docs/docs/hardware-integration/`.
   Hence `CONFIG_LV_Z_VDB_CUSTOM_SECTION` + `CONFIG_LV_Z_MEMORY_POOL_CUSTOM_SECTION`
   in the shield conf. (Custom `zephyr,memory-region` nodes produce orphan
   sections that the ESP32 linker dumps into `IDT_LIST` and overflows.)
+
+- **2026-11-26 — a15 asset uploads are commit-last, not transactional.** The
+  writable store (`ZMKAS002`) appends blobs into free gaps and rewrites only
+  the manifest sector (generation counter + trailing CRC32, per-blob CRC32)
+  as the *last* act, so any interruption — abort, CRC mismatch, power loss —
+  provably leaves the previous generation byte-identical; probe validates the
+  manifest CRC before trusting anything. Upload runs on a dedicated
+  preempt-low `k_work_q` (`asset_upload.c`): the RPC thread only copies
+  chunks into a 16 KiB staging ring (decoded 1 KiB chunk structs + nanopb
+  frames need the tab1a `ZMK_STUDIO_RPC_THREAD_STACK_SIZE=8192` bump), and
+  blob relocation (GC) parks both anim players via a quiesce handshake on the
+  200 ms tick before touching bytes. Resume is within-session (RAM state) by
+  design; cross-reboot resume would need a journal for one failure mode the
+  commit-last layout already defeats. Also fixed the a12 carve overlap (slot1
+  ran 16 KiB past the assets start; assets covered `slot0_lpcore`) — assets
+  is now exactly 2016 KiB @ `0xda8000`. Rationale + full design:
+  workspace `docs/a15-bulk-asset-upload-plan.md`.
+- **2026-11-26 — harness proto contract:** `studio-harness` loads protos live
+  from `modules/msgs/` (protobufjs: fields camelCase, `fromObject` takes oneof
+  *members* flat, virtual oneof wrappers are `toObject`-only, enum `GENERIC`
+  is 0/falsy). The a14 harness encoded nested `{requestType:…}` (silently
+  empty subsystems) and had a wrong `PROTO_DIR` — never caught because only
+  the framing unit test ran pre-bench; both fixed, selftest now covers it.
 
 ## Host test matrix
 
