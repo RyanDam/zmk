@@ -1,7 +1,8 @@
 /*
  * Companion snippet for `zmk-usb-logging` (and any CDC child) on ESP32-S3
- * boards whose dts keeps the USB device controller off — cobantab1a's
- * BLE-only product build, the s3 supermini fixture, ...
+ * boards whose dts keeps the USB device controller off — today the s3
+ * supermini fixture (cobantab1a labels zephyr_udc0 itself in its shield
+ * overlay; the C3 has no UDC at all in this port).
  *
  * zmk-usb-logging hooks its "ZMK Logging" CDC onto &zephyr_udc0, but that
  * label only exists once something labels the DWC2 controller

@@ -39,10 +39,11 @@ for the authoritative steps):
 115200 8N1. The device console/shell is on the USB-Serial/JTAG port —
 keep that connected too for the firmware log while the harness talks.
 
-**b06 USB variant:** on a `tab1a-usb` build the same harness talks over the
-USB-C port's CDC-ACM device instead — `--port /dev/cu.usbmodemXXXX` (the
-"ZMK Studio" CDC interface of the HID composite); console moves to the P1
-UART0 pins. Full walk: `esp-port/tab1a-bench-runbook.md` §b06.
+**b06 (merged):** on the default `tab1a` build (since 2026-11-26) the same
+harness talks over the USB-C port's CDC-ACM device instead —
+`--port /dev/cu.usbmodemXXXX` (the "ZMK Studio RPC" CDC interface of the
+HID composite); the console lives on the P1 UART0 pins. Full walk:
+`esp-port/tab1a-bench-runbook.md` §b06.
 
 ## Use
 

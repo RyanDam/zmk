@@ -35,7 +35,7 @@ under `docs/docs/hardware-integration/`.
 | 5 — C3 BLE board | `b02` | in progress (board + fixture merged to `feat/esp32`, hardware tests pending) |
 | 6 — S3 BLE board | `b03` | in progress (board + fixture merged to `feat/esp32`, hardware tests pending) |
 | 7 — BLE power/reliability | `d03` | not started |
-| 8 — S3 USB HID (conditional) | `b04` | not started — but b06 (2026-11-25) proved wired USB HID + Studio CDC on tab1a **unfused** via runtime PHY switch (`tab1a-usb` build); b04's remaining scope is boot-mode/fused production questions only |
+| 8 — S3 USB HID (conditional) | `b04` | won't-do (superseded) — b06 (2026-11-25) proved wired USB HID + Studio CDC on tab1a **unfused** via runtime PHY switch; merged into the default `tab1a` build 2026-11-26. Only boot-mode/fused production questions remain open, should they ever matter |
 | 9 — Optional capabilities | `a03`, `a04`, `a05` | not started |
 | 9b — cobantab1a display module (Phase 9b display class) | `b05` | in progress (board def + AXS15231B display/touch drivers + shield compile-verified; hardware bring-up pending) |
 | 10 — Docs/CI/release policy | `f01` | not started |
@@ -48,7 +48,7 @@ under `docs/docs/hardware-integration/`.
   DWC2-ESP UDC driver hands pads 19/20 from USB-Serial/JTAG to OTG via
   `usb_wrap` (`OTG_CONF.pad_enable`, already in the driver path on S3), and
   every reset reverts — recovery/flashing on an unfused chip stays
-  Serial/JTAG, so the `tab1a-usb` variant is fully reversible (plan rev 2:
+  Serial/JTAG, so OTG on tab1a is fully reversible (plan rev 2:
   zero eFuse writes allowed). The 2026-10-02 note's "Phase 6/8" plan is thus
   realized in software only; burning stays a b04 production question.
 - **2026-10-02 — Studio-over-USB is a critical product feature; the C3 cannot

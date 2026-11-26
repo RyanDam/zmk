@@ -135,15 +135,21 @@ Record: `test-results/12-s3-001-tab1a-devkit-probes.md`, one observation per
 row above, then tick h01's bench boxes. Board-designer sign-off for the P3
 third signal closes h01 acceptance 3 (independent of the probes).
 
-## a14 — Studio RPC over the bench UART (P1 header)
+## a14 — Studio RPC (P1 bench path — superseded by the merged build)
 
-The product config chooses **UART0 as the Studio RPC transport**
-(`zmk,studio-rpc-uart = &uart0` in `cobantab1a.overlay`), so a stock
-`./build.sh tab1a` + `./flash.sh tab1a` answers RPC on the P1 header —
-no special build needed. Console/shell stay on USB-Serial/JTAG: keep the
-console capture running (mind the DTR trap above) while the harness
-talks, the firmware logs (`LOG_MODULE zmk_studio`) the request/response
-trail.
+> **2026-11-26:** the default `tab1a` build now carries the wired OTG
+> composite (b06 merged): the RPC transport is the **"ZMK Studio RPC"
+> CDC** on USB-C (`zmk,studio-rpc-uart = &studio_cdc_uart`) and P1 UART0
+> is the **console/shell**. This section's P1-as-RPC wiring applies to
+> pre-merge images (or a `-C` fragment re-choosing `&uart0`); the wire
+> framing, harness and §walks are unchanged — only the port moved. The
+> live bench walk is the **b06** section below.
+
+The pre-merge product config chose UART0 as the RPC transport
+(`zmk,studio-rpc-uart = &uart0`), so a stock build answered RPC on the P1
+header. Console/shell stayed on USB-Serial/JTAG: keep the console
+capture running (mind the DTR trap above) while the harness talks, the
+firmware logs (`LOG_MODULE zmk_studio`) the request/response trail.
 
 Wiring (3.3 V logic adapter only):
 
@@ -183,12 +189,15 @@ Expected failure modes: no response at all → TX/RX crossed wrong or
 adapter is 5 V; `Failed to select a transport` → chosen node missing
 (rebuild pristine); MetaError `UNLOCK_REQUIRED` → run `lock` first.
 
-## b06 — Studio RPC + HID over the USB-C OTG port (no fuse)
+## b06 — Studio RPC + HID over the USB-C OTG port (no fuse) — **merged into the default build 2026-11-26**
 
-`./build.sh tab1a-usb` + flashing `firmware/tab1a-usb.bin` put a
+`./build.sh tab1a` + `./flash.sh tab1a` now put the
 **HID-keyboard + CDC-ACM composite** on the USB-C port (GPIO19/20 → the
-DWC2 OTG controller), so one cable carries wired typing *and* Studio RPC —
-the harness just talks to the new CDC serial device. Plan of record:
+DWC2 OTG controller) in every image — the separate `tab1a-usb` variant
+and its `cobantab1a-usb.{conf,overlay}` fragments are gone (merged into
+`cobantab1a.{conf,overlay}`; see b06 Status 2026-11-26). One cable carries
+wired typing *and* Studio RPC — the harness talks to the "ZMK Studio RPC"
+CDC serial device. Plan of record:
 [`docs/b06-tab1a-cdc-acm-usb-plan.md`](../../docs/b06-tab1a-cdc-acm-usb-plan.md)
 rev 2; the eFuse question behind it:
 [`docs/b06-efuse-usb-phy-sel-report.md`](../../docs/b06-efuse-usb-phy-sel-report.md).
@@ -198,26 +207,30 @@ USB-Serial/JTAG (ROM download + `./flash.sh tab1a` keep working, even to
 recover a wedged USB build — that is the whole reversibility story); the
 device-stack init hands the pads to OTG (`usb_wrap` `OTG_CONF.pad_enable`),
 and **any reset reverts them**. Never `espefuse burn_efuse` anything.
+Exception at boot: flashing while the running app already holds the CDC
+open needs **BOOT+RST** once (ROM instead of app on the pads).
 
-Port map for the `tab1a-usb` build (flipped from the default build):
+Port map (single build — this table is now the whole truth):
 
-| Port/pins | Default `tab1a` build | `tab1a-usb` build |
+| Port/pins | boot / ROM | running app |
 |---|---|---|
-| USB-C (19/20) | Serial/JTAG console + flashing | boot: Serial/JTAG → running: HID + **CDC-ACM ("ZMK Studio")** |
-| P1 UART0 (43/44) | Studio RPC bench | **console + shell + `esptool` recovery** @ 115200 |
+| USB-C (19/20) | Serial/JTAG (ROM loader, `./flash.sh tab1a`) | HID keyboard + **CDC-ACM ("ZMK Studio RPC")** |
+| P1 UART0 (43/44) | — | **console + shell** @ 115200 (+ ROM messages) |
 
-Walk (all reversible — a power-cycle reverts the pads, `./flash.sh tab1a`
-reverts the firmware):
+Walk (all reversible — a power-cycle hands the pads back to the ROM
+loader; `./flash.sh tab1a` re-flashes over it):
 
 1. `espefuse.py --chip esp32s3 -p <usb-serial-port> summary` **read-only** →
    `test-results/` (date code + `USB_PHY_SEL=0` baseline; expect the
    `DIS_USB_OTG_DOWNLOAD_MODE` state documented in the fuse report §5).
-2. Flash: `./flash.sh tab1a` is for the default image; for the variant use
-   `west flash -d build/cobantab1a-usb` (still the Serial/JTAG path — attach
-   happens at reset, before the app grabs the pads).
+2. Flash: `./flash.sh tab1a` (Serial/JTAG path — attach happens at reset,
+   before the app grabs the pads; BOOT+RST if a running CDC app holds them).
 3. Boot log on the **P1 UART0** console: `RPC transport selected: uart`
-   appears only once the host connects USB (endpoint-keyed: BLE → `gatt`,
-   USB → the CDC-backed `uart` transport).
+   at boot — `UART_PREFERRED=y` pins the (now CDC-backed) uart transport
+   endpoint-independently. The endpoint-keyed variant (BLE → `gatt`,
+   USB → `uart`, pin dropped) is the unproven path behind bug #3 — flip
+   the pin in the conf as the first probe if the harness gets no reply
+   (`docs/wave2-implementation-report.md` §3.2/§7).
 4. Enumerate: `system_profiler SPUSBDataType` → one composite with a
    keyboard and a CDC-ACM interface (macOS names it by ZMK's descriptors).
 5. `node src/cli.js --port /dev/cu.usbmodemXXXX selftest` — the entire a14
@@ -232,7 +245,7 @@ reverts the firmware):
    recovery must both restore with a bare power-cycle; finally power-cycle →
    Serial/JTAG console + `./flash.sh tab1a` work with zero intervention.
 7. Record per `format.md`; tick the compat-matrix tab1a USB_PHY_SEL column
-   ("19/20 → OTG at runtime on tab1a-usb; reverts at reset; eFuse
+   ("19/20 → OTG at runtime on tab1a; reverts at reset; eFuse
    untouched").
 
 Expected failure modes: OTG port dead while the P1 console shows the app
@@ -248,7 +261,7 @@ regenerates `firmware/assets.bin`) flashed at `0xda8000`. The 60 s/1 MB
 acceptance bar runs on the **b06 CDC path** (UART0@115200 is ~90 s of
 pure wire time for 1 MB — that leg records a baseline instead):
 
-**A. CDC acceptance (`tab1a-usb` build, OTG cable, `/dev/cu.usbmodemXXXX`):**
+**A. CDC acceptance (merged `tab1a` build, OTG cable, `/dev/cu.usbmodemXXXX`):**
 
 1. `node src/cli.js --port ... lock` then a 1 MB upload:
    `node src/cli.js --port ... assets upload ~/Downloads/1mb.gif --fps 12`

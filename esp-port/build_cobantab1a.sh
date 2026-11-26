@@ -13,12 +13,12 @@
 #   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
 #                proprietary blobs are not needed. Fetch them for a real image:
 #                west blobs fetch hal_espressif)
-#   -l, --log    Add the zmk-usb-logging snippet: a dedicated "ZMK Logging"
-#                CDC-ACM on the OTG port, with the console + shell redirected
-#                to it (away from USJ on the product build). Caveat on the
-#                tab1a-usb variant: HID + RPC CDC + logging CDC exceeds the
-#                S3 OTG's 4 IN TxFIFOs, so the composite won't enumerate.
-#                Also settable via env ZMK_BUILD_LOG=1.
+#   -l, --log    Not supported here: the merged tab1a build already runs a
+#                wired OTG composite (HID + Studio RPC CDC), and its
+#                console + shell are on UART0/P1 — a 2nd "ZMK Logging"
+#                CDC over-subscribes the S3 OTG's 4 IN TxFIFOs and the
+#                composite never enumerates (docs/wave2-implementation-
+#                report.md SS3.1). Raise log levels via -C instead.
 #   -f, --flash  Run west flash after building
 #   -C, --conf <file>
 #                Extra Kconfig fragment (relative to the repo root, or
@@ -91,10 +91,8 @@ Usage: $(basename "$0") [options]
 
 Options:
   --no-blobs   Compile-only build (CONFIG_BUILD_ONLY_NO_BLOBS=y)
-  -l, --log    Add the zmk-usb-logging snippet ("ZMK Logging" CDC on the
-               OTG port; console + shell move to it). Not useful on the
-               tab1a-usb variant (TxFIFO limit, see header). Env fallback:
-               ZMK_BUILD_LOG=1
+  -l, --log    Not supported (see header: a logging CDC won't enumerate
+               on this device; console/shell are on UART0/P1 anyway)
   -f, --flash  Run west flash after building
   -C, --conf <file>
                Extra Kconfig fragment for a bring-up build, relative to the
@@ -206,22 +204,19 @@ fi
 
 BOARD=cobantab1a/esp32s3/procpu/zmk
 SHIELD=cobantab1a
-# Env override so variants (e.g. the b06 tab1a-usb build) get their own dir
-# without clobbering the default build/cobantab1a.
+# Env override so scratch/diagnostic builds get their own dir without
+# clobbering the default build/cobantab1a.
 BUILD_DIR="${BUILD_DIR_OVERRIDE:-build/cobantab1a}"
 
 EXTRA_ARGS=""
 if [ "$NO_BLOBS" = yes ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DCONFIG_BUILD_ONLY_NO_BLOBS=y"
 fi
-SNIPPETS=""
 if [ "$DO_LOG" = yes ]; then
-  # The canonical ZMK debug path: ZMK_USB_LOGGING (LOG+console on a CDC)
-  # plus the snippet's overlay hooking the CDC onto &zephyr_udc0. The
-  # esp32s3-usb-otg snippet (app/snippets/) provides that label on this
-  # BLE-only board dts and MUST be loaded first (DTS resolves label
-  # references in stream order; EXTRA overlays would come too late).
-  SNIPPETS="-S esp32s3-usb-otg -S zmk-usb-logging"
+  echo "NOTE: --log ignored on tab1a — the merged build's OTG composite" >&2
+  echo "      (HID + Studio RPC CDC) has no IN TxFIFO headroom for a" >&2
+  echo "      logging CDC; console/shell are on UART0/P1. Use -C to raise" >&2
+  echo "      log levels." >&2
 fi
 
 if [ -n "$CONF_FILE" ]; then
@@ -252,8 +247,7 @@ echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
 # CROSS_COMPILE is passed via the environment (the CMake cache variable is
 # typed PATH and mangles a relative prefix); TOOLCHAIN_HOME has no env
 # fallback, so it goes on the command line.
-# shellcheck disable=SC2086
-west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always $SNIPPETS \
+west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
      -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS $CMAKE_ARGS
 
