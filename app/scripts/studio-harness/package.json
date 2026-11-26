@@ -1,0 +1,20 @@
+{
+  "name": "tab1a-studio-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scripted ZMK Studio RPC client for the Coban Tab 1a bench path (backlog a14): framing + protobuf over raw UART, protos loaded live from the west module so the harness can never drift from the firmware's codegen.",
+  "type": "module",
+  "bin": {
+    "studio-harness": "src/cli.js"
+  },
+  "scripts": {
+    "framing-test": "node test/framing.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0",
+    "protobufjs": "^7.3.2"
+  }
+}
