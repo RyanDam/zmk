@@ -4,13 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-/*
- * Raised on every pomodoro engine transition: start/pause/resume/cancel
- * and the work→rest / rest→work / session-done rollovers (a14). The
- * notify seam (zmk/notify.h) keeps its visual/beep/light role; this is
- * the machine-readable twin for the Studio `pomo` notification mapper
- * and later h03/h04/d05 consumers.
- */
+/* Raised on every pomodoro transition; machine-readable twin of the notify seam. */
 
 #pragma once
 

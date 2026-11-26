@@ -3,29 +3,21 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * AXS15231B QSPI LCD panel driver (ESP32 MSPI controller).
+ * AXS15231B QSPI 320x480 panel driver (ESP32 MSPI controller). No RST or DC pin
+ * is wired, so the panel is QSPI-only and reset with SWRESET.
  *
- * The AXS15231B is a 320x480 LCD controller with a QSPI interface, used on the
- * Guition JC3248W535 reference board and the cobantab1a module. Neither has an
- * RST or DC pin wired, so the panel is driven QSPI-only and reset through the
- * SWRESET command.
- *
- * QSPI wire protocol (AXS15231B datasheet, confirmed on the bench 2026-11-21):
- *   - Every frame opens with a 32-bit header on one data line:
- *       [opcode][0x00][cmd][0x00]
- *     where opcode is 0x02 (write command + parameters, 1-wire data phase) or
- *     0x32 (write color, pixels on all four data lines).
- *   - Header and payload are ONE transaction under one CS assertion. On this
- *     controller the header rides the 16-bit command phase ([opcode][0x00])
- *     and the 16-bit address phase ([cmd][0x00]), both 1-wire in every I/O
- *     mode, with the payload as the data phase - see axs15231b_mspi_frame().
- *   - The interface is SPI mode 3 (SCLK idles high, data latched on the rising
- *     edge), which on a GPIO-matrix clock pad needs the matrix inverter -
+ * Wire protocol (datasheet, confirmed on the bench):
+ *   - A frame opens with a 32-bit header on one data line:
+ *     [opcode][0x00][cmd][0x00]; 0x02 = command + params (1-wire data),
+ *     0x32 = color (pixels on all four lines).
+ *   - Header and payload are ONE transaction under one CS assertion: the header
+ *     rides the 16-bit command and address phases (1-wire in every io_mode),
+ *     the payload is the data phase — see axs15231b_mspi_frame().
+ *   - SPI mode 3, which on a GPIO-matrix clock pad needs the matrix inverter —
  *     see axs_mspi_clock_invert().
  *
- * The panel must be a child of an "espressif,esp32-mspi" node: this driver
- * exists to send header and pixels as a single hardware transaction, which the
- * SPI API (one line width per transfer, CS held by hand) cannot do.
+ * The panel must be a child of an "espressif,esp32-mspi" node: the SPI API
+ * cannot put a header and its pixels in one hardware transaction.
  */
 
 #include <string.h>
@@ -52,30 +44,15 @@ LOG_MODULE_REGISTER(axs15231b, CONFIG_DISPLAY_LOG_LEVEL);
 #define AXS_HAS_BACKLIGHT DT_NODE_HAS_PROP(DT_INST(0, axs_axs15231b), pwms)
 
 /*
- * Product orientation (a07 landscape redesign): `rotation` on the node is the
- * angle the CONTENT is turned by, so a portrait-mounted 320x480 panel shows a
- * 480x320 landscape UI. Two routes:
- *
- * - Software (default): the panel stays MADCTL 0x00, LVGL renders the logical
- *   landscape frame (lv_display_set_rotation, driven from the same DT
- *   property by app/src/display/main.c), and the flush arrives transposed -
- *   axs15231b_write transposes it into a PSRAM staging frame and streams it
- *   as one RAMWR, the same transaction shape the unrotated path uses. Costs
- *   a few ms of transpose per full frame; the 61 ms QSPI flush dominates.
- *
- * - Hardware (CONFIG_AXS15231B_ROTATION_HW): MADCTL's MV swap, caps report
- *   the swapped resolution, and the pixel stream is written straight through.
- *   ZERO per-frame cost - but the AXS15231B's QSPI row-pointer stream under
- *   MV is NOT yet proven on the bench (the columns-only-window findings in
- *   this file's notes were made at MADCTL 0x00), so the route is opt-in.
- *   The MADCTL table below is the MIPI-DDI convention and must be verified
- *   against a test pattern before this route ships; if the stream order comes
- *   out transposed, the software route is the answer.
- *
- * The software rotation direction is tied to LVGL's: the transpose formulas
- * are derived from lv_display_rotate_point() (lv_indev.c feeds touch through
- * the same map), so pixels and taps cannot drift apart. Keep them in lockstep
- * with any LVGL upgrade.
+ * Orientation: `rotation` on the node is the angle the CONTENT turns, so a
+ * portrait 320x480 panel shows a 480x320 UI. Software route (default): MADCTL
+ * stays 0x00, LVGL renders landscape and axs15231b_write transposes the flush
+ * into a PSRAM staging frame and streams one RAMWR. Hardware route
+ * (CONFIG_AXS15231B_ROTATION_HW) uses MADCTL MV: zero per-frame cost, but the
+ * row-pointer stream under MV is unproven and the MADCTL table below is only
+ * the MIPI-DDI convention — bench-verify before that route ships. The transpose
+ * mirrors lv_display_rotate_point(), which also maps touch, so pixels and taps
+ * cannot drift: keep them in lockstep across an LVGL upgrade.
  */
 #define AXS_ROTATION DT_PROP_OR(DT_INST(0, axs_axs15231b), rotation, 0)
 #define AXS_ROTATION_HW IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW)
@@ -85,16 +62,13 @@ BUILD_ASSERT(AXS_ROTATION == 0 || AXS_ROTATION == 90 || AXS_ROTATION == 180 ||
                      AXS_ROTATION == 270,
              "rotation: one of 0/90/180/270");
 
-/* MADCTL bits per rotation (MX 0x80, MY 0x40, MV 0x20) - bench-verify first,
- * see the note above. */
+/* MADCTL bits per rotation (MX 0x80, MY 0x40, MV 0x20). */
 #define AXS_MADCTL_ROT_0 0x00
 #define AXS_MADCTL_ROT_90 0x60  /* MV | MX */
 #define AXS_MADCTL_ROT_180 0xC0 /* MX | MY */
 #define AXS_MADCTL_ROT_270 0xA0 /* MV | MY */
 
-/* Logical (what LVGL/flush sees) vs physical (what the glass streams). Only
- * 90/270 swap the axes; the hardware route reports them in caps, the
- * software route keeps caps physical and transposes at write time. */
+/* Logical (LVGL/flush) vs physical (what the glass streams); 90/270 swap. */
 #define AXS_ROT_SWAPPED (AXS_ROTATION_HW && (AXS_ROTATION == 90 || AXS_ROTATION == 270))
 #define AXS_LOGICAL_WIDTH (AXS_ROT_SWAPPED ? AXS_HEIGHT : AXS_WIDTH)
 #define AXS_LOGICAL_HEIGHT (AXS_ROT_SWAPPED ? AXS_WIDTH : AXS_HEIGHT)
@@ -125,9 +99,8 @@ BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_PARENT(DT_INST(0, axs_axs15231b)), espressif_
 #define AXS_SLPOUT_DELAY_MS 120
 #define AXS_DISPON_DELAY_MS 20
 
-/* Where the pixel phase goes, from the node's mspi-io-mode. The binding keeps
- * its enum list in the order of enum mspi_io_mode so the index can be used as
- * the value. */
+/* Pixel-phase line width, from the node's mspi-io-mode (binding enum order
+ * matches enum mspi_io_mode so the index is the value). */
 #define AXS_MSPI_PIXELS_IO_MODE                                                                          \
     ((enum mspi_io_mode)DT_ENUM_IDX_OR(DT_INST(0, axs_axs15231b), mspi_io_mode, MSPI_IO_MODE_SINGLE))
 
@@ -138,14 +111,9 @@ BUILD_ASSERT(AXS_MSPI_PIXELS_IO_MODE == MSPI_IO_MODE_SINGLE ||
 
 struct axs15231b_cfg {
     const struct device *mspi_bus;
-    /*
-     * The controller identifies the device by the *address of this struct*, so
-     * it lives in the (static, long-lived) device configuration and not on a
-     * stack: mspi_esp32_transceive() refuses a transfer whose dev_id pointer is
-     * not the one mspi_esp32_dev_config() was last called with. Only dev_idx is
-     * meaningful here - the ESP32 driver picks the CE line from the controller
-     * node's ce-gpios via the configured ce_num, never from this struct.
-     */
+    /* The controller identifies a device by the *address* of this struct, so
+     * it lives in the long-lived device config, not on a stack. Only dev_idx
+     * matters: the CE line comes from the controller node's ce-gpios. */
     struct mspi_dev_id mspi_dev_id;
     struct mspi_dev_cfg mspi_dev_cfg;
     struct gpio_dt_spec reset;
@@ -155,29 +123,19 @@ struct axs15231b_cfg {
 };
 
 struct axs15231b_data {
-    /*
-     * The line width the controller is currently set to. Switching between the
-     * 1-wire and 4-wire phases is a dev_config() call, and mspi_dev_config() is
-     * not free (it takes the controller's lock and reprograms it), so it is
-     * called only when the phase actually changes. MSPI_IO_MODE_MAX is not a
-     * mode any device can ask for, so it starts the cache empty (set in
-     * axs15231b_init(); a plain zero would look like MSPI_IO_MODE_SINGLE).
-     */
+    /* Current line width. mspi_dev_config() takes the controller lock and
+     * reprograms, so it runs only when the phase actually changes.
+     * MSPI_IO_MODE_MAX starts the cache empty; a plain zero reads as SINGLE. */
     enum mspi_io_mode mspi_io_mode;
 
     bool initialized;
 };
 
 /*
- * Put the controller in the line mode the next frame needs.
- *
- * The MSPI API carries no per-transfer line width: how many lines the command,
- * address and data phases use is device configuration, set with
- * mspi_dev_config(MSPI_DEVICE_CONFIG_IO_MODE). mspi_esp32.c picks the phase
- * widths up from it at the start of every transfer, and changing it does not
- * dirty the device-level registers, so switching between the parameter phase
- * (1-1-1) and the pixel phase (1-1-4) costs one call and no reprogramming -
- * still worth skipping when the mode is already right.
+ * The MSPI API has no per-transfer line width — it is device config
+ * (MSPI_DEVICE_CONFIG_IO_MODE), read at the start of each transfer. Switching
+ * the parameter phase (1-1-1) and the pixel phase (1-1-4) costs one call and
+ * no register reprogramming.
  */
 static int axs15231b_mspi_io_mode(const struct device *dev, enum mspi_io_mode io_mode) {
     const struct axs15231b_cfg *cfg = dev->config;
@@ -204,20 +162,13 @@ static int axs15231b_mspi_io_mode(const struct device *dev, enum mspi_io_mode io
 }
 
 /*
- * One frame as ONE hardware transaction: the 32-bit header
- * [opcode][0x00][cmd][0x00] split across the controller's command phase
- * (opcode, 0x00) and address phase (cmd, 0x00) - both on one data line in
- * every io_mode this panel uses - and the payload as the data phase, on one
- * line for parameters or the node's mspi-io-mode for pixels. One CS
- * assertion, no mid-frame mode switch, no boundary to lose sync at.
+ * One frame as ONE transaction: header [opcode][0x00][cmd][0x00] across the
+ * command and address phases (one line each), payload as the data phase.
+ * One CS assertion, no mid-frame mode switch.
  *
- * This replaces an earlier form that sent the header as a 4-byte data-phase
- * transfer followed by a SEPARATE payload transfer held together by a
- * software-CS hold. If CS wavered at that seam the panel saw two broken
- * frames - a header with no payload, then a payload with no header whose
- * first bytes it parsed AS a header - and answered with pixel noise and
- * pixel bytes like 0x10 (SLEEP IN) decoded as commands. Bench-proven
- * 2026-11-21: this form paints from a virgin power-on.
+ * Splitting header and payload into two transfers is not safe: if CS wavers at
+ * the seam the panel parses the payload's first bytes as a header, which paints
+ * noise and decodes pixel bytes like 0x10 (SLEEP IN) as commands.
  */
 static int axs15231b_mspi_frame(const struct device *dev, uint8_t opcode, uint8_t cmd,
                                 const void *payload, size_t payload_len,
@@ -225,29 +176,23 @@ static int axs15231b_mspi_frame(const struct device *dev, uint8_t opcode, uint8_
     const struct axs15231b_cfg *cfg = dev->config;
     struct mspi_xfer_packet packet = {
         .dir = MSPI_TX,
-        /* Command and address phases go out MSB-first, so these pack the
-         * wire bytes [opcode][0x00] and [cmd][0x00]. */
+        /* Command/address phases pack MSB-first: [opcode][0x00], [cmd][0x00]. */
         .cmd = (uint32_t)opcode << 8,
         .address = (uint32_t)cmd << 8,
         .num_bytes = (uint32_t)payload_len,
         .data_buf = (uint8_t *)payload,
     };
     struct mspi_xfer xfer = {
-        /* Payloads over a FIFO's worth ride GDMA; command/parameter frames
-         * stay on PIO. */
+        /* Payloads over a FIFO's worth ride GDMA; command frames stay on PIO. */
         .xfer_mode = payload_len > 32U ? MSPI_DMA : MSPI_PIO,
         .cmd_length = 2,
         .addr_length = 2,
         .hold_ce = false,
         .packets = &packet,
         .num_packet = 1,
-        /*
-         * The controller's default timeout (its transfer-timeout, 100 ms
-         * unless the node says otherwise) is sized for flash reads. A panel
-         * frame is much longer at a low clock: a whole 320x480 RGB565 frame
-         * is 300 kB, over 2 s at 1 MHz. So ask for twice the transfer's own
-         * duration, in case the clock divider rounded down.
-         */
+        /* The controller's ~100 ms default timeout is sized for flash reads; a
+         * 300 kB RGB565 frame runs over 2 s at 1 MHz. Ask for twice the
+         * transfer's own duration (clock divider may round down). */
         .timeout = (uint32_t)((2ULL * payload_len * 8ULL * 1000ULL) /
                               MAX(cfg->mspi_dev_cfg.freq, 1U)) +
                    50U,
@@ -279,15 +224,9 @@ static int axs15231b_tx_color(const struct device *dev, uint8_t cmd, const void 
 static int axs15231b_set_backlight(const struct device *dev, bool on) {
     const struct axs15231b_cfg *cfg = dev->config;
 
-    /*
-     * One nanosecond short of the period rather than exactly it. A pulse equal
-     * to the period makes Zephyr's LEDC driver stop the PWM counter and hold the
-     * pad through the channel's idle level instead (pwm_led_esp32.c: "For duty
-     * 0% and 100% stop PWM, set output level and return") - a path this panel's
-     * backlight never came up on. The reference bsp stays one step below full
-     * scale for the same reason: "LEDC resolution set to 10bits, thus: 100% =
-     * 1023" (esp_bsp.c). Visually identical, and it keeps the counter running.
-     */
+    /* One ns short of the period: at 0 %/100 % duty pwm_led_esp32.c stops the
+     * counter and holds the pad at the idle level, and this backlight never
+     * came up that way. The reference bsp likewise treats 100 % as 1023/1024. */
     uint32_t pulse = on ? (cfg->backlight.period - 1) : 0;
     int err = pwm_set_dt(&cfg->backlight, cfg->backlight.period, pulse);
 
@@ -312,11 +251,9 @@ struct axs15231b_init_cmd {
     uint16_t delay_ms;
 };
 
-/*
- * Panel initialization sequence, ported verbatim from the JC3248W535 reference
- * bsp (esp_bsp.c lcd_init_cmds). This sequence is panel-tuned and differs from
- * the Espressif driver's built-in default, so it must be used as-is.
- */
+/* Panel init sequence, verbatim from the JC3248W535 reference bsp
+ * (esp_bsp.c lcd_init_cmds): panel-tuned, differs from the Espressif driver's
+ * built-in default, so use it as-is. */
 static const struct axs15231b_init_cmd axs15231b_init_cmds[] = {
     {0xBB, (const uint8_t[]){0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5A, 0xA5}, 8, 0},
     {0xA0,
@@ -416,15 +353,9 @@ static const struct axs15231b_init_cmd axs15231b_init_cmds[] = {
 };
 
 /*
- * Send the whole command sequence that takes the panel from reset to
- * displaying, and return once it is up.
- *
- * The order is the reference's, and was read off it rather than assumed: reset,
- * then SLPOUT, MADCTL and COLMOD (panel_axs15231b_reset() and the head of
- * panel_axs15231b_init()), then the 32-entry vendor table, then SLPOUT and
- * DISPLAY_ON, which is what esp_lcd_panel_disp_on_off(panel, false) sends after
- * init. The table itself is evaluated untouched - it is panel-tuned and differs
- * from the driver's built-in default.
+ * Run the reset-to-display sequence. Order taken from the reference bsp:
+ * reset, SLPOUT, MADCTL, COLMOD, the 32-entry vendor table, SLPOUT,
+ * DISPLAY_ON.
  */
 static int axs15231b_send_init(const struct device *dev) {
     const struct axs15231b_cfg *cfg = dev->config;
@@ -447,14 +378,10 @@ static int axs15231b_send_init(const struct device *dev) {
         k_msleep(AXS_SWRESET_DELAY_MS);
     }
 
-    /*
-     * Wake the panel before configuring anything. After a power-on reset the
-     * AXS15231B is asleep with the display off, and the vendor-specific
-     * commands of axs15231b_init_cmds (boost converter, gate and source
-     * drivers, gamma) do not take effect while it is: a panel configured
-     * while asleep keeps the backlight lit over a permanently dark screen,
-     * and its touch block never answers on I2C.
-     */
+    /* Wake first: after power-on reset the panel is asleep, and the vendor
+     * commands (boost, gate/source drivers, gamma) do not take effect until it
+     * is out of sleep — otherwise the backlight lights a dead screen and the
+     * touch block never answers on I2C. */
     err = axs15231b_tx_cmd(dev, AXS_CMD_SLPOUT, NULL, 0);
     if (err) {
         LOG_ERR("SLPOUT failed: %d", err);
@@ -463,8 +390,7 @@ static int axs15231b_send_init(const struct device *dev) {
     k_msleep(AXS_SLPOUT_DELAY_MS);
 
 #if AXS_ROTATION_HW
-    /* Hardware route: see the rotation note at the top of the file - the
-     * table needs a bench pass before this route ships. */
+    /* Hardware route: unproven on the bench, see the rotation note above. */
     uint8_t madctl = (AXS_ROTATION == 90)      ? AXS_MADCTL_ROT_90
                      : (AXS_ROTATION == 180)   ? AXS_MADCTL_ROT_180
                      : (AXS_ROTATION == 270)   ? AXS_MADCTL_ROT_270
@@ -498,12 +424,8 @@ static int axs15231b_send_init(const struct device *dev) {
         }
     }
 
-    /*
-     * Bring the display up, exactly as the reference does on
-     * esp_lcd_panel_disp_on_off(panel, false): exit sleep, then display on.
-     * (The table's own trailing SLPOUT is not enough on its own - the display
-     * still has to be switched on.)
-     */
+    /* As the reference does on disp_on_off(false): exit sleep, then display on
+     * (the table's trailing SLPOUT alone leaves the display off). */
     err = axs15231b_tx_cmd(dev, AXS_CMD_SLPOUT, NULL, 0);
     if (err) {
         LOG_ERR("SLPOUT failed: %d", err);
@@ -523,30 +445,24 @@ static int axs15231b_send_init(const struct device *dev) {
 
 #if AXS_ROTATION_SW
 /*
- * Software rotation: LVGL renders the logical landscape frame (see main.c's
- * lv_display_set_rotation) and the flush arrives as one full logical frame,
- * e.g. 480x320 for a 320x480 panel at 90/270. Transpose it into physical
- * strips here and stream those - the panel never learns the difference.
- *
- * Direction follows lv_display_rotate_point() (which is what maps touch):
- *   90:  physical P[y][x] = logical L[x][PH-1-y]
+ * Software rotation: the flush is one full logical frame (e.g. 480x320 on a
+ * 320x480 panel at 90/270); transpose it into physical strips and stream those.
+ * Direction mirrors lv_display_rotate_point() (also what maps touch):
+ *   90:  P[y][x] = L[x][PH-1-y]
  *   270: P[y][x] = L[PW-1-x][y]
  *   180: P[y][x] = L[PH-1-y][PW-1-x]
- * PW/PH are the panel's physical size. Reads walk the PSRAM source row-wise
- * (a strip's pixels live in one logical column per destination row), writes
- * hit a small internal-RAM scratch, so no 300 KB staging buffer is needed.
+ * Reads walk the PSRAM source row-wise, writes use a small internal-RAM
+ * scratch, so no 300 KB staging buffer is needed.
  */
 #define AXS_ROTATE_STRIP_ROWS 8
 
 static uint16_t axs_rotate_scratch[AXS_ROTATE_STRIP_ROWS * AXS_WIDTH] __aligned(4);
 
 /*
- * Full physical frame (300 KB) staged in PSRAM - the same placement and the
- * same GDMA path the LVGL draw buffer (`.lvgl_buf`) uses. The transpose
- * assembles the whole frame here and streams it as ONE RAMWR transaction,
- * byte-for-byte the protocol shape proven on the bench; a frame split into
- * many CS-asserted RAMWRC chunks is NOT proven on this panel (bench
- * 2026-11-22: 60-chunk streaming painted scattered pixel runs).
+ * Full physical frame (300 KB) in PSRAM, on the same GDMA path as
+ * `.lvgl_buf`: the transpose fills it and streams ONE RAMWR. A frame split
+ * into many CS-asserted RAMWRC chunks is not proven on this panel (60-chunk
+ * streaming painted scattered pixel runs).
  */
 static uint16_t axs_rotate_frame[AXS_WIDTH * AXS_HEIGHT] Z_GENERIC_SECTION(.ext_ram.bss)
     __aligned(4);
@@ -569,8 +485,8 @@ static void axs_rotate_strip(const uint16_t *src, uint16_t pitch, uint16_t y0, u
     }
 }
 
-/* Full logical frame at the rotated shape? (The only flush shape LVGL's
- * full-refresh mode produces, and the only one the transpose can serve.) */
+/* Full logical frame at the rotated shape — the only shape LVGL's full-refresh
+ * mode emits and the only one the transpose serves. */
 static bool axs_frame_is_rotated(const struct display_buffer_descriptor *desc) {
 #if AXS_ROTATION == 90 || AXS_ROTATION == 270
     return desc->width == AXS_HEIGHT && desc->height == AXS_WIDTH;
@@ -584,10 +500,8 @@ static int axs15231b_write_rotated(const struct device *dev,
     const uint16_t *src = buf;
     int err;
 
-    /* Columns 0..AXS_WIDTH-1 inclusive - what the unrotated path programs for
-     * every full-width flush. The CASET window sets the row wrap, so an
-     * off-by-one here shifts every row by a pixel (diagonal shear; bench
-     * 2026-11-22). */
+    /* CASET 0..AXS_WIDTH-1, as the unrotated path does for every full-width
+     * flush: the window sets the row wrap, so off-by-one shears every row. */
     uint8_t caset[4] = {0x00, 0x00, (uint8_t)((AXS_WIDTH - 1) >> 8),
                         (uint8_t)((AXS_WIDTH - 1) & 0xFF)};
 
@@ -596,11 +510,7 @@ static int axs15231b_write_rotated(const struct device *dev,
         return err;
     }
 
-    /*
-     * Transpose strip by strip (scratch keeps the read pattern cache-friendly
-     * and the frame copies sequential) into the full physical frame, then
-     * stream that as one frame - see axs_rotate_frame's note.
-     */
+    /* Transpose strip by strip into the physical frame, then stream it once. */
     for (uint16_t y0 = 0; y0 < AXS_HEIGHT; y0 += AXS_ROTATE_STRIP_ROWS) {
         uint16_t rows = MIN(AXS_ROTATE_STRIP_ROWS, AXS_HEIGHT - y0);
 
@@ -636,17 +546,11 @@ static int axs15231b_write(const struct device *dev, const uint16_t x, const uin
         return -EINVAL;
     }
 
-    /*
-     * Program the column window (CASET) - and only the column window. In QSPI
-     * mode the AXS15231B's GRAM write is a plain row-pointer stream: the row
-     * window (RASET) is ignored, RAMWR restarts the stream at row 0, and
-     * RAMWRC ("continue writing") carries on from wherever the pointer sits
-     * (the reference driver compiles RASET out of its QSPI path, and bench
-     * 2026-11-21 confirmed rectangles sent with a RASET still land at the
-     * pointer). So flushes must be full-width from row 0, which is the shape
-     * LVGL produces with CONFIG_LV_Z_FULL_REFRESH; anything else writes
-     * pixels to the wrong rows.
-     */
+    /* Program CASET and ONLY CASET: in QSPI the GRAM write is a row-pointer
+     * stream — RASET is ignored, RAMWR restarts at row 0, RAMWRC continues from
+     * the current pointer (the reference driver compiles RASET out of its QSPI
+     * path). So flushes must be full-width from row 0, the shape
+     * CONFIG_LV_Z_FULL_REFRESH produces; anything else writes the wrong rows. */
     uint8_t caset[4] = {
         (uint8_t)(x >> 8),
         (uint8_t)(x & 0xFF),
@@ -663,21 +567,12 @@ static int axs15231b_write(const struct device *dev, const uint16_t x, const uin
                 "run LVGL in full-refresh mode)", y);
     }
 
-    /*
-     * RAMWR (0x2C) starts a fresh write at the top of the window; RAMWRC (0x3C,
-     * "continue writing") keeps the row pointer where the previous write of the
-     * same frame left it. Which one the panel wants is decided by the row, as in
-     * the reference driver.
-     */
+    /* RAMWR (0x2C) restarts the window, RAMWRC (0x3C) keeps the row pointer;
+     * the row decides which, as in the reference driver. */
     const uint8_t ram_cmd = (y == 0) ? AXS_CMD_RAMWR : AXS_CMD_RAMWRC;
 
-    /*
-     * The panel's RAMWR expects a contiguous stream of pixels. The Zephyr
-     * display API passes desc->pitch in pixels, which can exceed
-     * desc->width (LVGL aligns the stride). If the buffer is pitched, copy
-     * the window into a contiguous temporary buffer; otherwise stream it
-     * directly.
-     */
+    /* desc->pitch (pixels) can exceed desc->width because LVGL aligns the
+     * stride; RAMWR needs a contiguous stream, so copy when pitched. */
     uint32_t total_bytes = (uint32_t)desc->width * desc->height * 2;
 
     if (desc->pitch == desc->width) {
@@ -740,25 +635,18 @@ static void axs15231b_get_capabilities(const struct device *dev,
     memset(caps, 0, sizeof(*caps));
     caps->x_resolution = AXS_LOGICAL_WIDTH;
     caps->y_resolution = AXS_LOGICAL_HEIGHT;
-    /*
-     * RGB_565X = byte-swapped 565. The panel consumes 16-bit pixels
-     * big-endian, like any MIPI DDI panel (datasheet's 16-bit figure puts
-     * R4..R0 first); the flush path streams VDB bytes through unchanged,
-     * so declaring the swapped format is what makes LVGL (mapped to
-     * LV_COLOR_FORMAT_RGB565_SWAPPED by zephyr/modules/lvgl/lvgl_display.c)
-     * emit MSB-first words at zero cost. Declaring plain RGB_565 instead
-     * shows on the glass exactly as bench saw 2026-11-21: white text cores
-     * crisp (0xFFFF/0x0000 are swap-invariant) but every anti-aliased grey
-     * edge lands as coloured speckle, because a swapped grey is a
-     * saturated colour. Every bring-up fill so far was 0x0000/0xFFFF,
-     * which cannot tell the orders apart.
-     */
+    /* RGB_565X is byte-swapped 565: the panel consumes 16-bit pixels
+     * big-endian like any MIPI DDI panel, and the flush streams VDB bytes
+     * unchanged, so declaring the swapped format (LV maps it to
+     * LV_COLOR_FORMAT_RGB565_SWAPPED) makes LVGL emit MSB-first for free.
+     * Plain RGB_565 looks fine where 0x0000/0xFFFF dominate and turns every
+     * anti-aliased grey into coloured speckle. */
     caps->supported_pixel_formats = PIXEL_FORMAT_RGB_565X;
     caps->current_pixel_format = PIXEL_FORMAT_RGB_565X;
     caps->screen_info = 0;
 #if AXS_ROT_SWAPPED || (AXS_ROTATION_HW && AXS_ROTATION == 180)
-    /* The LVGL pointer glue maps raw touch into these coordinates, so the
-     * hardware route must not also rotate in LVGL (see main.c). */
+    /* Touch glue maps raw points into these caps, so the hardware route must
+     * not also rotate inside LVGL. */
     caps->current_orientation = (AXS_ROTATION == 90)    ? DISPLAY_ORIENTATION_ROTATED_90
                                 : (AXS_ROTATION == 180) ? DISPLAY_ORIENTATION_ROTATED_180
                                                         : DISPLAY_ORIENTATION_ROTATED_270;
@@ -774,10 +662,8 @@ static int axs15231b_set_pixel_format(const struct device *dev,
 static int axs15231b_set_orientation(const struct device *dev,
                                      const enum display_orientation orientation) {
     ARG_UNUSED(dev);
-    /* Orientation is fixed at init (from the node's `rotation`), and caps
-     * report it; the LVGL pointer glue caches caps at its own init, so a
-     * runtime flip could not be honoured end-to-end anyway. Accept the
-     * configured value, refuse everything else. */
+    /* Orientation is fixed at init from the node's `rotation`; the pointer glue
+     * caches caps at its own init, so a runtime flip cannot work end-to-end. */
 #if !AXS_ROTATION_HW
     /* Software route: the PANEL stays normal; only LVGL/flush rotate. */
     return (orientation == DISPLAY_ORIENTATION_NORMAL) ? 0 : -ENOTSUP;
@@ -793,21 +679,13 @@ static int axs15231b_set_orientation(const struct device *dev,
 }
 
 /*
- * Put a real SPI mode 3 on the clock pad, the way the reference stack does.
- *
- * The panel is strapped for mode 3 - SCLK idles HIGH, data is captured on the
- * rising edge - and mspi_dev_config() sets the controller's mode register for
- * exactly that. Programmed through the core's ck_idle_edge/ck_out_edge pair
- * alone, though, the clock that reaches a GPIO-matrix pad is not mode 3: every
- * frame arrives one half-clock out of step. IDF's spi_master reaches mode 3 a
- * different way: it drives the clock signal through the GPIO matrix WITH THE
- * MATRIX INVERTER ENABLED (esp_rom_gpio_connect_out_signal(sclk, sig, invert,
- * ...)), and that is the waveform this panel accepts - measured on the bench
- * 2026-11-21, where only mode 0 direct and mode 3 inverted painted. So enable
- * the same inverter: the shield's pinctrl routes FSPICLK_OUT to this pad
- * un-inverted (Zephyr's ESP32 pinctrl has no notion of inversion), and this
- * flips the matrix inverter bit for it. The pad number must stay the pinctrl
- * clock group's pad in cobantab1a.overlay.
+ * Mode 3 on this pad. mspi_dev_config() programs the controller's mode
+ * register, but a clock driven through the GPIO matrix arrives one half-clock
+ * out of step; IDF's spi_master reaches mode 3 by connecting the clock through
+ * the matrix WITH THE INVERTER ENABLED, and that is the waveform this panel
+ * accepts (measured: only mode 0 direct and mode 3 inverted painted). The
+ * shield's pinctrl routes FSPICLK_OUT here un-inverted, so set the matrix
+ * inverter bit — and keep the pad number equal to the overlay's clock pad.
  */
 #define AXS_MSPI_SCLK_PAD 47
 
@@ -831,12 +709,9 @@ static int axs15231b_init(const struct device *dev) {
         return -ENODEV;
     }
 
-    /*
-     * Ask the controller what it can do before claiming it: this is the
-     * documented order, it releases the controller's device-config lock for a
-     * caller that left one behind, and -EINVAL from here means the node asks
-     * for a channel the controller does not have.
-     */
+    /* Ask the controller for its caps before claiming them: documented order,
+     * it releases a lock a previous caller left held, and -EINVAL means the
+     * node names a channel the controller does not have. */
     err = mspi_get_channel_status(cfg->mspi_bus, 0);
     if (err) {
         LOG_ERR("MSPI channel 0 not usable for AXS15231B: %d", err);
@@ -845,12 +720,8 @@ static int axs15231b_init(const struct device *dev) {
 
     data->mspi_io_mode = MSPI_IO_MODE_MAX;
 
-    /*
-     * Everything that does not change per frame, in one call: the clock the
-     * panel is rated for, the clock mode, and the CE line the controller drives
-     * for this device. mspi_esp32.c came up at the controller node's own
-     * clock-frequency, so the panel's rate has to be requested here.
-     */
+    /* Clock rate, clock mode and CE in one call: mspi_esp32.c came up at the
+     * controller node's own clock-frequency, so the panel's rate must be asked. */
     err = mspi_dev_config(cfg->mspi_bus, &cfg->mspi_dev_id,
                           MSPI_DEVICE_CONFIG_FREQUENCY | MSPI_DEVICE_CONFIG_CPP |
                               MSPI_DEVICE_CONFIG_DATA_RATE | MSPI_DEVICE_CONFIG_CE_NUM |
@@ -904,14 +775,12 @@ int zmk_axs15231b_recover(const struct device *dev, bool hard) {
     LOG_WRN("recovering panel (%s reset)", hard ? "hard" : "soft");
 
     if (hard) {
-        /* Sleep-in first: gives the touch engine a second, deeper edge to
-         * fall out of the latched mailbox state on. */
+        /* Sleep-in first: a deeper edge for the touch engine to exit on. */
         (void)axs15231b_tx_cmd(dev, AXS_CMD_SLPIN, NULL, 0);
         k_msleep(AXS_SLPOUT_DELAY_MS);
     }
 
-    /* send_init performs the reset itself (HW pin when wired, SWRESET
-     * otherwise), wakes the panel, and replays the vendor table + DISPON. */
+    /* send_init resets, wakes the panel and replays the vendor table + DISPON. */
     err = axs15231b_send_init(dev);
     if (err) {
         LOG_ERR("panel recovery failed: %d", err);
@@ -944,8 +813,7 @@ static const struct axs15231b_cfg axs15231b_cfg = {
         .data_rate = MSPI_DATA_RATE_SINGLE,
         .cpp = (enum mspi_cpp_mode)DT_ENUM_IDX_OR(DT_INST(0, axs_axs15231b), mspi_cpp_mode,
                                                    MSPI_CPP_MODE_3),
-        /* Bytes always leave MSB first on this controller; the panel expects
-         * that, and it is what mspi_esp32.c does whatever this field says. */
+        /* Bytes always leave MSB first on this controller. */
         .endian = MSPI_XFER_BIG_ENDIAN,
         .ce_polarity = MSPI_CE_ACTIVE_LOW,
     },

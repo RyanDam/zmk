@@ -3,17 +3,10 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Pomodoro session engine implementation (backlog a10).
- *
- * Timing model: every phase stores an absolute deadline (k_uptime
- * milliseconds). The 1 s tick compares against it and carries the phase
- * boundary across, so timer latency never accumulates — pad10a added
- * 1000 ms per callback to an internal counter instead (pomo_cb), which
- * drifts with every LVGL hitch.
- *
- * Locking: state lives in one struct under a spinlock. The tick work
- * (system wq) and the start/pause/cancel calls (any thread) write; the
- * screen reads snapshots. Notify dispatch happens outside the lock.
+ * Pomodoro session engine implementation: absolute-deadline timing (the
+ * tick carries phase boundaries across, so latency never accumulates) and
+ * one spinlocked state struct (tick wq + API calls write, screens read
+ * snapshots); dispatch happens outside the lock.
  */
 
 #include <string.h>
@@ -46,7 +39,7 @@ static struct zmk_pomo_config config = {
 };
 
 static struct k_spinlock state_lock;
-static struct zmk_pomo_status state; /* .state is the authority      */
+static struct zmk_pomo_status state; /* .state is the authority */
 static bool blank_locked;
 
 static void engine_tick(struct k_work *work);
@@ -62,9 +55,8 @@ static uint16_t phase_len_s(uint8_t phase_state) {
     return phase_state == ZMK_POMO_STATE_WORK ? config.work_s : config.rest_s;
 }
 
-/* a14: machine-readable twin of the notify seam. Snapshot under the
- * spinlock, allocate/raise outside it (event alloc must not run with
- * interrupts locked). */
+/* Raise the state event: snapshot under the spinlock, allocate/raise
+ * outside it (event alloc must not run with interrupts locked). */
 static void raise_state_event(void) {
     k_spinlock_key_t key = k_spin_lock(&state_lock);
     struct zmk_pomo_state_changed ev = {
@@ -117,8 +109,8 @@ static void announce(enum zmk_notify_kind kind) {
 
 static int64_t now_ms(void) { return k_uptime_get(); }
 
-/* Phase rollover; runs in the system workqueue. All state mutation under
- * the spinlock; notify dispatch happens after releasing it. */
+/* Rollover runs in the system wq; mutation under the spinlock, dispatch
+ * after releasing it. */
 static void engine_tick(struct k_work *work) {
     enum zmk_notify_kind notify_kind = ZMK_NOTIFY_KIND_COUNT;
     int64_t t = now_ms();
@@ -142,8 +134,7 @@ static void engine_tick(struct k_work *work) {
             state.state == ZMK_POMO_STATE_WORK ? "work" : "rest", state.set_idx, state.sets,
             t - state.phase_start_ms, state.phase_total_s);
 
-    /* Chain the next phase onto the exact boundary, never onto "now":
-     * a late tick shifts nothing, so drift cannot accumulate. */
+    /* Chain the next phase onto the exact boundary, never onto "now". */
     int64_t boundary = state.deadline_ms;
 
     if (state.state == ZMK_POMO_STATE_WORK) {
@@ -231,8 +222,7 @@ int zmk_pomo_resume(void) {
     if (state.state == ZMK_POMO_STATE_IDLE || !state.paused) {
         ret = -EINVAL;
     } else {
-        /* Shift the whole phase window by the paused duration, keeping
-         * phase boundaries (and remaining-time display) exact. */
+        /* Shift the phase window by the paused duration. */
         int64_t paused_for = now_ms() - state.pause_at_ms;
 
         state.deadline_ms += paused_for;
@@ -298,9 +288,7 @@ int64_t zmk_pomo_remaining_ms(void) {
 
 const struct zmk_pomo_config *zmk_pomo_config_get(void) { return &config; }
 
-/* ------------------------------------------------------------------ */
-/* Config persistence (settings subtree "pomodoro")                    */
-/* ------------------------------------------------------------------ */
+/* Config persistence (settings subtree "pomodoro") */
 
 static void config_clamp(struct zmk_pomo_config *c) {
     c->sets = CLAMP(c->sets, 1, 8);

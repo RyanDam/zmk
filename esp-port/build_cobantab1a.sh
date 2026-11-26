@@ -1,68 +1,47 @@
 #!/bin/bash
-# Build the ZMK firmware for the Coban Tab 1a (Phase 9 / b05): BLE HID +
-# AXS15231B 3.5" QSPI display (LVGL status screen) + integrated I2C touch, on
-# the ESP32-S3 (N16R8, 16 MB flash + 8 MB octal PSRAM). PROCPU (single-core).
+# Build ZMK for the Coban Tab 1a: BLE HID + AXS15231B 3.5" QSPI display (LVGL
+# status screen) + integrated I2C touch, ESP32-S3 (N16R8) PROCPU.
 #
 # Usage (works from anywhere in the repo; sh or bash):
 #   sh esp-port/build_cobantab1a.sh                 # full build (needs hal_espressif blobs)
 #   sh esp-port/build_cobantab1a.sh --no-blobs      # compile-only, no Espressif blobs
 #   sh esp-port/build_cobantab1a.sh --flash         # build, then west flash
-#   sh esp-port/build_cobantab1a.sh --log           # build with verbose logging
+#   sh esp-port/build_cobantab1a.sh --log           # accepted, ignored (see -l)
 #
 # Options:
-#   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
-#                proprietary blobs are not needed. Fetch them for a real image:
-#                west blobs fetch hal_espressif)
-#   -l, --log    Not supported here: the merged tab1a build already runs a
-#                wired OTG composite (HID + Studio RPC CDC), and its
-#                console + shell are on UART0/P1 — a 2nd "ZMK Logging"
-#                CDC over-subscribes the S3 OTG's 4 IN TxFIFOs and the
-#                composite never enumerates (docs/wave2-implementation-
-#                report.md SS3.1). Raise log levels via -C instead.
+#   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; for a real
+#                image fetch the blobs first: west blobs fetch hal_espressif)
+#   -l, --log    Ignored: this build's OTG composite (HID + Studio RPC CDC) is
+#                already at the S3's 4 IN TxFIFO limit, so a 2nd "ZMK Logging"
+#                CDC never enumerates; console + shell are on UART0/P1 anyway.
+#                Raise log levels via -C instead.
 #   -f, --flash  Run west flash after building
 #   -C, --conf <file>
-#                Extra Kconfig fragment (relative to the repo root, or
-#                absolute) for a bring-up build, e.g.
-#                esp-port/bringup/init-only.conf. Fragments are applied after
-#                the shield's conf, so they can switch instruments on and off.
+#                Extra Kconfig fragment (absolute, or relative to the caller's
+#                dir or the repo root), applied after the shield's conf
 #   -O, --overlay <file>
 #                Extra devicetree overlay, applied after the shield's own one
-#                (e.g. esp-port/bringup/spi-path.overlay, which puts the panel
-#                back on the SPI controller instead of the MSPI one)
 #   -M, --cmake-arg <arg>
-#                Extra raw CMake argument for the build (repeatable), e.g.
-#                -M "-DEXTRA_CFLAGS=-DCONFIG_BT_LE_50_FEATURES_SUPPORTED=0"
-#                for preprocessor-level bring-up experiments
+#                Extra raw CMake argument (repeatable)
 #   -h, --help   Show help
 #
-# The cobantab1a shield (overlay + keymap + conf) lives in the external ZMK
-# config repo (sibling of this repo by default): $ZMK_CONFIG/boards/shields/
-# cobantab1a/. Override the location with the ZMK_CONFIG environment variable.
+# The cobantab1a shield (overlay + keymap + conf) lives in the external config
+# repo: $ZMK_CONFIG/boards/shields/cobantab1a/ (default: sibling "zmk-config").
 #
-# The ESP32 toolchain (Espressif xtensa-esp32s3-elf) is NOT in the ZMK ARM dev
-# image. Install it first — see esp-port/toolchain-esp32.md. This script sets
-# the toolchain env vars for you (scoped to this process only), and uses
-# -p always so a stale CMake cache can't pin the wrong toolchain variant.
-
-# POSIX sh compatible (works under sh/dash and bash). No pipelines are used,
-# so "set -o pipefail" is not needed.
+# The Espressif toolchain (xtensa-esp32s3-elf) is NOT in the ZMK ARM dev image
+# — install it first, see esp-port/toolchain-esp32.md. Env vars below are
+# process-scoped, and -p always keeps a stale CMake cache from pinning the
+# wrong toolchain variant.
 set -eu
 
-# Where the caller was standing, kept because -C/-O arguments get typed relative
-# to it as often as they get typed relative to the repo root.
+# Caller's dir: -C/-O file args resolve against it, then the repo root.
 INVOKE_DIR="$(pwd)"
 
-# Run from the workspace root (parent of esp-port/) so the paths resolve
-# correctly, regardless of where the script is invoked.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Resolve a file argument to an absolute path: absolute passes through, a
-# relative path is tried against the caller's directory first and the repo root
-# second, so both
-#   cd zmk && sh esp-port/build_cobantab1a.sh -C esp-port/bringup/x.conf
-#   sh zmk/esp-port/build_cobantab1a.sh -C zmk/esp-port/bringup/x.conf
-# work. Fails if the file is in neither place.
+# Absolute passes through; relative is tried against the caller's dir first,
+# then the repo root. Fails if found in neither.
 resolve_file() {
   case "$1" in
     /*)
@@ -174,19 +153,14 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# --- ESP32 toolchain (see esp-port/toolchain-esp32.md) ---
-# Zephyr 4.4 removed the legacy "espressif" toolchain variant (upstream
-# commit "cmake: remove deprecated espressif toolchain variant"). Espressif
-# targets now build with the Zephyr SDK (which bundles the Xtensa/RISC-V
-# toolchains) or with a generic cross-compile toolchain. The Zephyr SDK
-# installed here lacks the Xtensa toolchain the S3 needs, so this script
-# uses the Espressif GCC toolchain via the cross-compile variant.
+# ESP32 toolchain (see esp-port/toolchain-esp32.md). Zephyr 4.4 removed the
+# "espressif" toolchain variant and the local SDK lacks the Xtensa toolchain
+# the S3 needs, so use the Espressif GCC via the cross-compile variant.
 export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
 export ESPRESSIF_TOOLCHAIN_PATH="${ESPRESSIF_TOOLCHAIN_PATH:-/opt/espressif/tools}"
 export CROSS_COMPILE="${CROSS_COMPILE:-xtensa-esp32s3-elf-}"
 export TOOLCHAIN_HOME="$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin"
-# ~/.local/bin for a pip --user esptool (required by the ESP32 SOC cmake for
-# image generation: pip3 install --user --break-system-packages 'esptool>=5.0.2')
+# ~/.local/bin: pip --user esptool (>=5.0.2), required for ESP32 image generation
 export PATH="$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin:$HOME/.local/bin:$PATH"
 
 if [ ! -x "$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin/${CROSS_COMPILE}gcc" ]; then
@@ -204,8 +178,7 @@ fi
 
 BOARD=cobantab1a/esp32s3/procpu/zmk
 SHIELD=cobantab1a
-# Env override so scratch/diagnostic builds get their own dir without
-# clobbering the default build/cobantab1a.
+# BUILD_DIR_OVERRIDE lets scratch/diagnostic builds keep their own dir.
 BUILD_DIR="${BUILD_DIR_OVERRIDE:-build/cobantab1a}"
 
 EXTRA_ARGS=""
@@ -235,18 +208,15 @@ if [ -n "$OVERLAY_FILE" ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DEXTRA_DTC_OVERLAY_FILE=$OVERLAY_FILE"
 fi
 
-# The display needs SPI_LINES_QUAD to reach the wire; the pinned zephyr rev
-# drops it (see esp-port/patches/). Cheap and idempotent, so the display never
-# silently goes dark after a `west update` that skipped setup-dev.sh.
+# Must run before configure: the pinned zephyr rev drops SPI_LINES_QUAD, which
+# the display needs (see esp-port/patches/); idempotent.
 sh esp-port/apply-zephyr-patches.sh
 
 echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
-# Note: in this west version -S means --snippet; the shield is passed as
-# -DSHIELD (same as esp-port/build_zmk_s3.sh).
+# -S means --snippet in this west version; the shield is passed as -DSHIELD.
 # shellcheck disable=SC2086
-# CROSS_COMPILE is passed via the environment (the CMake cache variable is
-# typed PATH and mangles a relative prefix); TOOLCHAIN_HOME has no env
-# fallback, so it goes on the command line.
+# CROSS_COMPILE goes via the environment (the CMake cache var is typed PATH and
+# mangles a relative prefix); TOOLCHAIN_HOME has no env fallback, so -D here.
 west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
      -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS $CMAKE_ARGS

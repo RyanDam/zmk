@@ -3,16 +3,11 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Dev/bench shell for the Coban Tab 1a key matrix (backlog a13, replaces
- * the retired `vkeymap` model shell). The tab's keys are real keymap
- * positions (see zmk-config cobantab1a.keymap), so this shell speaks
- * straight to the same keymap APIs Studio's RPC uses — bindings it writes
- * are the bindings Studio sees. Until a14 wires the Studio transport this
- * is how the bench rebinds tiles and renames macros without a rebuild;
- * the keymap screen redraws live via its layer/macro listeners.
- *
- * Staging follows Studio: bind/clear/macro-name mark unsaved changes,
- * `vkey save` / `vkey macro-save` persist them to settings.
+ * Dev/bench shell for the Coban Tab 1a key matrix. The tab's keys are
+ * real keymap positions, so this shell speaks straight to the same
+ * keymap APIs Studio's RPC uses; bindings it writes are the bindings
+ * Studio sees. bind/clear/macro-name stage changes; `vkey save` /
+ * `vkey macro-save` persist them to settings.
  */
 
 #include <errno.h>
@@ -173,8 +168,7 @@ static int cmd_discard(const struct shell *sh, size_t argc, char **argv) {
     return err;
 }
 
-/* vkey macro-name <macro-idx> <NAME> — Studio-subsystem dependent, so it
- * disappears in builds without it (e.g. the a13 BLE bisection variants). */
+/* macro-name/macro-save disappear in builds without dynamic macros. */
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO)
 static int cmd_macro_name(const struct shell *sh, size_t argc, char **argv) {
     if (argc != 4) {
@@ -209,19 +203,13 @@ static int cmd_macro_save(const struct shell *sh, size_t argc, char **argv) {
 }
 #endif /* CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO */
 
-/* ------------------------------------------------------------------ */
-/* Bench edges: vkey press / release / tap                             */
-/* ------------------------------------------------------------------ */
+/* Bench edges: vkey press / release / tap */
 
 /*
- * Raise real position edges with no keys and no display, to exercise the
- * full keymap -> HID -> BLE path (a13 BLE-crash bisection: the prototype
- * has no wired buttons, and the display must be switchable off). Edges
- * go through a work item on the system work queue — the same context
- * kscan and the keymap screen's edge work raise from — and the held
- * guard refuses unpaired edges, mirroring the kscan contract (a13 owner
- * repro: unpaired edges from LVGL stuck the keymap; this tool must not
- * fabricate that by accident, only to order it deliberately).
+ * Raise real position edges to exercise the full keymap -> HID -> BLE
+ * path. Edges go through a work item on the system work queue — the same
+ * context kscan raises from — and the held guard refuses unpaired edges,
+ * mirroring the kscan contract.
  */
 
 static struct k_work fire_press_work;
@@ -349,18 +337,11 @@ static int fire_init(void) {
 }
 SYS_INIT(fire_init, APPLICATION, 90);
 
-/* ------------------------------------------------------------------ */
-/* Bench link: vkey link [interval] [latency]                          */
-/* ------------------------------------------------------------------ */
+/* Bench link: vkey link [interval] [latency] */
 
 /*
- * a13 BLE-crash bisection probe: the Mac always negotiates interval 15 ms
- * with slave latency 22, and every wedge lands inside BLE traffic with no
- * panic ever printed - the ESP32-S3 controller hanging on slave-latency
- * connection events is a known failure family. This forces our own
- * connection-parameter update (latency 0 by default) on the live link; if
- * the device then survives the hammer, the wedge is latency-driven and
- * the product fix is to always request latency 0.
+ * Forces our own BLE connection-parameter update (latency 0 by default)
+ * on the live link, to test whether wedges are slave-latency driven.
  */
 static struct bt_conn *bench_conn;
 

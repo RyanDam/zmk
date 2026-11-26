@@ -4,12 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-/*
- * Raised when the design-system theme changes from anywhere — Studio
- * RPC set, the preset cycler, settings load (a07 theme.c choke point).
- * Colors are packed 0xRRGGBB so the event header stays LVGL-free;
- * the Studio `theme` mapper (a14) republishes them to the host.
- */
+/* Raised on theme change; colors are packed 0xRRGGBB so this header stays LVGL-free. */
 
 #pragma once
 

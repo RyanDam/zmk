@@ -3,18 +3,12 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Animation playback helpers (backlog a12). See anim.h.
- *
- * GIFs stream through LVGL's lv_fs drive 'A:' mapped onto the asset
- * store, so the decoder reads straight from flash a chunk at a time —
- * pad10a's whole-GIF-into-RAM approach (pad10a/pad10a.c:56-63) is what
- * the streamed store API was designed to avoid. The decoded frame
- * canvas (ARGB, ~600 KB full-screen) lives in the PSRAM LVGL heap; the
- * conf sizes that heap for it.
- *
- * Lottie (ThorVG) decodes whole JSON blobs — small by nature — into a
- * malloc'd buffer; the canvas buffer follows the widget lifetime via
- * the DELETE event.
+ * Animation playback helpers (see anim.h). GIFs stream through LVGL's 'A:'
+ * drive mapped onto the asset store, so the decoder reads flash a chunk at a
+ * time and the decoded canvas (ARGB, ~600 KB full-screen) comes from the
+ * PSRAM LVGL heap the shield conf sizes. Lottie/ThorVG decodes whole JSON
+ * blobs (small by nature) into a malloc'd buffer, and the canvas follows the
+ * widget via the DELETE event.
  */
 
 #include <stdlib.h>
@@ -38,9 +32,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/settings_blob.h>
 
-/* ------------------------------------------------------------------ */
-/* LVGL filesystem drive 'A:' over the asset store                     */
-/* ------------------------------------------------------------------ */
+/* LVGL filesystem drive 'A:' over the asset store */
 
 #define FS_SLOTS 6 /* shared bg + dedicated player + boot splash + slack */
 
@@ -100,12 +92,10 @@ static lv_fs_res_t fs_read_cb(lv_fs_drv_t *drv, void *file_p, void *buf, uint32_
         return LV_FS_RES_INV_PARAM;
     }
 
-    /* Generation guard (a15): the store rebuilds its table when an
-     * upload/delete commits. The tick closes players before any
-     * re-probe, so a handle that sees a new epoch is one the tick has
-     * not reaped yet — report EOF (zero bytes, the decoder's stop
-     * signal — instead of streaming bytes of a possibly-recycled
-     * entry. */
+    /* Generation guard: the store bumps its epoch when a commit rebuilds the
+     * table, and the tick closes players before re-probing. A handle seeing a
+     * new epoch is one the tick has not reaped yet: report EOF (0 bytes, the
+     * decoder's stop signal) rather than bytes of a recycled entry. */
     if (f->epoch != zmk_assets_epoch()) {
         *br = 0;
         return LV_FS_RES_OK;
@@ -137,9 +127,8 @@ static lv_fs_res_t fs_seek_cb(lv_fs_drv_t *drv, void *file_p, uint32_t pos, lv_f
         return LV_FS_RES_INV_PARAM;
     }
 
-    /* LVGL's drive API carries seek offsets as uint32_t; a signed
-     * interpretation keeps a decoder's peek-backward (negative) seek
-     * legal instead of silently rejecting it. */
+    /* Signed: the drive API's uint32_t offsets would reject a decoder's
+     * negative peek-back seek. */
     int32_t off = (int32_t)pos;
     int32_t target;
 
@@ -187,18 +176,13 @@ static void anim_fs_register(void) {
     drv.close_cb = fs_close_cb;
     drv.read_cb = fs_read_cb;
     drv.seek_cb = fs_seek_cb;
-    /* Mandatory for the GIF decoder: it sizes the file via
-     * seek(END)+tell, and lv_fs_tell() silently leaves the size unset
-     * without a tell callback -> GIF_EARLY_EOF on every open (the
-     * 2026-11-21 v1 missed this because nothing ever reached the
-     * glass; a flash-size read is the first thing the decoder does). */
+    /* tell is mandatory: the GIF decoder sizes the file with seek(END)+tell,
+     * and lv_fs_tell() leaves the size unset without it -> GIF_EARLY_EOF. */
     drv.tell_cb = fs_tell_cb;
     lv_fs_drv_register(&drv);
 }
 
-/* ------------------------------------------------------------------ */
-/* Players                                                             */
-/* ------------------------------------------------------------------ */
+/* Players */
 
 lv_obj_t *zmk_anim_gif_create(lv_obj_t *parent, const char *name) {
     const struct zmk_asset_info *asset = zmk_asset_find(name);
@@ -216,20 +200,15 @@ lv_obj_t *zmk_anim_gif_create(lv_obj_t *parent, const char *name) {
 
     lv_obj_t *gif = lv_gif_create(parent);
 
-    /* Render straight into the panel's own depth (RGB565) instead of
-     * the widget's ARGB8888 default: halves PSRAM traffic (307 KB vs
-     * 614 KB canvas at 480x320, decode writes included) and lets the
-     * full-screen blit take the same-format opaque-copy path rather
-     * than per-pixel ARGB blending - the dominant per-frame cost on
-     * this full-refresh panel (bench lag pass 2026-11-24). 8-bit GIF
-     * art means 565 loses nothing visible. */
+    /* Render at the panel's RGB565, not the widget's ARGB8888 default: half the
+     * PSRAM traffic (307 KB vs 614 KB at 480x320) and the full-screen blit
+     * takes the opaque same-format copy instead of per-pixel blending, which
+     * dominates per-frame cost on this full-refresh panel. */
     lv_gif_set_color_format(gif, LV_COLOR_FORMAT_RGB565);
 
     lv_gif_set_src(gif, path);
 
-    /* Open is lazy-failing: allocation/decode problems leave an empty
-     * image (the bench's "black anim page"). Surface it instead of
-     * logging a lie about playing. */
+    /* lv_gif_open fails lazily, leaving an empty image: surface it. */
     if (!lv_gif_is_loaded(gif)) {
         LOG_ERR("anim: '%s' failed to open (asset unreadable?)", asset->name);
         lv_obj_del(gif);
@@ -261,9 +240,8 @@ static lv_obj_t *lottie_create(lv_obj_t *parent, const struct zmk_asset_info *as
     }
 
     lv_obj_t *obj = lv_lottie_create(parent);
-    /* Landscape stage = the whole logical screen; the ARGB canvas is a
-     * 600 KB lv_malloc from the PSRAM pool (was 400 KB for the square
-     * 320x320 portrait stage) - see the pool sizing note in cobantab1a.conf. */
+    /* The ARGB canvas is a ~600 KB lv_malloc from the PSRAM pool (see the
+     * pool sizing in the shield conf). */
     const int32_t w = ZMK_GRID_SCREEN_W, h = ZMK_GRID_SCREEN_H;
     void *canvas = lv_malloc(w * h * 4);
 
@@ -320,19 +298,13 @@ lv_obj_t *zmk_anim_create(lv_obj_t *parent, const char *name) {
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Page attach: one shared background + dedicated full-page players    */
-/* ------------------------------------------------------------------ */
+/* Page attach: one shared background + dedicated full-page players */
 
-/* A GIF player holds a native-size ARGB canvas (worst case full-screen
- * 480x320 = 614 KB) from the LVGL heap (one 2 MB pool for the whole
- * UI) plus an 'A:' file slot. One player per page exhausts both once every page exists
- * (pages persist
- * after their first visit) and the over-budget pages silently render
- * black (bench 2026-11-24: the anim page was). Backgrounds therefore
- * share ONE player that is re-parented to the visible page; only the
- * dedicated full-page player (the anim page: may show another asset)
- * exists alongside it. At most two players ever. */
+/* A GIF player holds a native-size ARGB canvas (worst case 614 KB) from the
+ * single 2 MB LVGL heap plus an 'A:' file slot, and pages persist after their
+ * first visit, so one player per page exhausts both and over-budget pages
+ * render black. Backgrounds therefore share ONE player re-parented to the
+ * visible page; at most two players exist (plus the anim page's own). */
 
 #define ANIM_BG_PAGES_MAX 6 /* clock, pomodoro, stats, keymap + 2 */
 #define ANIM_SLOTS_MAX 2    /* dedicated players (anim page today) */
@@ -346,17 +318,15 @@ struct anim_bg_page {
 static struct anim_bg_page bg_pages[ANIM_BG_PAGES_MAX];
 static lv_obj_t *bg_shared; /* NULL = not built / died with its page */
 
-/* Active asset (a14): the Studio RPC's `activate_asset` seam. The 200 ms
- * sync tick owns the LVGL swap; callers only change these. active_asset
- * is what should play, bg_shown what bg_shared currently plays. */
+/* active_asset is what should play, bg_shown what the shared player plays;
+ * the 200 ms sync tick owns the LVGL swap. */
 static char active_asset[ZMK_ASSET_NAME_MAX] = "animbg";
 static char bg_shown[ZMK_ASSET_NAME_MAX];
 
 struct anim_slot {
     lv_obj_t *gif; /* NULL = free (or the gif died with its page)   */
     const char *page_name;
-    /* a15: a re-probe reaps the player (stale) so the store table can
-     * rebuild; the tick rebuilds it on the still-live page root. */
+    /* Re-probing reaps this player so the store can rebuild its table. */
     lv_obj_t *parent;
     char want[ZMK_ASSET_NAME_MAX];
     bool stale;
@@ -365,11 +335,9 @@ struct anim_slot {
 static struct anim_slot anim_slots[ANIM_SLOTS_MAX];
 static lv_timer_t *anim_tick_timer;
 
-/* LVGL auto-pauses an invisible gif from its own next tick (the timer
- * stays paused, nothing re-checks visibility). Only the dedicated
- * full-page players animate, so the shared timer resumes those when
- * their page shows; the shared background stays paused everywhere
- * (pad10a still-frame rule above). */
+/* LVGL auto-pauses a hidden gif and never re-checks visibility, so the tick
+ * resumes the dedicated full-page players explicitly; backgrounds stay
+ * paused (still-frame rule below). */
 static void anim_shared_died(lv_event_t *e) {
     ARG_UNUSED(e);
     bg_shared = NULL;
@@ -380,8 +348,7 @@ static void anim_slot_died(lv_event_t *e) {
 
     slot->gif = NULL;
     if (!slot->stale) {
-        /* The PAGE died (not our re-probe reap): release the slot —
-         * a later page rebuild re-attaches into a fresh one. */
+        /* The page died (not our reap): free the slot for the next rebuild. */
         slot->page_name = NULL;
         slot->parent = NULL;
         slot->want[0] = '\0';
@@ -402,14 +369,11 @@ static lv_obj_t *anim_gif_player(lv_obj_t *parent, const char *asset, lv_event_c
 }
 
 /*
- * Black scrim between the still-frame GIF and the page's widgets
- * (owner 2026-11-24: busy art makes screen content hard to read).
- * Rides the shared player's lifecycle exactly - created, re-parented
- * and deleted together, pinned directly above it (index 1) and below
- * the widgets - and never clickable/scrollable, so touch passes
- * through. Raw LVGL opacity: CONFIG default 51 (= 20%); 0 disables. The
- * 200 ms sync tick is the only writer of the LVGL style, so the
- * shell/settings thread stays out of the display thread's tree.
+ * Black scrim over the page background so text stays readable over busy art.
+ * Rides the shared player's lifecycle (created, re-parented, deleted together)
+ * pinned at index 1, below the widgets, never clickable. Raw LVGL opacity, 0
+ * disables. Only the 200 ms tick writes the LVGL style, so no other thread
+ * touches the object tree.
  */
 static lv_obj_t *bg_tint;
 static uint8_t anim_tint_opa = CONFIG_ZMK_DISPLAY_ANIM_TINT_OPA;
@@ -447,30 +411,21 @@ static void anim_tint_sync(lv_obj_t *target) {
         tint_applied = anim_tint_opa;
     }
 
-    /* Z-order, explicitly: the page's widgets were built before the
-     * scrim arrives, so a fresh child would land ON TOP of them -
-     * the same last-child trap as the player (pin to index 0/1). */
+    /* Pin the index: the page's widgets were built first, so a fresh child
+     * would land on top of them. */
     on_player = bg_shared != NULL && lv_obj_get_parent(bg_shared) == target;
     lv_obj_move_to_index(bg_tint, on_player ? 1 : 0);
 }
 
-/* pad10a rule (owner 2026-11-24, ported from Pad 10A's behaviour):
- * animation plays ONLY on the dedicated anim page. Everywhere else
- * the shared GIF background is a frozen frame: the widget stays
- * visible under the page's widgets (art without the decoder cost),
- * and nothing about the setting changes - `animbg on` shows the
- * still, `off` removes it. The player decodes one frame after
- * creation, then we pause its timer; a frozen player costs zero
- * decode time and auto-pauses while hidden. */
+/* Animation plays ONLY on the dedicated anim page; everywhere else the shared
+ * background is one decoded frame, then paused — art without decoder cost, and
+ * a frozen player auto-pauses while hidden. */
 #define ANIM_BG_FREEZE_MS 300 /* >= one art frame (100-120 ms) + jitter */
 
 static void anim_bg_freeze_cb(lv_timer_t *timer) {
     lv_obj_t *gif = lv_timer_get_user_data(timer);
 
-    /* Identity guard: a player deleted before this fired is gone
-     * (bg_shared nulled by the DELETE event); a *freshly recreated*
-     * one matching identity gets frozen a frame early at worst,
-     * and the next toggle restores the still. */
+    /* Identity guard: a player deleted before this fires is already gone. */
     if (bg_shared == gif) {
         lv_gif_pause(gif);
     }
@@ -506,9 +461,7 @@ static void anim_bg_sync(void) {
     const char *want = zmk_anim_active_get();
 
     if (bg_shared != NULL && strcmp(bg_shown, want) != 0) {
-        /* a14 activate_asset: retire the old player; the next tick
-         * (this same function) builds the new art. Display thread
-         * only, like everything here. */
+        /* activate_asset: retire the old player; the next tick builds the new. */
         lv_obj_delete(bg_shared);
     }
 
@@ -517,13 +470,9 @@ static void anim_bg_sync(void) {
         if (bg_shared != NULL) {
             strncpy(bg_shown, want, sizeof(bg_shown) - 1);
             bg_shown[sizeof(bg_shown) - 1] = '\0';
-            /* The page is fully built when the player materialises
-             * (creation happens on the tick, not at attach), so the
-             * gif arrives as the LAST child - on top of everything,
-             * and its parent never "changes" afterwards, so the
-             * re-parent path below would never demote it. Pin it to
-             * the bottom or the page renders as just the anim frame
-             * (bench 2026-11-24). */
+            /* The player materialises on the tick, i.e. as the page's last
+             * child = on top of everything, and its parent never changes
+             * afterwards, so the re-parent path would never demote it. */
             lv_obj_move_to_index(bg_shared, 0);
             lv_timer_t *freeze =
                 lv_timer_create(anim_bg_freeze_cb, ANIM_BG_FREEZE_MS, bg_shared);
@@ -539,15 +488,12 @@ static void anim_bg_sync(void) {
     anim_tint_sync(target); /* readability scrim, index 1 (see above) */
 }
 
-/* ------------------------------------------------------------------ */
-/* a15: store-change / quiesce handshake (display-thread side)        */
-/* ------------------------------------------------------------------ */
+/* Store-change / quiesce handshake (display-thread side) */
 
-/* Set from the event listener (any thread); consumed here, on the LVGL
- * timer thread — the only place allowed to touch the object tree.
- * QUIESCE parks playback for GC's blob relocation (the store blocks its
- * caller until the ack); a commit (CHANGED) reaps every player, then
- * re-probes the table so no 'A:' handle ever spans a rebuild. */
+/* Set by the event listener (any thread), consumed on the LVGL timer thread —
+ * the only one that may touch the tree. QUIESCE parks playback while GC
+ * relocates blobs; CHANGED reaps every player, then re-probes, so no 'A:'
+ * handle spans a table rebuild. */
 static volatile bool assets_dirty;
 static volatile bool assets_park;
 static volatile bool assets_parked;
@@ -626,16 +572,14 @@ static void anim_tick_cb(lv_timer_t *timer) {
         }
         if (slot->stale && slot->page_name != NULL &&
             zmk_display_screen_find(slot->page_name) == cur) {
-            /* rebuild once (e.g. fresh upload of the played asset);
-             * on failure the page's next rebuild re-attaches anyway */
+            /* Rebuild once; on failure the page's next rebuild re-attaches. */
             slot->stale = false;
             slot->gif = anim_gif_player(slot->parent, slot->want, anim_slot_died, slot);
         }
     }
 }
 
-/* Slot for a (re)build: the page's own slot first (identity compare —
- * callers pass string literals), else the first unclaimed slot. */
+/* Slot for a (re)build: the page's own first (identity compare), else free. */
 static struct anim_slot *anim_slot_get(const char *page_name) {
     struct anim_slot *free_slot = NULL;
 
@@ -698,9 +642,7 @@ lv_obj_t *zmk_anim_page_attach(lv_obj_t *parent, const char *page_name, const ch
     return slot->gif;
 }
 
-/* ------------------------------------------------------------------ */
-/* Anim-bg setting                                                     */
-/* ------------------------------------------------------------------ */
+/* Anim-bg setting */
 
 static bool anim_bg = true; /* pad10a default: background on */
 
@@ -746,8 +688,8 @@ void zmk_anim_tint_set(uint8_t opa) {
     zmk_settings_blob_save("display/anim/tint", &opa, sizeof(opa), "anim tint");
 #endif
     LOG_INF("anim tint: opa %u%s", opa, opa == 0 ? " (off)" : "");
-    /* LVGL style applied by the next 200 ms sync tick: the display
-     * thread owns the object tree, the shell thread does not. */
+    /* The style lands on the next 200 ms tick: only the display thread owns
+     * the tree. */
 }
 
 #if IS_ENABLED(CONFIG_SETTINGS)
@@ -787,9 +729,7 @@ SETTINGS_STATIC_HANDLER_DEFINE(display_anim, "display/anim", NULL, anim_settings
                                NULL);
 #endif /* CONFIG_SETTINGS */
 
-/* ------------------------------------------------------------------ */
-/* Dev shell (bench toggle without a host)                             */
-/* ------------------------------------------------------------------ */
+/* Dev shell (bench toggle without a host) */
 
 #if IS_ENABLED(CONFIG_SHELL)
 

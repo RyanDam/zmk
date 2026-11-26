@@ -3,9 +3,8 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Screen-building helpers shared by the tab1a pages (a09 clock, a10
- * pomodoro, a11 stats). Only layout plumbing — styling still goes
- * through zmk_display_style() exclusively (the a07 rule).
+ * Screen-building helpers shared by the tab1a pages: layout plumbing only,
+ * styling always goes through zmk_display_style().
  */
 
 #pragma once
@@ -22,17 +21,13 @@
 
 #include "styles.h"
 
-/* ------------------------------------------------------------------ */
-/* Product orientation (mirrors the panel node's `rotation`)           */
-/* ------------------------------------------------------------------ */
+/* Product orientation (mirrors the panel node's `rotation`) */
 
 /*
- * The touch driver always reports RAW panel coordinates (0..319 x 0..479 on
- * the portrait glass) regardless of the product rotation. LVGL corrects its
- * own widgets itself (lv_indev runs pointer reads through
- * lv_display_rotate_point), but the raw ZMK input listeners (screen swipes,
- * band/hit-test taps) must convert before comparing against layout, or a
- * vertical swipe would navigate pages sideways.
+ * Touch reports RAW panel coordinates whatever the product rotation. LVGL
+ * rotates its own pointer input (lv_display_rotate_point), so raw ZMK input
+ * listeners (screen swipes, band/hit-test taps) must convert before comparing
+ * against layout, or a vertical swipe would navigate pages sideways.
  */
 #if DT_HAS_CHOSEN(zephyr_display)
 #define ZMK_UI_PANEL_W DT_PROP_OR(DT_CHOSEN(zephyr_display), width, 0)
@@ -44,8 +39,7 @@
 #define ZMK_UI_ROTATION 0
 #endif
 
-/** Map a raw touch point into the logical (laid-out) coordinate space,
- *  with the exact same mapping LVGL applies to pointer input. */
+/** Map a raw touch point into logical coordinates, as LVGL's indev does. */
 static inline void zmk_ui_touch_to_logical(int32_t *x, int32_t *y) {
     const int32_t rx = *x, ry = *y;
 
@@ -77,17 +71,12 @@ lv_obj_t *zmk_ui_flex(lv_obj_t *parent, lv_flex_flow_t flow, int gap);
 /**
  * @brief Tap detector for a specific page.
  *
- * A tap is a press-and-release that moved less than 24 px on both axes,
- * so the screen manager's swipe navigation (>= 64 px horizontal) is never
- * stolen. When the page named @p page_name is current, the tap posts
- * @p work to the display work queue.
+ * A tap is a press-and-release under 24 px on both axes, so the manager's
+ * >= 64 px swipe navigation is never stolen. When @p page_name is current the
+ * tap posts @p work to the display work queue.
  *
- * Usage in a screen file:
- *   static ZMK_UI_TAP_STATE(my_tap);
- *   INPUT_CALLBACK_DEFINE(NULL, my_cb, NULL) {
- *       zmk_ui_tap_input(&my_tap, evt);
- *   }
- * with my_tap.page_name / .work filled in once (see zmk_ui_tap_init).
+ *   static ZMK_UI_TAP_STATE(my_tap);   // page_name and work set once
+ *   INPUT_CALLBACK_DEFINE(NULL, my_cb, NULL) { zmk_ui_tap_input(&my_tap, evt); }
  */
 struct zmk_ui_tap {
     bool pressed;
@@ -105,31 +94,25 @@ void zmk_ui_tap_init(struct zmk_ui_tap *tap, const char *page_name, struct k_wor
 void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt);
 
 /**
- * @brief Wire touch input into LVGL as a pointer indev.
+ * @brief Feed raw touch events into LVGL as a pointer indev.
  *
- * Without this, clickable LVGL objects (a10's pomodoro buttons, the a13
- * key tiles) never receive PRESSED/CLICKED events — the screen-manager
- * swipe handler and the tap detectors read raw input events, and nothing
- * fed lv_indev. Called once by the screen manager on the display work
- * queue, after LVGL init. Raw consumers (swipes, tap bands) keep seeing
- * the same events independently, so the >= 64 px swipe contract still
- * holds: a swipe that ends where it started on a clickable still reads
- * as a click, everything else is PRESS_LOST.
+ * Without it clickable objects (buttons, key tiles) never get PRESSED/CLICKED:
+ * the swipe handler and tap detectors read raw events, and nothing fed lv_indev.
+ * Called once by the screen manager on the display work queue after LVGL init.
+ * Raw consumers keep seeing the same events, so the >= 64 px swipe contract
+ * holds: a swipe ending where it started on a clickable still reads as a click,
+ * everything else is PRESS_LOST.
  */
 void zmk_ui_indev_init(void);
 
-/* ------------------------------------------------------------------ */
-/* Review-pass helpers (2026-11-21): tick gating, text caching, work   */
-/* boilerplate, style toggling                                         */
-/* ------------------------------------------------------------------ */
+/* Tick gating, text caching, work boilerplate, style toggling */
 
 /**
- * @brief Set a label only when the text actually changed.
+ * @brief Set a label only when the text changed.
  *
- * On this full-refresh panel, any invalidation costs a ~61 ms flush, so
- * per-tick updates must not poke labels that already show the string.
- * The caller owns @p cache (per-label, same size as the formatted
- * buffer); the first call with a given string does write.
+ * Any invalidation costs a ~61 ms full flush on this panel, so a tick must not
+ * poke a label that already shows the string. @p cache is caller-owned, same
+ * size as the formatted buffer; the first call with a string does write.
  */
 static inline void zmk_ui_set_text(char *cache, size_t cache_len, lv_obj_t *label,
                                    const char *text) {
@@ -151,19 +134,17 @@ static inline void zmk_ui_style_toggle(lv_obj_t *obj, const lv_style_t *style, b
 }
 
 /**
- * @brief 1 Hz-style updater bound to a page: ticks only while that page
- * is current (pages are separate LVGL screens, so hidden pages
- * shouldn't even compute their strings). In legacy status-screen mode
- * (no screen manager) the timer always runs.
+ * @brief 1 Hz-style updater bound to a page: ticks only while that page is
+ * current (hidden pages must not even build their strings). In legacy
+ * status-screen mode (no screen manager) the timer always runs.
  */
 typedef void (*zmk_ui_page_tick_cb)(void);
 lv_timer_t *zmk_ui_page_timer(const char *page_name, uint32_t period_ms, zmk_ui_page_tick_cb cb);
 
 /**
- * @brief Define a work item posted to the display work queue.
- *
- *   ZMK_UI_WORK_DEFINE(my_work, my_cb) { ... }        (function body)
- *   zmk_ui_post(&my_work);                            (any thread)
+ * @brief Work item posted to the display work queue.
+ *   ZMK_UI_WORK_DEFINE(my_work, my_cb) { ... }   (function body)
+ *   zmk_ui_post(&my_work);                       (any thread)
  */
 #define ZMK_UI_WORK_DEFINE(work_sym, fn_name)                                                      \
     static void fn_name(struct k_work *work);                                                      \

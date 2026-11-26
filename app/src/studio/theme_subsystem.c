@@ -5,12 +5,9 @@
  */
 
 /*
- * Studio `theme` subsystem (backlog a14): live get/set of the a07
- * design-system theme (5 RGB888 slots, pad10a 0x64 parity). Writes go
- * through zmk_display_theme_set — the single persist + re-render choke
- * point; the theme_changed notification rides the event that same
- * choke point raises, so preset cycles and settings loads are visible
- * to the host too.
+ * Studio `theme` subsystem: live get/set of the design-system theme
+ * (5 RGB888 slots). zmk_display_theme_set is the single persist +
+ * re-render choke point; its theme_changed event is mapped back below.
  */
 
 #include <zephyr/logging/log.h>

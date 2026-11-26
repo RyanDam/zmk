@@ -43,6 +43,39 @@ west build -b nice_nano@1 --pristine -S studio-rpc-usb-uart -s app \
 
 Generic upstream build (for other boards/shields): `cd app && west build -b <board> -- -DSHIELD=<shield>`.
 
+## Generated files, carried patches, bench instruments
+
+Three things in this repo are **not** hand-written review material — each has a
+README that is the real document, and `.gitattributes` marks them
+`linguist-generated -diff` so a diff stays readable:
+
+- `app/src/display/fonts/*.c` — lv_font_conv output; regenerate with
+  `app/scripts/display-fonts/gen_fonts.sh` (see that directory's `README.md`).
+- `esp-port/patches/` — Zephyr/hal patches re-applied after every `west update`
+  by `esp-port/apply-zephyr-patches.sh`. Read `esp-port/patches/README.md`
+  (one row per patch: why, owner, how to retire it) instead of the hunks. Never
+  "clean up" a patch by deleting it: several exist only because this fork's
+  board tree still carries the boards they fix, so a removal breaks the *pads*.
+- `esp-port/bringup/` — bench-only build fragments (overlays/confs/patches).
+  `esp-port/bringup/README.md` is the live-vs-archived table keyed by backlog
+  item; nothing there compiles into a product image.
+
+### Comment policy for firmware sources
+
+A code comment carries a constraint you cannot recover from the code: a silicon
+or protocol quirk ("QSPI ignores RASET"), an execution context ("display work
+queue only"), a lock or ordering invariant, a units/format contract, or the
+derivation of a magic number. History does not belong in a comment — not dates,
+not "owner pass", not backlog ids in prose, not the story of the attempt that
+failed. That material goes in the workspace `docs/` reports or
+`zmk/esp-port/*.md`. Budget: about one comment line per fifteen lines of code,
+and at most one per function.
+
+To trim comments safely: compare each file with its comments stripped (a lost
+`*/` or a stray code edit then fails loudly), and rebuild — a comment-only
+change must leave FLASH size byte-identical. `clang-format --dry-run` is not
+enough; it does not detect a comment that swallowed code.
+
 ## Tests
 
 Run from `app/`:

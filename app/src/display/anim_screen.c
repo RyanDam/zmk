@@ -3,25 +3,12 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Standalone animation page for the Coban Tab 1a (backlog a12, owner
- * spec pass 2026-11-24: the animation is a page of its own first, and
- * a background on the other screens second — the v1 design shipped
- * only the background).
- *
- * Full-bleed playback of the store's GIF assets: "animbg" (the
- * built-in default, or the host-uploaded replacement of the same
- * name) plays first; a tap cycles the other GIFs. Unlike the
- * backgrounds on the other pages, this page plays even with the
- * anim-bg setting OFF — that toggle scopes the other screens; a page
- * named "animation" that refuses to animate is not a page.
- *
- * The page is thin on purpose: playback + lifecycle (auto-pause while
- * hidden, resume on return) live in anim.c's slot machinery, and the
- * pixels come from the asset store (zmk/assets.h) — so host uploads
- * (a15) appear here with no page change.
- *
- * The stock GIF is bench fan-art and must not ship (a12 note); the
- * page itself is product code.
+ * Standalone animation page: full-bleed playback of the store's GIFs, "animbg"
+ * first and a tap cycling the rest. Unlike the other pages' backgrounds it
+ * plays even when the anim-bg setting is off. Playback and lifecycle
+ * (auto-pause while hidden, resume on return) live in anim.c and the pixels in
+ * the asset store, so a host upload appears here with no page change. The
+ * stock GIF is bench fan-art and must not ship; the page is product code.
  */
 
 #include <string.h>
@@ -83,8 +70,8 @@ static void anim_rebuild(void) {
     lv_obj_clean(screen_root);
 
     if (cur_gif < 0 || cur_gif >= total) {
-        /* First build or store shrank under us: prefer the active
-         * asset (a14 `activate_asset`; factory default "animbg"). */
+        /* First build or store shrank under us: prefer the active asset
+         * (factory default "animbg"). */
         const struct zmk_asset_info *bg = zmk_asset_find(zmk_anim_active_get());
         int pick = 0;
 

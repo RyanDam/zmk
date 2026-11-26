@@ -3,11 +3,8 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Notify seam implementation (backlog a10). Dispatch only — no policy,
- * no hardware. Backends: the visual one lives in src/display/
- * notify_visual.c and registers for BOTH channels until h03/h04 arrive;
- * on a channel without one this logs and drops, which is exactly what
- * "beep/light kinds accepted, logged as stubs" means.
+ * Notify seam implementation. Dispatch only — no policy, no hardware;
+ * a notify on a channel without a backend logs and drops.
  */
 
 #include <zephyr/kernel.h>
@@ -49,7 +46,6 @@ void zmk_notify(enum zmk_notify_channel channel, enum zmk_notify_kind kind) {
     if (backends[channel] != NULL) {
         backends[channel](kind, channel);
     } else {
-        /* h03/h04 will replace this line with sound and light. */
         LOG_DBG("notify %s on %s: no backend yet", zmk_notify_kind_name(kind),
                 channel_names[channel]);
     }

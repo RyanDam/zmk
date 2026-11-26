@@ -31,7 +31,7 @@ target_sources_ifdef(CONFIG_ZMK_DISPLAY_STATS_SCREEN app PRIVATE
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_KEYMAP_SCREEN app PRIVATE
     keymap_screen.c
 )
-target_sources_ifdef(CONFIG_ZMK_DISPLAY_DEBUG_LAYOUT app PRIVATE
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY_LAYOUT app PRIVATE
     debug_layout.c
 )
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_ANIM app PRIVATE

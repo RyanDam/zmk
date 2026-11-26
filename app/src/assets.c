@@ -3,12 +3,9 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Asset store implementation (backlog a12; writable in a15). See
- * zmk/assets.h for the format and the concurrency model.
- *
- * The partition layout (offset/size) comes from devicetree, so a move
- * of the `assets` partition in the board DTS needs no code change —
- * same discipline as the c02 settings-partition-by-label fix.
+ * Asset store implementation; zmk/assets.h documents the format and the
+ * concurrency model. The partition's offset and size come from devicetree, so
+ * moving the `assets` partition in the board DTS needs no code change.
  */
 
 #include <errno.h>
@@ -32,26 +29,23 @@ LOG_MODULE_REGISTER(zmk_assets, CONFIG_ZMK_LOG_LEVEL);
 
 #define ASSETS_NODE DT_NODELABEL(assets_partition)
 
-/* flash0 is the unbound soc-nv-flash pseudo-node on this port; the
- * driver is bound on the ESP32 flash controller (chosen
- * zephyr,flash-controller), and partition regs are absolute flash
+/* flash0 is the unbound soc-nv-flash pseudo-node on this port; the bound driver
+ * is the chosen zephyr,flash-controller, and partition regs are absolute
  * addresses on it. */
 static const struct device *const flash_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_flash_controller));
 static const uint32_t assets_base = DT_REG_ADDR(ASSETS_NODE);
 static const uint32_t assets_size = DT_REG_SIZE(ASSETS_NODE);
 
-/* Packed image format, shared with scripts/display-assets/pack_assets.py
- * — keep the two in sync (magic carries the version). */
+/* Packed image format shared with scripts/display-assets/pack_assets.py: keep
+ * in sync (magic carries the version). */
 #define HEADER_MAGIC_V1 "ZMKAS001"
 #define HEADER_MAGIC_V2 "ZMKAS002"
 #define HEADER_SIZE 16
 #define ENTRY_SIZE 32 /* == sizeof(struct file_entry), asserted below */
 #define ENTRY_MAX 32
 
-/* a15: blobs live in 4 KiB sectors above the manifest sector so an
- * erase never clobbers a neighbour; the manifest (<= 1 KiB) always
- * fits sector 0. Constant data floor keeps probe/alloc/GC honest no
- * matter how many entries a generation carries. */
+/* Blobs live in 4 KiB sectors above the manifest sector so an erase never
+ * clobbers a neighbour, and a constant data floor keeps probe/alloc/GC honest. */
 #define DATA_FLOOR 4096
 #define SECTOR_SIZE 4096
 
@@ -70,9 +64,7 @@ struct __packed file_entry {
     uint32_t reserved; /* v2: blob CRC32; v1: 0 */
 };
 
-/* Wire format is shared with scripts/display-assets/pack_assets.py; a
- * layout drift here silently rejects the first blob (manifest_end would
- * claim the manifest is larger than it is). */
+/* Layout drift against the pack script silently rejects the first blob. */
 BUILD_ASSERT(sizeof(struct file_entry) == ENTRY_SIZE);
 BUILD_ASSERT(sizeof(struct file_header) == HEADER_SIZE);
 BUILD_ASSERT(DATA_FLOOR >= HEADER_SIZE + ENTRY_MAX * ENTRY_SIZE + 4);
@@ -81,7 +73,7 @@ static struct zmk_asset_info table[ENTRY_MAX];
 static int table_count = -1; /* -1 until probed */
 static bool store_ready;
 
-/* a15 state (see header docs) */
+/* Writable-store state (see header docs) */
 static struct k_mutex table_lock;
 static uint32_t table_epoch;
 static uint32_t live_gen;
@@ -97,7 +89,7 @@ static int read_at(uint32_t off, void *buf, uint32_t len) {
     return flash_read(flash_dev, assets_base + off, buf, len);
 }
 
-/* ---- a15 guarded raw ops (uploader/GC only, aligned contracts) ---- */
+/* Guarded raw ops (uploader/GC only, aligned contracts) */
 
 int zmk_assets_flash_write(uint32_t off, const void *buf, uint32_t len) {
     if (len == 0 || (off & 3) != 0 || (len & 3) != 0 || off > assets_size ||
@@ -115,7 +107,7 @@ int zmk_assets_flash_erase(uint32_t off, uint32_t len) {
     return flash_erase(flash_dev, assets_base + off, len);
 }
 
-/* ---- read API (all snapshot under the table lock) ----------------- */
+/* Read API (all snapshot under the table lock) */
 
 int zmk_asset_read(const struct zmk_asset_info *asset, uint32_t off, void *buf, uint32_t len) {
     struct zmk_asset_info snap;
@@ -181,8 +173,7 @@ uint32_t zmk_assets_generation(void) { return live_gen; }
 
 bool zmk_assets_legacy_image(void) { return legacy_image; }
 
-/* Name lookup inside the live table; @p n bounds it (merge in progress).
- * Callers hold table_lock. */
+/* Name lookup in the live table, bounded by @p n. Callers hold table_lock. */
 static int table_find_locked(const char *name, int n) {
     for (int i = 0; i < n; i++) {
         if (strcmp(table[i].name, name) == 0) {
@@ -192,8 +183,7 @@ static int table_find_locked(const char *name, int n) {
     return -1;
 }
 
-/* Built-in (firmware-embedded) assets first, so every read path works
- * even with a blank/corrupt partition — see zmk/assets.h.
+/* Built-ins first, so every read path works with a blank/corrupt partition.
  * Callers hold table_lock. */
 static int table_seed_builtin(void) {
     int n = 0;
@@ -217,10 +207,8 @@ static int table_seed_builtin(void) {
     return n;
 }
 
-/* Read + validate the manifest, merge partition entries into the live
- * table. Callers hold table_lock (so a concurrent reader never sees a
- * half-merged table); flash reads inside are mutex-free by design —
- * the driver serializes them. */
+/* Read + validate the manifest and merge entries into the live table under
+ * table_lock; the flash reads inside are mutex-free by design. */
 static int probe_locked(void) {
     struct file_header header;
     struct file_entry entries[ENTRY_MAX];
@@ -273,9 +261,8 @@ static int probe_locked(void) {
         crc_calc = crc32_ieee_update(0, (const uint8_t *)&header, sizeof(header));
         crc_calc = crc32_ieee_update(crc_calc, (const uint8_t *)entries, count * ENTRY_SIZE);
         if (crc_calc != crc_tail) {
-            /* Torn commit — the ONLY thing a commit writes last, so
-             * reaching here means a write died mid-sector: fall back
-             * to built-ins, never trust a byte of this generation. */
+            /* Torn commit: the manifest CRC is the last thing written, so fall
+             * back to built-ins and trust no byte of this generation. */
             LOG_ERR("manifest CRC mismatch (live gen %u) - built-in/static fallback",
                     header.flags);
             return -EBADMSG;
@@ -304,8 +291,7 @@ static int probe_locked(void) {
             continue;
         }
 
-        /* Partition wins by name: override the built-in slot in place,
-         * so a host upload replaces the factory default. */
+        /* Partition wins by name: override the built-in slot in place. */
         int slot = table_find_locked(e->name, table_count);
 
         if (slot < 0) {
@@ -343,9 +329,8 @@ static int probe_locked(void) {
     return 0;
 }
 
-/* Full table rebuild. Locking: one mutex window covers seed + merge,
- * so readers holding pointers get complete old-or-new entries, never
- * a torn one; the epoch bump tells long holders (anim) to re-open. */
+/* One mutex window covers seed + merge, so readers holding pointers always see
+ * complete old-or-new entries; the epoch bump tells anim to re-open. */
 static int assets_rebuild(void) {
     int err;
 
@@ -361,7 +346,7 @@ static int assets_rebuild(void) {
     return err;
 }
 
-/* ---- a15: free-space view + allocation ---------------------------- */
+/* Free-space view + allocation */
 
 struct blob {
     uint32_t off;
@@ -374,8 +359,7 @@ static int blob_cmp(const void *pa, const void *pb) {
     return a->off < b->off ? -1 : a->off > b->off ? 1 : 0;
 }
 
-/* Collect the space each partition-backed entry occupies. Callers
- * supply the destination; returns the count. */
+/* Space each partition-backed entry occupies; caller supplies dst. */
 static int blobs_live(struct blob *out, int max) {
     int n = 0;
 
@@ -478,7 +462,7 @@ int zmk_assets_live_snapshot(struct zmk_asset_info *out, int max) {
     return n;
 }
 
-/* ---- a15: manifest commit ------------------------------------------ */
+/* Manifest commit */
 
 static struct __packed {
     struct file_header header;
@@ -486,9 +470,8 @@ static struct __packed {
     uint32_t crc_tail;
 } commit_buf;
 
-/* Uploads commit on the uploader queue while deletes commit on the RPC
- * thread: one lock covers the shared commit_buf, the generation
- * counter and the manifest sector itself. */
+/* Uploads commit on the uploader queue, deletes on the RPC thread: one lock
+ * covers commit_buf, the generation counter and the manifest sector. */
 static struct k_mutex commit_lock;
 
 int zmk_assets_commit_entries(const struct zmk_asset_info *entries, int n) {
@@ -499,11 +482,9 @@ int zmk_assets_commit_entries(const struct zmk_asset_info *entries, int n) {
         return -EINVAL;
     }
 
-    /* Validate the full list — bounds, mutual disjointness, floor. A
-     * list carrying v1-era blobs below DATA_FLOOR is refused with
-     * -EAGAIN: the caller GC-compacts first (the empty/upgraded list
-     * GC commits then passes this same gate, which is exactly the
-     * v1 -> v2 upgrade). */
+    /* Validate bounds, disjointness and floor. A list carrying v1-era blobs
+     * below DATA_FLOOR is refused with -EAGAIN so the caller GC-compacts;
+     * that commit then passes this same gate (the v1 -> v2 upgrade). */
     for (int i = 0; i < n; i++) {
         const struct zmk_asset_info *e = &entries[i];
 
@@ -574,7 +555,7 @@ void zmk_assets_probe_early(void) { (void)assets_rebuild(); }
 
 int zmk_assets_reprobe(void) { return assets_rebuild(); }
 
-/* ---- a15: quiesce handshake (GC support) --------------------------- */
+/* Quiesce handshake (GC support) */
 
 int zmk_assets_request_quiesce(int timeout_ms) {
     atomic_set(&quiesce_req, 1);
@@ -593,16 +574,13 @@ void zmk_assets_release_quiesce(void) {
 }
 
 bool zmk_assets_quiesced(void) {
-    /* True for the whole GC window: from the request (before the ack)
-     * through the compaction, so a delete committing on the RPC thread
-     * never races a GC manifest rewrite. */
+    /* True for the whole GC window, so an RPC-thread delete never races a GC
+     * manifest rewrite. */
     return atomic_get(&quiesce_active) != 0 || atomic_get(&quiesce_req) != 0;
 }
 
-/* Called by the display thread once it has closed every player
- * (anim_tick consumes a QUIESCE request). @retval true the request was
- * still live; false the requester already timed out — the caller must
- * NOT stay parked. */
+/* Display-thread ack after closing every player. @retval false means the
+ * requester timed out and the caller must not stay parked. */
 bool zmk_assets_quiesce_ack(void) {
     if (atomic_get(&quiesce_req) == 0) {
         return false; /* stale: the GC gave up before we parked */
@@ -613,12 +591,9 @@ bool zmk_assets_quiesce_ack(void) {
     return true;
 }
 
-/* After the flash driver; before the display app work queue first
- * renders (APPLICATION + app priority). The display main also calls
- * zmk_assets_probe_early() before building pages — persisted-home
- * restoration can create a page (and its first gif open) before
- * this init runs, and an unprobed store answers "no assets" to
- * everything (bench 2026-11-24: home=anim page booted black). */
+/* After the flash driver, before the display work queue first renders. Display
+ * main also calls zmk_assets_probe_early(): persisted-home restoration can open
+ * a gif before this init runs, and an unprobed store answers "no assets". */
 static int assets_init_hook(void) {
     k_mutex_init(&table_lock);
     k_mutex_init(&commit_lock);

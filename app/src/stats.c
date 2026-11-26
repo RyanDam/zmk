@@ -3,13 +3,8 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Stats feed seam implementation (backlog a11).
- *
- * A 17-entry sample table behind one write call. The optional mock feed
- * (CONFIG_ZMK_STATS_MOCK) is just another client of that call: a 1 Hz
- * timer walks each metric through a smooth sine-ish curve with per-metric
- * amplitude/default-max so the screen has something to render until a14
- * lands — delete the Kconfig and nothing else changes.
+ * Stats feed seam implementation: a 17-entry sample table behind one write
+ * call. The mock feed (CONFIG_ZMK_STATS_MOCK) is just another client of it.
  */
 
 #include <string.h>
@@ -104,9 +99,7 @@ const char *zmk_stats_unit_suffix(uint8_t unit_id) {
     return units[unit_id];
 }
 
-/* ------------------------------------------------------------------ */
-/* Display config (a14): layout + slot metrics, persisted              */
-/* ------------------------------------------------------------------ */
+/* Display config: layout + slot metrics, persisted */
 
 static struct zmk_stats_config config = {
     .layout = ZMK_STATS_LAYOUT_2X2,
@@ -166,7 +159,7 @@ static int stats_settings_handle_set(const char *key, size_t len, settings_read_
     }
 
     config_clamp(&loaded);
-    config = loaded; /* load precedes any page build; first create uses it */
+    config = loaded; /* load precedes any page build */
     LOG_INF("stats config loaded from settings");
     return 0;
 }
@@ -175,9 +168,7 @@ SETTINGS_STATIC_HANDLER_DEFINE(display_stats, "display/stats", NULL, stats_setti
                                NULL, NULL);
 #endif /* CONFIG_SETTINGS */
 
-/* ------------------------------------------------------------------ */
-/* Mock feed (demo/dev)                                                */
-/* ------------------------------------------------------------------ */
+/* Mock feed (demo/dev) */
 
 #if IS_ENABLED(CONFIG_ZMK_STATS_MOCK)
 

@@ -3,39 +3,15 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * AXS15231B integrated capacitive touch controller driver.
+ * AXS15231B integrated capacitive touch: a separate I2C slave port on the
+ * display chip (GPIO0=SCL, GPIO1=SDA), wired to ESP32-S3 GPIO8/GPIO4. No INT
+ * or RST line, so this driver polls. The i2c pinctrl group needs
+ * drive-open-drain, otherwise the pads stay push-pull and every address NACKs.
  *
- * The AXS15231B LCD chip integrates a capacitive touch controller with its
- * own host interface: the datasheet's "I2C/SPI in AXS15231 is the interface
- * for touch communication with HOST" is a separate slave port on the chip
- * (chip pins GPIO0=SCL, GPIO1=SDA in I2C work mode), not the display's
- * QSPI bus. On the cobantab1a module those lines reach the ESP32-S3 at
- * SDA GPIO4 / SCL GPIO8, the wiring the Guition JC3248W535 reference bsp
- * uses (its EXAMPLE_PIN_NUM_QSPI_TOUCH_SDA/SCL). There is no INT or RST
- * line wired, so the driver polls.
- *
- * Bring-up note (findings §19): an earlier verdict (§18) that this interface
- * never answers was WRONG. The bus never left the ESP32-S3: the i2c pinctrl
- * group lacked drive-open-drain, so the pads stayed push-pull with output
- * always on and the master fought every slave's ACK low - a guaranteed NACK
- * at every address, at every speed. With drive-open-drain on GPIO4/GPIO8 the
- * controller ACKs and reports touch points on the very first boot. Bench
- * 2026-11-21: 320x480 coordinates, ~4 polls/s of clean data while swiping.
- *
- * Occasional glitch frames (all 0xFF, or a shifted frame) come back from the
- * controller roughly once a second while touching; the point-count sanity
- * check below drops them.
- *
- * Read protocol (ported from the reference bsp):
- *   1. Write 11 bytes:
- *        {0xB5, 0xAB, 0xA5, 0x5A, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
- *   2. Repeated start, read 8 bytes:
- *        [0] gesture
- *        [1] number of touch points
- *        [2] x high nibble (bits 3:0)
- *        [3] x low byte
- *        [4] y high nibble (bits 3:0)
- *        [5] y low byte
+ * Read protocol: write {0xB5,0xAB,0xA5,0x5A,0,0,0,8,0,0,0}, then read 8:
+ * [0] gesture, [1] point count, [2:3] x (high nibble then low byte),
+ * [4:5] y (same). Glitch frames (all 0xFF or byte-shifted) show up about
+ * once a second while touching; the point-count check below drops them.
  */
 
 #define DT_DRV_COMPAT axs_axs15231b_touch
@@ -66,25 +42,18 @@ LOG_MODULE_REGISTER(axs15231b_touch, CONFIG_INPUT_LOG_LEVEL);
 /* The panel reports at most two touch points per frame. */
 #define AXS_TOUCH_MAX_POINTS 2
 
-/* Mailbox-freeze watchdog: identical implausible replies in a row before a
- * recovery (~2 s at the 10 ms poll). The count is deliberately long: at
- * 100 Hz polling we read faster than the ~50 Hz touch engine writes, so
- * consecutive polls legitimately see the same live frame in pairs - only a
- * multi-second unbroken streak is a latch. Soft SWRESET tries before
- * escalating to a hard (SLPIN + SWRESET) one, and a hard cap so a truly
- * dead chip cannot make us re-init the panel forever. */
+/* Freeze watchdog: N identical implausible replies in a row (~2 s at the
+ * 10 ms poll). N is long on purpose: at 10 ms we outrun the ~50 Hz engine, so
+ * consecutive polls legitimately see the same live frame in pairs. Soft SWRESET
+ * first, then hard (SLPIN + SWRESET), with a cap so a dead chip cannot loop. */
 #define FREEZE_SAME_FRAMES 200
 #define FREEZE_SOFT_TRIES 2
 #define FREEZE_RECOVERY_MAX 4
 
-/* Time-based press freshness (bench 2026-11-22): a live engine streams a
- * fresh valid touch point on (almost) every poll while the finger is down,
- * with roughly one glitch frame per second. A latched engine instead
- * echoes stale press/glitch frames after the finger lifts, so a press that
- * has not seen a fresh point for this long is over - release it and let
- * the gesture detectors see an edge. At the 10 ms poll that is 5 missed
- * polls: more than a single glitch frame costs (~2 polls), far shorter
- * than any real hold. */
+/* Press freshness: a live engine streams a fresh valid point on almost every
+ * poll, a latched one echoes stale frames after the finger lifts — so a press
+ * with no fresh point for PRESS_FRESH_MS is over. 5 missed polls: more than a
+ * glitch costs (~2), far less than any real hold. */
 #define PRESS_FRESH_MS 50
 
 static const uint8_t axs_touch_request[AXS_TOUCH_REQUEST_LEN] = {
@@ -116,16 +85,11 @@ struct axs15231b_touch_data {
     uint16_t last_y;
     bool last_ok;
     unsigned int errors_logged;
-    /* Mailbox-freeze watchdog (see zmk/axs15231b_recovery.h): the last raw
-     * reply, how many replies in a row matched it, and recovery state. */
     uint8_t last_frame[AXS_TOUCH_DATA_LEN];
     bool have_frame;
     unsigned int same_count;
     unsigned int recoveries;
     bool recovering;
-    /* Time-based press freshness: when the last fresh valid touch point
-     * arrived, how many consecutive glitch replies we have seen, and how
-     * many presses the freshness timer had to release. */
     int64_t last_point_ms;
     unsigned int dead_frames;
     unsigned int stale_releases;
@@ -137,11 +101,8 @@ static int axs15231b_touch_read(const struct device *dev, uint8_t *resp) {
     const struct axs15231b_touch_config *cfg = dev->config;
     int err;
 
-    /* Two separate transactions with a STOP in between, exactly like the
-     * vendor bsp (esp_lcd_panel_io_tx_param + rx_param). A repeated START
-     * (i2c_write_read) returned err 0 too, but the controller's mailbox
-     * FSM then echo-freezes (bench 2026-11-21: every reply 0x02/0x41 with
-     * the frame-counter byte frozen). */
+    /* Two transactions with a STOP between, like the vendor bsp. A repeated
+     * START (i2c_write_read) also reads fine but echo-freezes the mailbox FSM. */
     err = i2c_write(cfg->bus, axs_touch_request, sizeof(axs_touch_request), cfg->address);
     if (err) {
         return err;
@@ -175,16 +136,11 @@ static void axs15231b_touch_process(const struct device *dev) {
     data->last_ok = true;
     data->errors_logged = 0;
 
-    /* Mailbox-freeze watchdog: with the engine latched, every reply is
-     * byte-identical - the two frame-counter bytes (6, 7) included, which
-     * live data never is (they tick every poll even under a motionless
-     * finger, bench 2026-11-22). Two latch signatures:
-     * - a frozen reply whose point-number byte is implausible (>2), and
-     * - a frozen reply while we are reporting a press: the mailbox keeps
-     *   echoing the last touch frame, so the num=0 release frame that
-     *   would clear the press never arrives (a stuck TOUCHED, and no
-     *   release edge for the swipe detectors, bench 2026-11-22).
-     * Idle silence (num=0 echo, nothing pressed) is normal and not counted. */
+    /* Freeze detector: when the engine latches, every reply is byte-identical
+     * including the frame-counter bytes (6, 7), which live data always changes.
+     * A latch is a frozen reply with an implausible point count (>2), or a
+     * frozen reply while a press is reported — then the num=0 release frame
+     * never arrives. Idle silence (num=0, nothing pressed) is normal. */
     if (data->have_frame && memcmp(data->last_frame, resp, sizeof(data->last_frame)) == 0 &&
         (resp[1] > AXS_TOUCH_MAX_POINTS || data->touched)) {
         data->same_count++;
@@ -204,13 +160,10 @@ static void axs15231b_touch_process(const struct device *dev) {
             input_report_key(dev, INPUT_BTN_TOUCH, 0, true, K_NO_WAIT);
         }
     } else if (resp[1] > AXS_TOUCH_MAX_POINTS) {
-        /* Glitch frame - all 0xFF (a bogus 255-point count) or byte-shifted,
-         * roughly once a second while the finger moves (bench 2026-11-21).
-         * The panel reports at most two points, so a bigger count is never
-         * real data. Ignore the frame itself (a real press survives a single
-         * glitch), but it is not a fresh touch point either: a stream of
-         * them starves the freshness timer below and fills dead_frames for
-         * the recovery watchdog. */
+        /* Glitch frame: all 0xFF or byte-shifted, ~1/s while the finger moves.
+         * The panel reports at most two points, so a bigger count is never real.
+         * Ignored, but not fresh either: a stream of them must starve the
+         * freshness timer and feed dead_frames. */
         data->dead_frames++;
     } else {
         uint16_t x = ((resp[2] & 0x0F) << 8) | resp[3];
@@ -226,12 +179,10 @@ static void axs15231b_touch_process(const struct device *dev) {
         input_report_key(dev, INPUT_BTN_TOUCH, 1, true, K_NO_WAIT);
     }
 
-    /* Time-based release: whatever the latched engine echoes (frozen frame,
-     * glitch storm, stale coordinates), a press without a fresh valid point
-     * for PRESS_FRESH_MS is over. Without this edge the swipe detectors
-     * never run their dx/dy math and the UI stays TOUCHED forever
-     * (bench 2026-11-22). If the finger really is still down after the
-     * engine comes back to life, the next live frame re-asserts the press. */
+    /* Time-based release: a press without a fresh valid point for
+     * PRESS_FRESH_MS is over, whatever the latched engine echoes. Without that
+     * edge the swipe detectors never run their dx/dy math and the UI stays
+     * TOUCHED; a finger still down re-asserts on the next live frame. */
     if (data->touched) {
         int64_t age = k_uptime_get() - data->last_point_ms;
 
@@ -249,8 +200,7 @@ static void axs15231b_touch_process(const struct device *dev) {
         (data->same_count >= FREEZE_SAME_FRAMES || data->dead_frames >= FREEZE_SAME_FRAMES)) {
         data->recovering = true;
 
-        /* Belt and braces: the freshness timer above should already have
-         * released any press by now (~1.3 s before this fires). */
+        /* The freshness timer should have released this ~1.3 s earlier. */
         if (data->touched) {
             data->touched = false;
             input_touchscreen_report_pos(dev, data->last_x, data->last_y, K_NO_WAIT);
@@ -276,8 +226,7 @@ static void axs15231b_touch_work_handler(struct k_work *work) {
     axs15231b_touch_process(data->dev);
 }
 
-/* The panel that has to be re-initialised on a freeze, if this build has
- * one (the touch driver only exists on AXS15231B boards anyway). */
+/* Panel to re-initialise on a freeze, if this build has one. */
 #if IS_ENABLED(CONFIG_AXS15231B)
 #define AXS15231B_DISPLAY_DEV DEVICE_DT_GET_OR_NULL(DT_INST(0, axs_axs15231b))
 #else
@@ -296,9 +245,8 @@ static void axs15231b_touch_recover(const struct device *dev, bool hard) {
     }
 #if IS_ENABLED(CONFIG_LVGL)
     else {
-        /* Recovery left the GRAM black while LVGL still believes the screen
-         * is painted: mark every styled object dirty so the whole UI
-         * repaints on the next handler call (<= 10 ms away). */
+        /* Recovery left the GRAM black while LVGL still believes it is painted:
+         * dirty every styled object so the UI repaints within 10 ms. */
         lv_obj_report_style_change(NULL);
     }
 #endif
@@ -306,8 +254,7 @@ static void axs15231b_touch_recover(const struct device *dev, bool hard) {
     ARG_UNUSED(hard);
 #endif
 
-    /* Re-arm detection immediately; a still-frozen stream re-triggers
-     * within one poll and escalates (soft -> hard). */
+    /* Re-arm now; a still-frozen stream re-triggers within a poll and escalates. */
     data->same_count = 0;
     data->recovering = false;
 }

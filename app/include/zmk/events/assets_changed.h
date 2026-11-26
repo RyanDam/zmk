@@ -4,12 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-/*
- * Asset store change event (backlog a15). Raised by the store after a
- * manifest commit (upload end, delete, GC) so the display's anim layer
- * can drop its 'A:' players and re-probe on its own thread; and by the
- * quiesce handshake so the tick can park playback for GC.
- */
+/* Raised on manifest commit; QUIESCE asks players to close and ack before GC. */
 
 #pragma once
 

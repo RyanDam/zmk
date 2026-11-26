@@ -2,16 +2,6 @@
  * Copyright (c) 2026 The ZMK Contributors
  *
  * SPDX-License-Identifier: MIT
- *
- * 5-slot theme model implementation (backlog a07).
- *
- * Wire format matches pad10a's persisted theme (eeprom/cb_eeprom.h:55-61):
- * 5 slots × RGB888 = 15 raw bytes, so a14 host tooling can port the format.
- *
- * Persistence caveat (rule R6 / backlog c02): on tab1a today the storage
- * partition fails, so settings_save_one() logs a warning and the theme still
- * applies live. Compile-time Kconfig defaults are the source of truth until
- * c02 lands.
  */
 
 #include <string.h>
@@ -47,9 +37,7 @@ static struct zmk_display_theme current_theme;
 
 static void apply_fn(struct k_work *work);
 
-/* Statically defined on purpose: the settings-load path can submit this
- * before display init runs, and a bare `struct k_work` would still have a
- * NULL handler then — sysworkq jumps to 0 and the whole chip freezes. */
+/* Static: settings load may submit before display init; a NULL handler crashes sysworkq. */
 K_WORK_DEFINE(theme_apply_work, apply_fn);
 
 static void put_color(uint8_t *dst, lv_color_t c) {
@@ -62,13 +50,9 @@ static lv_color_t get_color(const uint8_t *src) { return lv_color_make(src[0], s
 
 static void apply_fn(struct k_work *work) {
     zmk_display_styles_apply_theme(&current_theme);
-    /* Shared styles were mutated in place — invalidate every object that
-     * references any style so the full-refresh panel repaints. */
+    /* Styles were mutated in place; report so every styled object repaints. */
     lv_obj_report_style_change(NULL);
 
-    /* a14: every theme change (RPC set, preset cycle, settings load)
-     * funnels through this work item, so this is the one place to raise
-     * the event the Studio `theme` notification mapper subscribes to. */
     raise_zmk_display_theme_changed((struct zmk_display_theme_changed){
         .background = lv_color_to_u32(current_theme.background),
         .text_primary = lv_color_to_u32(current_theme.text_primary),
@@ -143,8 +127,7 @@ int zmk_display_theme_set(const struct zmk_display_theme *theme) {
     return 0;
 }
 
-/* Built-in presets (RGB888 ints — lv_color_hex() is a function); [0] must
- * equal the Kconfig defaults (0x14161C / …). */
+/* Preset palettes in RGB888; [0] must equal the Kconfig defaults. */
 struct theme_preset {
     uint32_t background, text_primary, text_secondary, accent, inactive;
 };

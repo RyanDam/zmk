@@ -3,51 +3,16 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Pomodoro screen for the Coban Tab 1a (backlog a10).
+ * Pomodoro screen. Idle shows a rotating quote over a breathing accent disc;
+ * work shows a centred 144 px countdown with a FOCUS #n caption; rest uses the
+ * clock page's fusion split. The bottom bar shows the whole session: one pill
+ * per block, width proportional to duration, the running block filling live.
  *
- * pad10a's spirit (screen_pomodoro.c): the page is a quiet object — a
- * Vietnamese proverb breathing over an accent disc — and timer furniture
- * only exists while a session runs. The 2026-11-22/23 owner passes:
- *
- *   idle     quote centred on a breathing white disc (10 %, untinted);
- *            no text chrome (the settings dev-strip was removed
- *            2026-11-23: durations come from Kconfig defaults and,
- *            later, a14's RPC);
- *   start /
- *   cancel   tap anywhere on the page -> a small modal dialog: the
- *            question ("Start focus session?" / "Cancel the session?"),
- *            the relevant facts (config summary / phase + time left),
- *            one primary action button, and a "close" ghost for a
- *            change of mind. Tapping outside the card closes too.
- *            (Earlier iterations — press-hold the centre disc, and a
- *            ghost Cancel button — were retired the same day: the
- *            hold mis-fired and the tiny word was too easy to miss.)
- *   work     countdown centred (baijamjuree 144, the standalone-clock
- *            hero), caption FOCUS #n above it, segmented session bar
- *            along the bottom.
- *   rest     fusion layout (like the clock page): left = stacked
- *            MM-over-SS countdown on the breathing disc; right = the
- *            quote; bar stays. (pad10a hid the bar in rest — tab1a
- *            keeps it, owner spec 2026-11-22.)
- *
- * The bottom bar is the whole session, not the running phase: one
- * segment per block (work/rest alternating), widths proportional to
- * their durations — pad10a computed those widths (pomo_work_set_width/
- * pomo_rest_set_width) but never drew them. Blocks are whisper-white
- * 10 % pills; work fills accent, rest a lighter accent, the running
- * block fills live.
- *
- * The engine (zmk/pomodoro.h) is untouched: it owns timing, the blank
- * lock and the notify seam; this screen renders zmk_pomo_get_status()
- * at 1 Hz (skip-if-unchanged, ~61 ms full-frame flush per invalidation)
- * and breathes from a 100 ms page timer, which stops with the page — a
- * hidden page flushes nothing.
- *
- * Interaction coexistence: the whole-page tap uses the shared detector
- * (< 24 px press-release, so swipes still navigate). While the dialog
- * is up, taps landing on the scrim only close it; the tap detector
- * still sees the same press, so a re-open guard (dialog state + a
- * short post-close quiet window) keeps a dismiss from re-opening it.
+ * The engine (zmk/pomodoro.h) owns timing, the blank lock and notify; this page
+ * renders zmk_pomo_get_status() at 1 Hz (skip-if-unchanged) and breathes on a
+ * 100 ms page timer that stops with the page. Taps use the shared detector
+ * (< 24 px) so swipes still navigate; the confirm dialog's re-open guard
+ * swallows the press that dismissed it.
  */
 
 #include <stdlib.h>
@@ -75,9 +40,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAGE_NAME "pomodoro"
 
-/* Breath disc: pad10a breathed 28..64 px on its 172-px-tall glass
- * (screen_pomodoro.c:328, ~16..37 % of height). Scale-preserving port
- * for 320 tall: 56..120 px (17.5..37.5 %). */
+/* Breath disc 56..120 px = pad10a's 17.5..37.5 % of glass height. */
 #define BREATH_MIN 56
 #define BREATH_MAX 120
 #define BREATH_PERIOD_MS 7000 /* 3 in / 0.5 hold / 3 out / 0.5 hold (:327) */
@@ -88,9 +51,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define SEG_GAP 4   /* air between pills                                  */
 #define SEG_MAX (2 * 8 - 1) /* sets clamp at 8 -> 15 blocks               */
 
-/* Work layout: gap between the FOCUS caption and the hero digits
- * (owner pass 2026-11-23: 16 px read too tight against the 144 px
- * numerals — 32 px, and it follows the digits' box, not the page). */
+/* Caption-to-digits gap; follows the digits' box, not the page. */
 #define CAP_ABOVE_COUNTDOWN (ZMK_GRID_UNIT * 4)
 
 /* Rest fusion split */
@@ -101,9 +62,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
                           * 16 px left of true quarter — the wide quote
                           * owns more of the page */
 
-/* Re-open guard: a tap that dismissed the dialog must not immediately
- * re-open it (the shared tap detector sees the same press as the
- * scrim/button handlers). */
+/* Re-open guard: the shared tap detector sees the press that closed the dialog. */
 #define DIALOG_QUIET_MS 600
 
 /* Phase ids for the shown-phase cache (mirrors zmk_pomo_state) */
@@ -152,10 +111,7 @@ struct pomo_ui {
 static struct pomo_ui ui;
 static int64_t dialog_closed_ms = -10000;
 
-/* ------------------------------------------------------------------ */
-/* Vietnamese quotes (verbatim from pad10a screen_pomodoro.c:414-463,  */
-/* including its duplicated entries — the rotation order is the data)  */
-/* ------------------------------------------------------------------ */
+/* Vietnamese quotes verbatim from pad10a — the rotation order is the data */
 
 static const char *const quotes[] = {"Có công mài sắt\ncó ngày nên kim",
                                      "Kiến tha lâu\ncũng đầy tổ",
@@ -208,9 +164,7 @@ static const char *const quotes[] = {"Có công mài sắt\ncó ngày nên kim",
                                      "Không làm sao nên",
                                      "Một điều nhịn\nchín điều lành"};
 
-/* Same rotation as pad10a get_current_quote() (:467-471): a new proverb
- * every 5 minutes, keyed to wall-clock seconds so pages agree. The time
- * seam (a09) always answers — the sim epoch stands in until h02/a14. */
+/* A new proverb every 5 minutes, keyed to wall-clock seconds. */
 static size_t quote_index_now(void) {
     int64_t epoch = zmk_time_now_epoch(NULL);
     uint64_t quintet;
@@ -223,18 +177,14 @@ static size_t quote_index_now(void) {
     return (size_t)(quintet % ARRAY_SIZE(quotes));
 }
 
-/* ------------------------------------------------------------------ */
-/* Breath waveform (LVGL thread, 100 ms tick)                          */
-/* ------------------------------------------------------------------ */
+/* Breath waveform (LVGL thread, 100 ms tick) */
 
 static float smoothstep_f(float x) {
     x = CLAMP(x, 0.0f, 1.0f);
     return x * x * (3.0f - 2.0f * x);
 }
 
-/* pad10a breathing_wave() (:285-315) in integer-ms phase math: smooth
- * -1..+1 with quarter-second holds at the extremes. The +/-2 % realism
- * wobble on the holds is dropped — imperceptible, and it skips libm. */
+/* Integer-ms smooth -1..+1 with half-second holds at the extremes, no libm. */
 static uint32_t breath_size_at(int64_t now_ms) {
     uint32_t ph = (uint32_t)(now_ms % BREATH_PERIOD_MS);
     float norm;
@@ -275,12 +225,9 @@ static void pomo_anim_tick(void) {
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Segmented session bar                                               */
-/* ------------------------------------------------------------------ */
+/* Segmented session bar */
 
-/* Rebuild when the config changes (config is locked while running, so
- * this only ever happens while the row is invisible or just started). */
+/* Config is locked while running, so this only happens while invisible. */
 static void segs_rebuild(void) {
     const struct zmk_pomo_config *c = zmk_pomo_config_get();
 
@@ -332,9 +279,8 @@ static void segs_rebuild(void) {
     ui.seg_count = MIN(nseg, SEG_MAX);
 }
 
-/* Whole-session fill: blocks left of the running one are full, the
- * running block is partial. Engine segment order: work1, rest1, work2,
- * ... so work set n -> 2n-2, rest after set n -> 2n-1. */
+/* Blocks left of the running one are full, the running one partial. Engine
+ * order work1, rest1, work2, ... so work set n -> 2n-2, rest after n -> 2n-1. */
 static void segs_render(struct zmk_pomo_status *s, int64_t phase_elapsed_ms) {
     int idx = s->state == ZMK_POMO_STATE_WORK ? 2 * ((int)s->set_idx - 1)
                                               : 2 * (int)s->set_idx - 1;
@@ -354,9 +300,7 @@ static void segs_render(struct zmk_pomo_status *s, int64_t phase_elapsed_ms) {
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Confirm dialog (start / cancel)                                     */
-/* ------------------------------------------------------------------ */
+/* Confirm dialog (start / cancel) */
 
 static void dialog_close(void) {
     if (ui.dialog != NULL) {
@@ -381,18 +325,15 @@ static void dialog_close_cb(lv_event_t *e) {
     dialog_close();
 }
 
-/* Scrim click: close only when the scrim itself was the click target
- * (button clicks bubble through it too). */
+/* Close only when the scrim itself is the target; buttons bubble through it. */
 static void dialog_scrim_cb(lv_event_t *e) {
     if (lv_event_get_target(e) == lv_event_get_current_target(e)) {
         dialog_close();
     }
 }
 
-/* Dialog sizing (owner pass 2026-11-23): fixed card + button sizes so
- * the card never resizes between the idle and running questions.
- * Longest fact line ("4 sets · 25:00 focus · 5:00 rest") fits the
- * 288 px content width on one line. */
+/* Fixed card + button sizes so the card never resizes between questions; the
+ * longest fact line fits 288 px. */
 #define DLG_CARD_W (ZMK_GRID_SCREEN_W * 2 / 3) /* 320 px */
 #define DLG_BTN_W  128
 #define DLG_BTN_GAP (ZMK_GRID_UNIT * 2)
@@ -404,8 +345,7 @@ static lv_obj_t *mk_dialog_button(lv_obj_t *parent, const char *text, bool prima
     lv_obj_remove_style_all(btn);
     lv_obj_add_style(btn, zmk_display_style(ZMK_STYLE_TOUCH), 0);
     if (primary) {
-        /* added second: registry order = later wins, so the fill goes
-         * accent while TOUCH keeps the 44 px target and radius */
+        /* Later registry entry wins: accent on fill, TOUCH keeps the 44 px. */
         lv_obj_add_style(btn, zmk_display_style(ZMK_STYLE_ACCENT), 0);
     }
     lv_obj_set_size(btn, DLG_BTN_W, ZMK_GRID_TOUCH_MIN);
@@ -487,7 +427,6 @@ static void dialog_show(void) {
     ui.dlg_primary = mk_dialog_button(row, "Start", true, dialog_primary_cb, &ui.dlg_primary_lbl);
     mk_dialog_button(row, "close", false, dialog_close_cb, NULL);
 
-    /* fresh caches for this session of the dialog */
     ui.dlg_q_cache[0] = '\0';
     ui.dlg_i_cache[0] = '\0';
     ui.dlg_p_cache[0] = '\0';
@@ -499,13 +438,9 @@ ZMK_UI_WORK_DEFINE(pomo_tap_work, pomo_tap_work_cb) {
     dialog_show();
 }
 
-/* ------------------------------------------------------------------ */
-/* 1 Hz refresh                                                        */
-/* ------------------------------------------------------------------ */
+/* 1 Hz refresh */
 
-/* Phase swap (idle/work/rest): widget sets + the moves that come with
- * them (quote re-centres, the disc re-homes). Rare enough — and cheap
- * enough — to redo the aligns wholesale. */
+/* Phase swap redoes the aligns wholesale: rare enough and cheap enough. */
 static void show_phase(int phase) {
     if (phase == ui.shown_phase) {
         return;
@@ -531,8 +466,7 @@ static void show_phase(int phase) {
     lv_obj_set_flag(ui.caption, LV_OBJ_FLAG_HIDDEN, !work);
     lv_obj_set_flag(ui.stack, LV_OBJ_FLAG_HIDDEN, !rest);
 
-    /* Disc home follows the layout: centre of the page idle, centre of
-     * the left zone in rest — behind the stacked digits. */
+    /* Disc homes to the page centre idle, the left zone's centre in rest. */
     if (rest) {
         lv_obj_align(ui.breath, LV_ALIGN_CENTER, STACK_CX - ZMK_GRID_SCREEN_W / 2, 0);
     } else {
@@ -578,8 +512,8 @@ static void pomo_update(void) {
                 zmk_ui_set_text(ui.caption_cache, sizeof(ui.caption_cache), ui.caption, buf);
             }
 
-            /* Caption stays width-locked to the digits: re-align only
-             * when the (proportional) MM:SS box width changes. */
+            /* Caption is width-locked to the digits: re-align only if that box
+             * changed width. */
             int cw = lv_obj_get_width(ui.countdown);
 
             if (cw != ui.cap_w_cache) {
@@ -598,8 +532,7 @@ static void pomo_update(void) {
         segs_render(&s, elapsed);
     }
 
-    /* Quote lives in idle AND rest: keep it rotating (cached, so a
-     * resting second changes nothing unless the 5-min index rolled). */
+    /* The quote rotates in idle AND rest (cached, so a still second is free). */
     if (s.state != ZMK_POMO_STATE_WORK) {
         zmk_ui_set_text(ui.quote_cache, sizeof(ui.quote_cache), ui.quote,
                         quotes[quote_index_now()]);
@@ -618,20 +551,16 @@ static void pomo_tick(void) {
     pomo_update();
     cycle_sum += k_cycle_get_32() - start;
     if (++samples >= 600) {
-        LOG_INF("pomodoro update avg %u us over %u s",
+        LOG_DBG("pomodoro update avg %u us over %u s",
                 (unsigned int)k_cyc_to_us_floor32(cycle_sum / samples), samples);
         samples = cycle_sum = 0;
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Touch: tap anywhere -> confirm dialog                               */
-/* ------------------------------------------------------------------ */
+/* Touch: tap anywhere -> confirm dialog */
 
-/* Compile-time bound (see stats_screen.c): the global input callback can
- * fire long before this page is ever created. The shared detector
- * handles the current-page gate and the < 24 px tap test, so swipes
- * still page-navigate untouched. */
+/* The global input callback can fire before this page exists; the shared
+ * detector gates the page and the < 24 px tap test. */
 ZMK_UI_TAP_STATE(pomo_tap) = { .page_name = PAGE_NAME, .work = &pomo_tap_work };
 
 static void pomo_touch_cb(struct input_event *evt, void *user_data) {
@@ -640,9 +569,7 @@ static void pomo_touch_cb(struct input_event *evt, void *user_data) {
 }
 INPUT_CALLBACK_DEFINE(NULL, pomo_touch_cb, NULL);
 
-/* ------------------------------------------------------------------ */
-/* Build                                                               */
-/* ------------------------------------------------------------------ */
+/* Build */
 
 static lv_obj_t *pomo_build(lv_obj_t *parent) {
     ui = (struct pomo_ui){

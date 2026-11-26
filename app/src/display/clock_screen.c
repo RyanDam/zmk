@@ -3,42 +3,17 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Clock and calendar screen for display-centric boards (Coban Tab 1a).
+ * Clock and calendar screen: the clock and calendar widgets in one of three
+ * layouts — CLOCK_ONLY (144 px HH:MM centred, date caption above),
+ * CALENDAR_ONLY (header + month grid), FUSION (stacked 72 px clock left, grid
+ * right). Text is fixed HH:MM (24 h) and "DoW DD/MM/YYYY", shown
+ * unconditionally; the time always comes from zmk/display/time_src.h.
  *
- * Wave-1 audit (2026-11-22): the a09 port's five time styles and the
- * pad10a format matrix (12/24 h, AM/PM, three date formats, date
- * visibility) were cut to a deliberate minimum. The page now composes
- * two widget modules in one of three layouts:
- *
- *   CLOCK_ONLY      huge HH:MM centred (144 px), small date caption
- *                   just above the digits (pomodoro-focus spacing)
- *   CALENDAR_ONLY   year top-left + month name top-right, full month grid
- *   FUSION          stacked clock (hour over minute, 72 px) left,
- *                   month grid right, symmetric split
- *
- * Time text is fixed HH:MM (24 h) and the date caption is fixed
- * "DoW DD/MM/YYYY" — the time itself still comes from the time-source
- * seam (zmk/display/time_src.h), never from uptime directly. The
- * wave-1 audit removed the unsynced affordance (dimmed digits +
- * "unsynced" caption): the screen shows the time unconditionally and
- * the synced flag stays inside the seam for h02 (DS1302) / a14 (host
- * set_time) to build the real sync UX on.
- *
- * Layout and the per-widget styles are one config (the widget style ids
- * live in clock_widget.h / calendar_widget.h): persisted in settings
- * ("display/clock/config"), seeded from the ZMK_DISPLAY_CLOCK_* Kconfig
- * defaults, readable/writable through the public seam in
- * <zmk/display/clock_screen.h> — which is what the a14 Studio RPC will
- * call, so a host-set style is also what survives the reboot.
- *
- * Dev/bench cycle: with the screen manager (a08) a tap ON the clock page
- * (not a swipe) cycles the layout — clock only → calendar → fusion; the
- * effect logs on the console, not on the glass. Swipe navigation and
- * the other pages are untouched.
- *
- * Styling rule (a07): every color/font/size comes from the style
- * registry; the legacy no-design-system path keeps the original
- * hardcoded demo.
+ * Layout plus both widgets' style ids is one config at settings
+ * "display/clock/config", seeded from ZMK_DISPLAY_CLOCK_* and reached through
+ * <zmk/display/clock_screen.h>, so an RPC-set style survives a reboot. With the
+ * screen manager, a tap (not a swipe) cycles the layout for bench work. Every
+ * color/font/size comes from the style registry.
  */
 
 #include <string.h>
@@ -81,9 +56,7 @@ LOG_MODULE_REGISTER(display_clock, CONFIG_ZMK_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
 
-/* --------------------------------------------------------------------- */
-/* Screen config (layout + widget styles), persisted as one blob         */
-/* --------------------------------------------------------------------- */
+/* Screen config (layout + widget styles), persisted as one blob */
 
 static const char *const weekday_full[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
                                            "Thursday", "Friday", "Saturday"};
@@ -105,38 +78,25 @@ BUILD_ASSERT(sizeof(struct zmk_display_clock_config) == 3);
 #define CLOCK_SETTINGS_KEY "config"
 #endif
 
-/* --------------------------------------------------------------------- */
-/* Widgets + layout builders                                             */
-/* --------------------------------------------------------------------- */
-
-/* Live objects of the current layout; NULL where the layout has no such
- * element, so the one-second updater stays layout-agnostic. Widgets are
- * heap modules owned by the page subtree (they free themselves with it),
- * rebuilt fresh on every layout/style change. */
+/* Live objects of the current layout, NULL where the layout has none so the
+ * updater stays layout-agnostic. Widgets are heap modules freed with the page. */
 static lv_obj_t *clock_root;
 static zmk_clock_widget_t *clock_w;
 static zmk_calendar_widget_t *cal_w;
 static lv_obj_t *l_date;
 
-/* Label text caches. MUST be cleared whenever the labels are rebuilt —
- * a stale cache would suppress the first write to the fresh label. */
+/* Clear these whenever labels are rebuilt: a stale cache suppresses the write. */
 static char date_cache[32];
 
 static void clock_build_layout(void);
 static void clock_update_text(void);
 
-/* Geometry (8 px grid, grid.md). One calendar lattice for both layouts:
- * SQUARE 30 px cells, vertical pitch 37 (30 + row_gap 7). Vertically the
- * block is header(35) + weekday(24) + 6*30 + 7*7 = 288 — exactly the
- * content band y 16..304, clear of the page dots (pip tops at 308).
- * Horizontally (owner photo pass 2026-11-22): the full-page view spreads
- * every row SPACE_BETWEEN across the whole 448 px content width — no
- * black side bands; the fusion view gives the grid 288 px flush right
- * (owner: the packed 252 felt cramped) and centres the stacked clock in
- * the 160 px space left of it — the glyphs need ~90 px, so the clock
- * keeps equal air to the margin and to the calendar while the lattice
- * breathes. Rows: only the 4..6 weeks the month occupies, gaps stretched
- * to fill the band. */
+/* Geometry, 8 px grid. One calendar lattice for both layouts: square 30 px
+ * cells, vertical pitch 37 (30 + CAL_GAP 7). Height is header 35 + weekday 24
+ * + 6*30 + 7*7 = 288, exactly the content band y 16..304, clear of the page
+ * dots at 308. The full-page view spreads each row SPACE_BETWEEN over the
+ * 448 px content width; the fusion view gives the grid 288 px flush right and
+ * centres the stacked clock in the 160 px left of it (glyphs need ~90 px). */
 
 #define CAL_CELL 40      /* square day-cell side (barlow 24 line height 26)   */
 #define CAL_GAP 4        /* packed gap floor (band stretch raises it)         */
@@ -158,12 +118,10 @@ static void add_calendar(bool header, uint16_t header_w, uint16_t grid_w, uint16
     struct zmk_calendar_opts opts = {
         .style = cfg.calendar_style,
         .header = header, /* false: grid only (fusion: the clock carries
-                           * the time context, owner pass 2026-11-22) */
+                           * the time context, owner pass) */
         .header_w = header_w,
         .grid_w = grid_w,
-        /* 0 = no band stretch: rows stay exactly CAL_GAP apart at the
-         * widget's natural height (was CAL_H, which spread the page
-         * slack into ~20 px row gaps regardless of CAL_GAP). */
+        /* 0 = no stretch: rows stay CAL_GAP apart at natural height. */
         .band_h = 0,
         .cell = CAL_CELL,
         .cell_w = cell_w, /* 0 = square CAL_CELL (fusion lattice) */
@@ -177,28 +135,21 @@ static void add_calendar(bool header, uint16_t header_w, uint16_t grid_w, uint16
     }
 }
 
-/* ---------------- layout 0: CLOCK ONLY ------------------------------- */
+/* Layout 0: CLOCK ONLY */
 
-/* Date caption follows the digit box, not the page — the pomodoro
- * focus caption's mechanism (pomodoro_screen.c CAP_ABOVE_COUNTDOWN,
- * anchored 32 px above the identical 144 px HERO_XL digit box) with
- * more air: 48 px (owner pass 2026-11-24: 32 still too tight, and
- * pinned at the page top it sat at the screen edge). */
+/* The date caption anchors 48 px above the 144 px hero box rather than to the
+ * page top, where it sat at the screen edge. */
 #define CLOCK_DATE_ABOVE (ZMK_GRID_UNIT * 6)
 
 static void build_clock_only(void) {
-    /* Hero exactly at screen centre (owner pass 2026-11-24); the date
-     * hangs above it on the same vertical axis. */
+    /* Hero dead centre; the date hangs above it on the same axis. */
     add_clock(clock_root, ZMK_CLOCK_SIZE_HUGE, LV_ALIGN_CENTER, 0, 0);
 
     l_date = zmk_ui_label(clock_root, ZMK_STYLE_TEXT_SECONDARY);
 
-    /* Page-wide box + centred text (pomodoro caption's trick):
-     * lv_obj_align_to positions once, against the label's CURRENT
-     * width — an auto-sized label is still empty here (width 0), so
-     * it would start at the centre line and grow rightwards into a
-     * right-aligned look when the date is written. A fixed full-width
-     * box is symmetric around the centre line for any text. */
+    /* Fixed full-width centred box: lv_obj_align_to runs against the label's
+     * current width, and an auto-sized label is still empty (0) here, so it
+     * would grow rightwards instead of staying centred. */
     lv_obj_set_width(l_date, lv_pct(100));
     lv_obj_set_style_text_align(l_date, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -211,27 +162,20 @@ static void build_clock_only(void) {
     }
 }
 
-/* ---------------- layout 1: CALENDAR ONLY ---------------------------- */
+/* Layout 1: CALENDAR ONLY */
 
 static void build_calendar_only(void) {
-    /* Packed (sizing pass 2026-11-22): grid_w 0 -> rows keep exactly
-     * CAL_GAP col air (no SPACE_BETWEEN spread), header_w 0 -> the
-     * widget sizes the header to the packed lattice (7*cell + 6*gap),
-     * so year/month sit flush with the first and last column. The
-     * whole block is content-sized and dead-centred on the page.
-     * Revert note: CAL_HEADER_W x2 restored the full-bleed
-     * SPACE_BETWEEN. */
+    /* grid_w 0 -> columns keep exactly CAL_GAP air; header_w 0 -> the header is
+     * sized to the packed lattice so year/month align with the outer columns. */
     add_calendar(true, 0, 0, CAL_CELL_W, LV_ALIGN_CENTER, 0, 0);
 }
 
-/* ---------------- layout 2: FUSION ----------------------------------- */
+/* Layout 2: FUSION */
 
 static void build_fusion(void) {
-    /* Stacked clock (hour over minute) centred in the space the grid
-     * leaves (196 px): with the centre there, the clock's gaps to the
-     * left margin and to the calendar are equal for any digit widths.
-     * One placement mechanism only (the widget's align): a flex child
-     * that is ALSO align-moved is what made the clock lean right. */
+    /* Centre the stacked clock in the space left of the grid: equal air to the
+     * margin and to the calendar for any digit widths. One placement mechanism
+     * only — a flex child that is also align-moved leans right. */
     lv_obj_t *zone = lv_obj_create(clock_root);
 
     lv_obj_remove_style_all(zone);
@@ -243,8 +187,7 @@ static void build_fusion(void) {
 }
 
 static void clock_build_layout(void) {
-    /* The page container belongs to the screen manager (it owns the page
-     * dots as siblings); clean only our own subtree. */
+    /* The page container belongs to the screen manager (it owns the dots). */
     lv_obj_clean(clock_root);
     clock_w = NULL;
     cal_w = NULL;
@@ -252,11 +195,8 @@ static void clock_build_layout(void) {
     date_cache[0] = '\0';
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
-    /* a12: animated background under everything (pad10a parity),
-     * created before any widget so it paints underneath; not
-     * clickable, so the tap detector and swipes are untouched.
-     * One shared player across pages (anim.c) — the budget for a
-     * player per page does not exist. */
+    /* Background first so it paints underneath, and not clickable; one shared
+     * player across all pages (anim.c). */
     zmk_anim_bg_attach(clock_root, "clock");
 #endif
 
@@ -273,17 +213,13 @@ static void clock_build_layout(void) {
         break;
     }
 
-    /* Nothing below the content band: the wave-1 audit dropped the
-     * hint + unsync captions, leaving only the screen manager's page
-     * dots at -MARGIN/2. */
+    /* Nothing below the content band but the manager's page dots. */
 
     /* Fresh labels: seed everything from the live time now. */
     clock_update_text();
 }
 
-/* --------------------------------------------------------------------- */
-/* One-second update                                                     */
-/* --------------------------------------------------------------------- */
+/* One-second update */
 
 static void clock_update_text(void) {
     struct zmk_time t;
@@ -307,9 +243,7 @@ static void clock_tick(void) {
     static uint32_t samples, cycle_sum;
     uint32_t start = k_cycle_get_32();
 
-    /* a09 acceptance note: label updates must not starve touch. Full
-     * cost per tick, averaged every 600 s — the panel repaint itself is
-     * the fixed ~61 ms full frame (R5), independent of this. */
+    /* Label updates must not starve touch; the ~61 ms full repaint is fixed. */
     clock_update_text();
     cycle_sum += k_cycle_get_32() - start;
     if (++samples >= 600) {
@@ -319,9 +253,7 @@ static void clock_tick(void) {
     }
 }
 
-/* --------------------------------------------------------------------- */
-/* Config changes: settings save, rebuild, tap cycle, RPC seam           */
-/* --------------------------------------------------------------------- */
+/* Config changes: settings save, rebuild, tap cycle, RPC seam */
 
 ZMK_UI_WORK_DEFINE(clock_rebuild_work, clock_rebuild_work_cb) {
     ARG_UNUSED(work);
@@ -341,11 +273,8 @@ static void clock_settings_save(void) {
 }
 #endif
 
-/* Dev/bench cycle: each tap advances one field — with one clock style
- * and the calendar style not yet joined, that is the layout alone
- * (clock only → calendar → fusion). The old sync toggle left with the
- * unsynced affordance: the flag has no visual anymore (host-side
- * zmk_time_sync() stays available for h02/a14). */
+/* Bench: a tap on the page cycles the layout (clock → calendar → fusion),
+ * logged on the console. */
 #define CLOCK_DEV_FIELDS 1
 static uint8_t dev_field;
 
@@ -400,13 +329,10 @@ int zmk_display_clock_config_set(const struct zmk_display_clock_config *next) {
     return 0;
 }
 
-/* --------------------------------------------------------------------- */
-/* Page registration / standalone screen                                 */
-/* --------------------------------------------------------------------- */
+/* Page registration / standalone screen */
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
-/* Compile-time bound (see stats_screen.c): the global input callback can
- * fire long before this page is ever created. */
+/* Compile-time bound (see stats_screen.c): the input callback can fire early. */
 ZMK_UI_TAP_STATE(clock_tap) = {.page_name = "clock", .work = &clock_cycle_field_work};
 #endif
 
@@ -428,10 +354,9 @@ static lv_obj_t *clock_page_create(lv_obj_t *parent) { return clock_attach(paren
 
 ZMK_DISPLAY_DEFINE_SCREEN(clock, "clock", clock_page_create, 10);
 
-/* Tap (not swipe) on the clock page cycles one config field. The input
- * callback runs in the input reporting context; the LVGL work is posted to
- * the display work queue. Swipes travel far, so requiring near-zero
- * movement keeps the manager's page navigation untouched. */
+/* Tap (not swipe) cycles one config field. The input callback runs in the
+ * input context, so LVGL work goes to the display work queue; requiring
+ * near-zero movement leaves the manager's swipe navigation alone. */
 static void clock_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
     zmk_ui_tap_input(&clock_tap, evt);
@@ -453,9 +378,7 @@ lv_obj_t *zmk_display_status_screen(void) {
 
 #endif /* CONFIG_ZMK_DISPLAY_SCREEN_MGR */
 
-/* --------------------------------------------------------------------- */
-/* Settings                                                              */
-/* --------------------------------------------------------------------- */
+/* Settings */
 
 #if IS_ENABLED(CONFIG_SETTINGS)
 static uint8_t clock_cfg_sanitize(uint8_t value, unsigned int max, uint8_t fallback,
@@ -477,8 +400,7 @@ static int clock_settings_handle_set(const char *key, size_t len, settings_read_
         return err;
     }
 
-    /* Per-field defaults instead of rejecting the whole blob: an id from
-     * a newer/older enum still leaves the other choices intact. */
+    /* Per-field defaults: one unknown id must not discard the whole blob. */
     cfg.layout = clock_cfg_sanitize(loaded.layout, ZMK_DISPLAY_CLOCK_LAYOUT_COUNT,
                                     CONFIG_ZMK_DISPLAY_CLOCK_LAYOUT, "layout");
     cfg.clock_style = clock_cfg_sanitize(loaded.clock_style, ZMK_CLOCK_STYLE_COUNT,
@@ -495,16 +417,12 @@ SETTINGS_STATIC_HANDLER_DEFINE(display_clock, CLOCK_SETTINGS_SUBTREE, NULL,
 #endif /* CONFIG_SETTINGS */
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
-/* Standalone keeps tap-to-cycle-theme from before the manager (see the
- * non-manager handler below the legacy section); with the manager the tap
- * drives the config cycle above. */
+/* Standalone keeps tap-to-cycle-theme; with the manager, tap drives config. */
 #else
 static void clock_theme_cycle_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
 
-    /* The touch controller reports a phantom touch at power-on, so a cycle
-     * work item can run before the screen exists — skip it (the theme
-     * itself is always valid; this guard only orders against boot noise). */
+    /* The controller reports a phantom touch at power-on, before the page. */
     if (clock_root == NULL) {
         return;
     }
@@ -555,17 +473,11 @@ static void clock_timer_cb(lv_timer_t *timer) {
     clock_update_text();
 }
 
-/*
- * Touch handling: the input callback runs in the input reporting context, so
- * the LVGL update is posted to the display work queue.
- */
+/* Touch: the input callback's context forbids LVGL calls, so post the work. */
 static void clock_random_color_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
 
-    /* The labels are created by zmk_display_status_screen() in this same
-     * work queue. The touch controller reports a phantom touch at power-on,
-     * so a color-change work item can run before the screen exists — skip
-     * it rather than dereference NULL. */
+    /* Labels are built in this same queue; skip a phantom power-on touch. */
     if (clock_label == NULL || date_label == NULL) {
         return;
     }

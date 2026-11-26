@@ -2,19 +2,6 @@
  * Copyright (c) 2026 The ZMK Contributors
  *
  * SPDX-License-Identifier: MIT
- *
- * Coban Tab 1a display design system — 5-slot theme model (backlog a07).
- *
- * Port of pad10a's `theme_color_t` (background, text_primary, text_secondary,
- * accent, inactive) scaled for the 480×320 canvas. The theme is the ONLY source of
- * colors for screen code: styles.c derives every lv_style_t from it, and the
- * model persists via ZMK settings ("display/theme/colors", 15 bytes RGB888,
- * same wire shape as pad10a's eeprom blob) so the Studio RPC (a14) can edit
- * it from the host later.
- *
- * NOTE: this file replaces the old vestigial theme.[ch], which only selected
- * a small font for the monochrome LVGL theme and was not even compiled. The
- * font-selection macros survive at the bottom for mono displays.
  */
 
 #pragma once
@@ -29,27 +16,18 @@ struct zmk_display_theme {
     lv_color_t inactive;
 };
 
-/* The live theme. Read-only for screens — go through zmk_display_style()
- * instead; this accessor exists for style rebuilding and diagnostics. */
+/* Read-only; screens should go through zmk_display_style() instead. */
 const struct zmk_display_theme *zmk_display_theme_get(void);
 
-/* Boot-time init: seed from Kconfig defaults, build the style registry.
- * Called by the display module before the status screen is created. */
+/* Must run before the status screen is created. */
 int zmk_display_theme_init(void);
 
-/* Replace the theme (live re-render of every styled object) and persist it
- * via settings. Safe from any thread: LVGL work is posted to the display
- * work queue. Settings errors are logged but not returned — the live apply
- * still succeeds (persistence is gated by c02 on tab1a). */
+/* Thread-safe (posts to the display work queue); persistence errors are logged, not returned. */
 int zmk_display_theme_set(const struct zmk_display_theme *theme);
 
-/* Cycle through built-in preset palettes (bench seam test until d05/h04
- * give better live-edit input). */
 void zmk_display_theme_cycle_preset(void);
 
-/*
- * Legacy small-font selector (monochrome theme only).
- */
+/* Legacy small-font selector (monochrome theme only). */
 
 #if defined(CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_8)
 #define CONFIG_ZMK_LV_FONT_DEFAULT_SMALL &lv_font_montserrat_8

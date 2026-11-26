@@ -3,33 +3,21 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Studio `assets` bulk upload backend (backlog a15). Plain-C API called
- * by assets_subsystem.c (which owns the proto encoding) — this file is
- * the flash side of the transfer and nothing else.
+ * Studio bulk-upload backend: the flash side of the transfer only (proto
+ * encoding lives in assets_subsystem.c).
  *
- * Why a dedicated workqueue: every RPC handler runs on the small
- * studio_rpc_thread, and flash erase/write on the ESP runs through the
- * HAL's cache-off windows (tens of ms). Bytes are copied into a staging
- * ring by the handler (that's all the RPC thread ever does), and this
- * queue erases/writes, verifies the CRC, and commits the manifest —
- * never on the RPC or display threads. The queue is preemptive-low, so
- * the cooperative display queue keeps its windows (a15 plan: writes
- * starve nothing but an idle system).
+ * Erase/write on the ESP runs through the HAL's cache-off windows for tens of
+ * ms, so it never runs on the RPC or display thread: the handler copies bytes
+ * into a staging ring and this preemptive-low queue writes, CRC-checks and
+ * commits.
  *
- * Integrity model (a15 plan D3, "commit-last"):
- *   begin  -> budget/name checks, gap allocation, session in RAM
- *   data   -> staging ring -> this queue writes into the allocated gap
- *   end    -> flush, re-read the blob, CRC32 check, then commit a new
- *             manifest generation (manifest sector only). Interruption
- *             anywhere before the commit leaves the live manifest (and
- *             every byte it references) untouched; the session is
- *             RAM-only, so a power-cycle simply loses it.
- *   gc     -> quiesce playback (store handshake), rewrite blobs into a
- *             compacted layout, commit; runs only here, never in RPC.
+ * Commit-last integrity: begin allocates a gap, data drains the ring into it,
+ * end flushes, re-reads the blob, verifies the CRC and only then commits a new
+ * manifest generation — so any earlier interruption leaves the live manifest
+ * and every byte it references untouched. GC (blob relocation) runs here too.
  *
- * Lockstep protocol: the RPC layer is one-in-flight, so `seq` only has
- * to catch gaps and re-sends of the last acked chunk (idempotent
- * re-ack), and no flow control beyond the staging ring is needed.
+ * One chunk is in flight, so `seq` only spots gaps and repeats of the last
+ * acked chunk (re-ack is idempotent).
  */
 
 #include <errno.h>
@@ -58,7 +46,7 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #define DATA_SECTOR 4096
 #define FLUSH_BUF 1024
 
-/* ---- session state ------------------------------------------------ */
+/* Session state */
 
 struct upload_session {
     bool active;
@@ -84,9 +72,7 @@ static struct k_sem commit_done; /* given by the work after end/abort  */
 static struct k_sem drain_space; /* producer waits when staging full   */
 static struct k_sem gc_done;     /* given at the end of every gc run   */
 
-/* Result of the last commit attempt (the end response payload). Only
- * written by the uploader queue between commit_done takes, so the RPC
- * thread sees it fully formed. */
+/* Last commit result; only the uploader queue writes it between takes. */
 static bool commit_ok;
 static char commit_err[48];
 
@@ -96,7 +82,7 @@ static struct k_work progress_work;
 
 static void gc_run_inline(void); /* defined below, used by the commit retry */
 
-/* ---- dedicated workqueue ------------------------------------------ */
+/* Dedicated workqueue */
 
 K_KERNEL_STACK_DEFINE(upload_wq_stack, 4096);
 static struct k_work_q upload_wq;
@@ -109,11 +95,10 @@ static int upload_wq_start(void) {
     return 0;
 }
 
-/* Own statics only (queue start); the session is used at runtime
- * after every SYS_INIT, so level order vs the store is irrelevant. */
+/* Only queue-start statics; the session is used after every SYS_INIT. */
 SYS_INIT(upload_wq_start, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
-/* ---- progress notifications ---------------------------------------- */
+/* Progress notifications */
 
 static void notify_progress(const char *name, uint32_t accepted, uint32_t total, bool gc_running) {
     zmk_assets_UploadProgress p = {0};
@@ -154,11 +139,10 @@ static void progress_work_fn(struct k_work *work) {
     notify_progress(name, accepted, total, false);
 }
 
-/* ---- flash staging (uploader thread) -------------------------------- */
+/* Flash staging (uploader thread) */
 
-/* Erase every sector the write range [pos, pos+len) touches, ahead of
- * the write. The session owns its region — nothing outside it exists
- * there yet (append-only), so eager sector erase is safe. */
+/* Eager sector erase is safe: the session owns its region and nothing else is
+ * there yet (append-only). */
 static int erase_to_cover(struct upload_session *s, uint32_t pos, uint32_t len) {
     uint32_t up_to = ROUND_UP(pos + len, DATA_SECTOR);
 
@@ -174,9 +158,8 @@ static int erase_to_cover(struct upload_session *s, uint32_t pos, uint32_t len) 
     return 0;
 }
 
-/* Drain the staging ring to flash; at end-of-stream verify the CRC and
- * commit the manifest. Runs to completion or returns while the ring is
- * momentarily empty mid-stream (the next data chunk re-submits it). */
+/* Drain the ring; verify + commit at end of stream. Returning mid-stream is
+ * fine — the next data chunk re-submits this work. */
 static void flush_work_fn(struct k_work *work) {
     struct upload_session *s = &session;
     uint8_t buf[FLUSH_BUF];
@@ -198,11 +181,8 @@ static void flush_work_fn(struct k_work *work) {
             break;
         }
 
-        /* Mid-stream writes must be 4-byte aligned (the
-         * zmk_assets_flash_write contract): never drain a sub-4-byte
-         * tail — keep it staged until the end marker lets us pad it.
-         * Only this function consumes the ring, so the size-then-get
-         * pair cannot race a producer. */
+        /* Never drain a sub-4-byte tail: zmk_assets_flash_write needs 4-byte
+         * alignment, so the tail stays staged until the end marker pads it. */
         uint32_t want = FLUSH_BUF;
 
         if (!ended) {
@@ -246,9 +226,8 @@ static void flush_work_fn(struct k_work *work) {
         }
     }
 
-    /* End of stream (or abort): verify + commit, or just report. The
-     * live manifest is still the previous generation until the very
-     * last write of commit_entries, so every early exit here is safe. */
+    /* The live manifest is the previous generation until commit_entries' last
+     * write, so every early exit here is safe. */
     commit_ok = false;
     commit_err[0] = '\0';
 
@@ -262,8 +241,8 @@ static void flush_work_fn(struct k_work *work) {
         goto done;
     }
 
-    /* CRC over the staged blob as it now sits in flash: catches wire
-     * corruption AND our own write bugs, before anything references it. */
+    /* CRC from flash catches wire corruption and our own write bugs before
+     * anything references the blob. */
     {
         struct zmk_asset_info staged = {
             .offset = s->off, .len = s->size, .kind = s->kind, .fps = s->fps};
@@ -328,9 +307,7 @@ static void flush_work_fn(struct k_work *work) {
 
         err = zmk_assets_commit_entries(list, n);
         if (err == -EAGAIN) {
-            /* Legacy v1 blobs below the data floor: compact, retry.
-             * Same queue as this work, so the gc work cannot interleave
-             * with anything here. */
+            /* v1 blobs below the data floor: compact, retry (same queue). */
             LOG_INF("upload '%s': legacy v1 layout - GC compacting first", s->name);
             atomic_set(&gc_busy, 1); /* gc_run_inline clears it */
             gc_run_inline();
@@ -355,17 +332,14 @@ done:
     k_sem_give(&commit_done);
 }
 
-/* ---- GC (compacting rewrite; uploader thread only) ------------------ */
+/* GC (compacting rewrite; uploader thread only) */
 
-/* Runs on the uploader queue (flush work and gc work are the same
- * queue, so commits serialize for free). Rewrites every partition
- * blob into a compacted layout, relocating down only where a full
- * sector of head-room separates dest from source — that keeps the
- * forward chunk copy safe (writes stay >= 1 sector behind the read
- * position, and sector erases never reach unread bytes — see the
- * arithmetic in the a15 plan). Blobs that cannot move safely stay
- * put. The manifest commits LAST; a failed copy abandons the whole
- * pass and the live generation keeps pointing at untouched blobs. */
+/* Rewrites every partition blob into a compacted layout, relocating down only
+ * where a full sector of head-room separates destination from source, which is
+ * what keeps the forward chunk copy safe (writes stay a sector behind the read
+ * position, erases never reach unread bytes). Blobs that cannot move safely
+ * stay put. The manifest commits LAST, so a failed copy abandons the pass and
+ * the live generation still points at untouched blobs. */
 static void gc_run_inline(void) {
     struct zmk_asset_info list[ENTRY_LIST_MAX];
     uint32_t dest[ENTRY_LIST_MAX];
@@ -377,14 +351,11 @@ static void gc_run_inline(void) {
         goto out;
     }
 
-    /* Snapshot only AFTER the park: a pre-park snapshot can lag a
-     * delete/commit that landed in the meantime, and pass 3 would
-     * resurrect the deleted entry (or drop a just-committed blob). */
+    /* Snapshot only after the park: a pre-park snapshot could resurrect a
+     * delete or drop a just-committed blob in pass 3. */
     n = zmk_assets_live_snapshot(list, ENTRY_LIST_MAX);
     if (n == 0) {
-        /* Nothing to move: an empty commit is still the v1 -> v2
-         * upgrade (and a harmless no-op rewrite otherwise). Commit
-         * while parked, then release — pass-3 order. */
+        /* Nothing to move: an empty commit still performs the v1 -> v2 upgrade. */
         (void)zmk_assets_commit_entries(list, 0);
         zmk_assets_release_quiesce();
         goto out;
@@ -402,8 +373,7 @@ static void gc_run_inline(void) {
         }
     }
 
-    /* Pass 1: new positions (destinations are sector-aligned and
-     * non-overlapping by cursor construction). */
+    /* Pass 1: destinations, sector-aligned and disjoint by construction. */
     uint32_t cursor = DATA_SECTOR;
 
     for (i = 0; i < n; i++) {
@@ -420,11 +390,8 @@ static void gc_run_inline(void) {
 
     LOG_INF("gc: %d entries, %d to relocate", n, moved);
 
-    /* Commit floor gate guard: a blob below the data floor (only ever
-     * a v1 image) cannot be relocated DOWNWARD, and the commit gate
-     * would refuse the whole list with -EAGAIN after a full copy pass.
-     * Upward relocation for the v1->v2 upgrade is a follow-up; until
-     * then, say so here instead of burning a doomed commit. */
+    /* A blob below the data floor (v1 image only) cannot move downward, and the
+     * commit gate would reject the whole list after a full copy pass. */
     for (i = 0; i < n; i++) {
         if (dest[i] < DATA_SECTOR) {
             LOG_ERR("gc: '%s' @%u sits below the data floor and cannot be "
@@ -439,8 +406,7 @@ static void gc_run_inline(void) {
         notify_progress("", 0, 0, true);
     }
 
-    /* Pass 2: relocate each blob forward, chunk by chunk (ascending —
-     * destinations always sit below still-unmoved sources). */
+    /* Pass 2: relocate forward chunk by chunk, ascending. */
     for (i = 0; i < n && moved > 0; i++) {
         uint32_t left = list[i].len;
         uint32_t woff = dest[i];
@@ -485,8 +451,7 @@ static void gc_run_inline(void) {
         list[i].offset = dest[i];
     }
 
-    /* Pass 3: commit the compacted manifest (only reached with every
-     * copy verified; a copy abort kept the old manifest live). */
+    /* Pass 3: commit the compacted manifest (every copy verified by here). */
     if (moved > 0 && zmk_assets_commit_entries(list, n) != 0) {
         LOG_ERR("gc: commit failed - live image untouched");
     }
@@ -507,7 +472,7 @@ static void gc_work_fn(struct k_work *work) {
     gc_run_inline();
 }
 
-/* ---- public API (called from the RPC thread) ------------------------ */
+/* Public API (called from the RPC thread) */
 
 int zmk_asset_upload_begin(const char *name, uint32_t size, uint32_t crc, uint16_t kind,
                            uint16_t fps, uint32_t *free_out, const char **err) {
@@ -519,9 +484,8 @@ int zmk_asset_upload_begin(const char *name, uint32_t size, uint32_t crc, uint16
     *err = NULL;
     k_mutex_lock(&session_lock, K_FOREVER);
     if (s->active || atomic_get(&gc_busy) != 0 || zmk_assets_quiesced()) {
-        /* A GC relocates blobs while its commit runs; an allocation
-         * from the pre-GC table can hand out sectors GC is using as
-         * destinations. Serialize every store mutation. */
+        /* Serialize store mutations: GC destinations can overlap an
+         * allocation taken from the pre-GC table. */
         k_mutex_unlock(&session_lock);
         *err = s->active ? "session open: abort or finish first"
                          : "gc running - retry when it finishes";
@@ -541,12 +505,9 @@ int zmk_asset_upload_begin(const char *name, uint32_t size, uint32_t crc, uint16
         struct zmk_asset_info part;
 
         if (zmk_assets_live_snapshot(&part, 1) > 0) {
-            /* v1 blobs sit below DATA_FLOOR and GC only relocates
-             * downward, so no commit of the full list can ever pass the
-             * floor gate — this upload would burn the whole transfer to
-             * fail at commit. Repack + reflash assets.bin (v2) instead.
-             * An empty v1 manifest is NOT refused: GC's n==0 commit
-             * upgrades that shape fine. */
+            /* v1 blobs below DATA_FLOOR can never pass the commit floor gate,
+             * so refuse before burning the transfer: repack and reflash a v2
+             * assets.bin. An empty v1 manifest is fine (GC upgrades it). */
             k_mutex_unlock(&session_lock);
             *err = "v1 image: reflash assets.bin (v2) before uploads";
             return -EPERM;
@@ -622,9 +583,8 @@ int zmk_asset_upload_data(uint32_t seq, const uint8_t *data, size_t len, uint32_
     s->seq_next++;
     k_mutex_unlock(&session_lock);
 
-    /* All-or-nothing staging: wait for room, then put exactly once, so
-     * `accepted` only ever counts whole chunks (a client retransmit can
-     * never duplicate partial data). */
+    /* All-or-nothing staging: wait for room, then put once, so a client
+     * retransmit can never duplicate partial data. */
     while (put < len) {
         if (ring_buf_size_get(&staging) <= STAGING_SIZE - (len - put)) {
             put += ring_buf_put(&staging, data + put, len - put);
@@ -742,10 +702,8 @@ int zmk_asset_store_delete(const char *name, bool *deleted) {
 
     k_mutex_lock(&session_lock, K_FOREVER);
     if (zmk_assets_quiesced() || atomic_get(&gc_busy) != 0 || session.active) {
-        /* GC mid-pass (or merely queued: its quiesce flag lands late)
-         * would commit a stale snapshot and resurrect the entry; an
-         * open upload session later commits its own re-snapshot and
-         * drops this delete. Serialize every store mutation. */
+        /* A queued GC would commit a stale snapshot and resurrect the entry;
+         * serialize store mutations. */
         k_mutex_unlock(&session_lock);
         return -EBUSY;
     }
@@ -765,9 +723,7 @@ int zmk_asset_store_delete(const char *name, bool *deleted) {
 
     err = zmk_assets_commit_entries(list, out);
     if (err == -EAGAIN) {
-        /* Legacy v1 layout: compact on the uploader queue (never do a
-         * multi-sector rewrite on the RPC thread), then redo on the
-         * fresh layout. */
+        /* v1 layout: compact on the uploader queue, then redo there. */
         if (atomic_get(&gc_busy) != 0) {
             return -EBUSY;
         }
@@ -796,7 +752,7 @@ int zmk_asset_store_delete(const char *name, bool *deleted) {
     return 0;
 }
 
-/* ---- module init ---------------------------------------------------- */
+/* Module init */
 
 static int asset_upload_init(void) {
     k_mutex_init(&session_lock);

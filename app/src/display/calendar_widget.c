@@ -5,18 +5,12 @@
  *
  * Calendar widget implementation (see calendar_widget.h).
  *
- * Wave-1 owner pass: header year + month on the 24 px day face, square
- * day cells on an even lattice (col_gap == row_gap -> equal pitch
- * both ways), adjacent-month days kept at 50 % text, today marked by a
- * white 25 % pip larger than the cell, day digits on barlow 24.
+ * All rows (header, weekday, weeks) are children of ONE column flex, so the
+ * vertical pitch is exactly cell + row_gap everywhere; the whole block
+ * rebuilds on a date change, keeping header and grid in lockstep.
  *
- * All rows (header, weekday, 6 weeks) are children of ONE column flex
- * with row_gap padding, so the vertical pitch is exactly cell + row_gap
- * everywhere; the whole block rebuilds on a date change (once a day),
- * which keeps header and grid in lockstep with no half-updated states.
- *
- * a07 rule: colors/fonts/opacity classes only through zmk_display_style();
- * cell sizes and gaps are layout, set by the container through the opts.
+ * Colors/fonts/opacity only through zmk_display_style(); cell sizes and gaps
+ * are layout, set by the container through the opts.
  */
 
 #include <string.h>
@@ -60,8 +54,8 @@ static int days_in_month(uint8_t month, uint16_t year) {
     return days;
 }
 
-/* Line height of a registry style's font — needed to stretch the row
- * gaps without hardcoding font metrics. */
+/* Line height of a registry style's font, so row gaps stretch without hardcoded
+ * metrics. */
 static int style_line_h(enum zmk_display_style_id id) {
     lv_style_value_t v;
 
@@ -72,10 +66,8 @@ static int style_line_h(enum zmk_display_style_id id) {
     return 24;
 }
 
-/* One square cell: a centering box; on today the digit label lives INSIDE
- * the white pip (a sibling would be a second flex item and sit NEXT to
- * the disc — the owner photo bug), so it always paints on top of it.
- * Out-of-month digits use the 50 % text style. */
+/* On today the digit label lives INSIDE the pip: a sibling would be a second
+ * flex item and sit NEXT to the disc. */
 static void add_day_cell(zmk_calendar_widget_t *w, lv_obj_t *row, int shown, bool dim, bool today) {
     lv_obj_t *cell = zmk_ui_flex(row, LV_FLEX_FLOW_ROW, 0);
     lv_obj_t *host = cell;
@@ -86,8 +78,6 @@ static void add_day_cell(zmk_calendar_widget_t *w, lv_obj_t *row, int shown, boo
         lv_obj_t *pip = lv_obj_create(cell);
 
         lv_obj_remove_style_all(pip);
-        /* Slightly wider than the cell: a confident disc that still
-         * leaves row_gap - 2 px of dark between neighbours. */
         lv_obj_set_size(pip, w->cell, w->cell);
         lv_obj_set_style_pad_all(pip, 0, 0);
         lv_obj_add_style(pip, zmk_display_style(ZMK_STYLE_TODAY), 0);
@@ -95,19 +85,17 @@ static void add_day_cell(zmk_calendar_widget_t *w, lv_obj_t *row, int shown, boo
         host = pip;
     }
 
-    /* Today's digit gets the bold style too (owner pass). */
     lv_obj_t *lbl =
         zmk_ui_label(host, today ? ZMK_STYLE_TEXT_DAY_BOLD
                                  : (dim ? ZMK_STYLE_TEXT_DAY_DIM : ZMK_STYLE_TEXT_DAY));
 
     if (host != cell) {
-        lv_obj_center(lbl); /* inside the plain pip; the flex cell centres itself */
+        lv_obj_center(lbl);
     }
     lv_label_set_text_fmt(lbl, "%d", shown);
 }
 
-/* Weekday/week row: cells packed col_gap apart, or spread SPACE_BETWEEN
- * across grid_w so the lattice fills the container (full-page view). */
+/* Cells packed col_gap apart, or SPACE_BETWEEN across grid_w to fill the page. */
 static lv_obj_t *new_row(zmk_calendar_widget_t *w) {
     lv_obj_t *row = zmk_ui_flex(w->root, LV_FLEX_FLOW_ROW, w->col_gap);
 
@@ -126,11 +114,8 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
     int dim = days_in_month(t->month, t->year);
     int prev_month = t->month == 1 ? 12 : t->month - 1;
     int prev_dim = days_in_month(prev_month, t->month == 1 ? t->year - 1 : t->year);
-    /* Only as many week rows as the month actually occupies (4..6) —
-     * a sixth all-grey week after a 5-week month read as broken dates
-     * running on (owner photo pass). With band_h set, the slack of a
-     * short month is spread into the flex row gaps so the block still
-     * fills the page instead of hanging above a gap. */
+    /* Only the week rows the month occupies (4..6); with band_h, a short
+     * month's slack goes into the row gaps so the block still fills the page. */
     int rows = (first_wd + dim + 6) / 7;
     int n_children = rows + 1 + (w->header ? 1 : 0);
     int natural =
@@ -148,16 +133,13 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
     lv_obj_set_style_pad_row(w->root, pad, 0);
 
     if (w->header) {
-        /* Year left, month name right — on the day-digit face (barlow 24,
-         * size pass 2026-11-22: the 28 px title face towered over the
-         * grid), both bold and the same full primary colour (owner
-         * pass). Spread across the page (full view) or the grid (fusion). */
+        /* Year left, month name right, on the barlow 24 day face (the 28 px
+         * title face towered over the grid). */
         lv_obj_t *row = zmk_ui_flex(w->root, LV_FLEX_FLOW_ROW, 0);
 
         lv_obj_set_width(row, w->header_w);
-        /* Year/month off the page edge: SPACE_BETWEEN distributes within
-         * the padded span, so the header sits a grid unit in from the
-         * flush grid columns (standalone pass 2026-11-22). */
+        /* SPACE_BETWEEN distributes within the padded span, so the header sits
+         * a grid unit in from the flush grid columns. */
         lv_obj_set_style_pad_hor(row, ZMK_GRID_UNIT, 0);
         lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
                               LV_FLEX_ALIGN_CENTER);
@@ -169,7 +151,6 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
         lv_label_set_text(month, month_full[t->month - 1]);
     }
 
-    /* Weekday letters, one per column. */
     lv_obj_t *hrow = new_row(w);
 
     for (int c = 0; c < 7; c++) {
@@ -181,10 +162,8 @@ static void build_block(zmk_calendar_widget_t *w, const struct zmk_time *t) {
         lv_label_set_text(lbl, ch);
     }
 
-    /* The occupied weeks; days <=0 and >dim are the neighbouring
-     * months, shown dim so the grid stays a full rectangle.
-     * (Named adj, NOT dim: a second `dim` here shadowed the days-in-
-     * month int and printed raw 32..41 — the photo-proof bug.) */
+    /* Neighbouring-month days stay visible but dim, so the grid is a full
+     * rectangle. */
     for (int r = 0; r < rows; r++) {
         lv_obj_t *wrow = new_row(w);
 
@@ -256,7 +235,7 @@ int zmk_calendar_widget_set_style(zmk_calendar_widget_t *w, enum zmk_calendar_st
         return 0;
     }
     w->style = style;
-    w->date_key = 0; /* re-render the grid in the new style */
+    w->date_key = 0;
     calendar_widget_render(w);
     return 0;
 }

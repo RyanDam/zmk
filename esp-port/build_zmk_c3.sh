@@ -1,39 +1,32 @@
 #!/bin/bash
-# Build the ZMK firmware for the ESP32-C3 SuperMini (Phase 5): BLE HID only,
-# 4x4 matrix fixture on the GPIO header.
+# Build ZMK for the ESP32-C3 SuperMini: BLE HID only, 4x4 matrix fixture on
+# the GPIO header.
 #
 # Usage (works from anywhere in the repo; sh or bash):
 #   sh esp-port/build_zmk_c3.sh                 # full build (needs hal_espressif blobs)
 #   sh esp-port/build_zmk_c3.sh --no-blobs      # compile-only, no Espressif blobs
 #   sh esp-port/build_zmk_c3.sh --flash         # build, then west flash
-#   sh esp-port/build_zmk_c3.sh --log           # build with verbose logging
+#   sh esp-port/build_zmk_c3.sh --log           # accepted, ignored (see -l)
 #
 # Options:
-#   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
-#                proprietary blobs are not needed. Fetch them for a real image:
-#                west blobs fetch hal_espressif)
-#   -l, --log    Not supported here: zmk-usb-logging needs a USB device
-#                controller, and this Zephyr port has none for the C3
-#                (only USB-Serial/JTAG, already the console). See the
-#                board dts header: "the C3 has no USB OTG".
+#   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; for a real
+#                image fetch the blobs first: west blobs fetch hal_espressif)
+#   -l, --log    Ignored: zmk-usb-logging needs a USB device controller and
+#                this Zephyr port has none for the C3 (only USB-Serial/JTAG,
+#                already the console).
 #   -f, --flash  Run west flash after building
+#   -C, --conf <file>  Extra Kconfig fragment, relative to the repo root
 #   -h, --help   Show help
 #
-# The 4x4 test keymap lives in the external ZMK config repo (sibling of this
-# repo by default): $ZMK_CONFIG/esp32c3_matrix_fixture.keymap. Override the
-# location with the ZMK_CONFIG environment variable.
+# The 4x4 test keymap lives in the external config repo:
+# $ZMK_CONFIG/esp32c3_matrix_fixture.keymap (default: sibling "zmk-config").
 #
-# The ESP32 toolchain (Espressif riscv32-esp-elf) is NOT in the ZMK ARM dev
-# image. Install it first — see esp-port/toolchain-esp32.md. This script sets
-# the toolchain env vars for you (scoped to this process only), and uses
-# -p always so a stale CMake cache can't pin the wrong toolchain variant.
-
-# POSIX sh compatible (works under sh/dash and bash). No pipelines are used,
-# so "set -o pipefail" is not needed.
+# The Espressif toolchain (riscv32-esp-elf) is NOT in the ZMK ARM dev image —
+# install it first, see esp-port/toolchain-esp32.md. Env vars below are
+# process-scoped, and -p always keeps a stale CMake cache from pinning the
+# wrong toolchain variant.
 set -eu
 
-# Run from the workspace root (parent of esp-port/) so the paths resolve
-# correctly, regardless of where the script is invoked.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -60,9 +53,7 @@ EOF
 
 DO_FLASH=no
 NO_BLOBS=no
-# --log is accepted for uniformity but ignored: the C3 has no USB device
-# controller in this Zephyr port, so zmk-usb-logging has nothing to hook
-# onto (logs stay on USB-Serial/JTAG). ZMK_BUILD_LOG=1 likewise ignored.
+# --log accepted for uniformity but ignored (and ZMK_BUILD_LOG=1 likewise).
 DO_LOG="${ZMK_BUILD_LOG:-no}"
 case "$DO_LOG" in 1|yes|y|true) DO_LOG=yes ;; *) DO_LOG=no ;; esac
 
@@ -99,18 +90,14 @@ while [ $# -gt 0 ]; do
 done
 
 # --- ESP32 toolchain (see esp-port/toolchain-esp32.md) ---
-# Zephyr 4.4 removed the legacy "espressif" toolchain variant (upstream
-# commit "cmake: remove deprecated espressif toolchain variant"). Espressif
-# targets now build with the Zephyr SDK (which bundles the Xtensa/RISC-V
-# toolchains) or with a generic cross-compile toolchain. The Zephyr SDK
-# installed here lacks the riscv32 toolchain the C3 needs, so this script
-# uses the Espressif GCC toolchain via the cross-compile variant.
+# Zephyr 4.4 removed the "espressif" toolchain variant and the local SDK lacks
+# the riscv32 toolchain the C3 needs, so use the Espressif GCC via the
+# cross-compile variant.
 export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
 export ESPRESSIF_TOOLCHAIN_PATH="${ESPRESSIF_TOOLCHAIN_PATH:-/opt/espressif/tools}"
 export CROSS_COMPILE="${CROSS_COMPILE:-riscv32-esp-elf-}"
 export TOOLCHAIN_HOME="$ESPRESSIF_TOOLCHAIN_PATH/riscv32-esp-elf/bin"
-# ~/.local/bin for a pip --user esptool (required by the ESP32 SOC cmake for
-# image generation: pip3 install --user --break-system-packages 'esptool>=5.0.2')
+# ~/.local/bin: pip --user esptool (>=5.0.2), required for ESP32 image generation
 export PATH="$ESPRESSIF_TOOLCHAIN_PATH/riscv32-esp-elf/bin:$HOME/.local/bin:$PATH"
 
 if [ ! -x "$ESPRESSIF_TOOLCHAIN_PATH/riscv32-esp-elf/bin/${CROSS_COMPILE}gcc" ]; then
@@ -143,12 +130,10 @@ if [ "$DO_LOG" = yes ]; then
 fi
 
 echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
-# Note: in this west version -S means --snippet; the shield is passed as
-# -DSHIELD (same as app/build_coban.sh).
+# -S means --snippet in this west version; the shield is passed as -DSHIELD.
 # shellcheck disable=SC2086
-# CROSS_COMPILE is passed via the environment (the CMake cache variable is
-# typed PATH and mangles a relative prefix); TOOLCHAIN_HOME has no env
-# fallback, so it goes on the command line.
+# CROSS_COMPILE goes via the environment (the CMake cache var is typed PATH and
+# mangles a relative prefix); TOOLCHAIN_HOME has no env fallback, so -D here.
 west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
      -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS

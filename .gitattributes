@@ -4,3 +4,29 @@
 # Docker on Windows.
 .bashrc text eol=lf
 *.sh text eol=lf
+
+# ---------------------------------------------------------------------------
+# Generated / vendored payloads: still real files, but they are not hand
+# written, so they must not dominate a diff. Regenerate instead of editing.
+# ---------------------------------------------------------------------------
+
+# LVGL font blobs — `app/scripts/display-fonts/gen_fonts.sh` (lv_font_conv
+# 1.5.3) writes these; ~17k lines of glyph tables.
+app/src/display/fonts/*.c  linguist-generated -diff
+app/src/display/fonts/LICENSES/*  linguist-documentation
+
+# Embedded art (boot splash + the built-in default animation).
+app/src/display/images/*.png  -diff linguist-generated
+app/src/display/assets/*.gif  -diff linguist-generated
+
+# Vendored upstream patch payloads (see esp-port/patches/README.md for which
+# patch is which and why it exists). The sidecars are data, not prose.
+esp-port/patches/*.patch    linguist-generated -diff
+esp-port/patches/*.verify   linguist-generated
+esp-port/patches/*.target   linguist-generated
+
+# Node lockfile for the Studio RPC harness.
+app/scripts/studio-harness/package-lock.json  linguist-generated -diff
+
+# One-off bench captures kept as evidence.
+esp-port/bringup/logs/*.log  linguist-generated -diff

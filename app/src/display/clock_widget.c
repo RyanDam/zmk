@@ -4,10 +4,9 @@
  * SPDX-License-Identifier: MIT
  *
  * Clock widget implementation (see clock_widget.h).
- *
- * a07 design-system rules: colors/fonts only through zmk_display_style(),
- * and every tick update is skip-if-unchanged — this panel is full-refresh,
- * a needless invalidation is a ~61 ms flush.
+ * Colors/fonts only through zmk_display_style(), and every tick update is
+ * skip-if-unchanged: this panel is full-refresh, so a needless invalidation
+ * costs a ~61 ms flush.
  */
 
 #include <string.h>
@@ -20,12 +19,8 @@
 #include "styles.h"
 #include "ui_helpers.h"
 
-/* [size][style] -> registry style. One style column today (see the enum
- * comment in clock_widget.h): HUGE is the 144 px hero, STACKED the 72 px
- * hour-over-minute fusion clock, LARGE the 48 px side clock. (The a09
- * unsynced-dim affordance was removed in the wave-1 audit: the digits
- * always render in the primary colour; the synced flag stays in the time
- * seam for h02/a14 to build a real UX on.) */
+/* [size][style] -> registry style: HUGE is the 144 px hero, STACKED the 72 px
+ * hour-over-minute fusion clock, LARGE the 48 px side clock. */
 static const enum zmk_display_style_id
     clock_style_map[ZMK_CLOCK_SIZE_COUNT][ZMK_CLOCK_STYLE_COUNT] = {
         [ZMK_CLOCK_SIZE_HUGE] = {ZMK_STYLE_TEXT_HERO_XL},
@@ -61,8 +56,7 @@ static void clock_widget_apply(zmk_clock_widget_t *w) {
     w->applied = want;
 }
 
-/* The subtree is destroyed by the container's lv_obj_clean() on rebuild —
- * free the widget struct with it (LVGL widgets are heap handles). */
+/* Freed with the subtree on the container's lv_obj_clean() */
 static void clock_widget_delete_cb(lv_event_t *e) { lv_free(lv_event_get_user_data(e)); }
 
 zmk_clock_widget_t *zmk_clock_widget_create(lv_obj_t *parent, enum zmk_clock_size size,
@@ -83,9 +77,8 @@ zmk_clock_widget_t *zmk_clock_widget_create(lv_obj_t *parent, enum zmk_clock_siz
     w->applied = ZMK_STYLE_COUNT; /* nothing added yet */
 
     if (size == ZMK_CLOCK_SIZE_STACKED) {
-        /* Hour above minute (owner wave-1 pass): two centred rows with a
-         * grid-unit gap — at 72 px the line height alone left the digits
-         * visually glued (bench pass 2026-11-22). */
+        /* Hour above minute: at 72 px the line height alone glued the digits
+         * together, so give the rows a grid-unit gap. */
         w->obj = zmk_ui_flex(parent, LV_FLEX_FLOW_COLUMN, ZMK_GRID_UNIT * 2);
         w->labels[0] = lv_label_create(w->obj);
         w->labels[1] = lv_label_create(w->obj);

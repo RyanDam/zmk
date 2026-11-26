@@ -77,9 +77,7 @@ zmk_studio_Response reset_settings(const zmk_studio_Request *req) {
     return CORE_RESPONSE(reset_settings, true);
 }
 
-/* pad10a 0x98 reboot_board parity. Respond first, then reset: the RPC
- * reply has to reach the host before the device goes away, so the
- * reboot is deferred off the RPC thread. */
+/* Defer the reset so the RPC response reaches the host first. */
 static void reboot_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
     LOG_INF("Studio RPC reboot");

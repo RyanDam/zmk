@@ -3,30 +3,24 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Coban Tab 1a DEV HARNESS overlay (backlog h01) — prototype-board bring-up
- * of the final board's peripherals BEFORE the drivers exist (h02-h04, p01).
- * Applied AFTER the cobantab1a shield's own overlay.
- *
+ * Coban Tab 1a DEV HARNESS overlay: bench bring-up of the final board's
+ * peripherals (4-key matrix, WS2812 bar, I2S tone, VBAT ADC). Not a product
+ * build. Probes: app/src/tab1a/; pins + bench wiring: ../tab1a-hardware-map.md.
  *   sh zmk/esp-port/build_cobantab1a.sh -O zmk/esp-port/bringup/tab1a-devkit.overlay -C zmk/esp-port/bringup/tab1a-devkit.conf
- *
- * Pin authority: ../tab1a-hardware-map.md. Bench wiring + probe expectations:
- * ../tab1a-bench-runbook.md. Probes live in app/src/tab1a/ (Kconfig
- * CONFIG_ZMK_TAB1A_HARNESS).
+ * Applied AFTER the cobantab1a shield's own overlay.
  */
 
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
 #include <dt-bindings/led/led.h>
 
-/* Row/col → matrix item, same expansion as zmk's matrix_transform.h RC(),
- * renamed because the shield keymap puts the modifiers.h RC (right-ctrl)
- * macro into this preprocessing chain. */
+/* TRC, not RC: the shield keymap's right-ctrl RC macro is in this
+ * preprocessing chain. Expansion matches zmk's matrix_transform.h RC(). */
 #define TRC(row, col) (((row) << 8) + (col))
 
 &kscan0 {
-    /* Replace the phantom cell with the harness 2x2 key matrix on P2.
-     * Diodes row -> col, key to GND. Never IO5 (VBAT) or IO9 (BOOT).
-     * IO16 doubles as SPI3 SCLK for the light bar (see below). */
+    /* Harness 2x2 matrix on P2: diodes row -> col, key to GND. Never IO5
+     * (VBAT) or IO9 (BOOT); IO16 doubles as SPI3 SCLK for the light bar. */
     row-gpios
         = <&gpio0 7  GPIO_ACTIVE_HIGH>
         , <&gpio0 14 GPIO_ACTIVE_HIGH>
@@ -38,25 +32,18 @@
         ;
 };
 
-/* No transform/physical-layout overrides here: the shield dtsi already
- * carries the final 4x4/16-position shape (physical row + virtual-grid
- * sentinel cells) that cobantab1a.keymap's bindings require; only the
- * bench wiring above differs from the product matrix. */
+/* No transform overrides: the shield dtsi already carries the 4x4 shape the
+ * keymap's bindings require. */
 
 / {
-    /* VBAT sense for the harness probe (p01 will add the battery model).
-     * ADC1 ch 4 = GPIO5 (soc/adc_channel.h). Divider ratio is measured at
-     * the bench and recorded in tab1a-hardware-map.md. */
+    /* VBAT sense: ADC1 ch 4 = GPIO5; divider ratio recorded in the hardware map. */
     tab1a_vbat: tab1a-vbat {
         compatible = "zephyr,user";
         io-channels = <&adc1 4>;
     };
 
-    /* DS1302 deliberately has NO node here: the in-tree maxim,ds1302 driver
-     * is SPI-API based and this tree has no bit-bang SPI; h02 ports the
-     * pad10a GPIO bit-bang instead. Proposed signals: SCLK=IO17, IO=IO18,
-     * CE=IO6 — CE PENDING R1 (board designer). Wire the breakout per the
-     * runbook; readback probe arrives with h02. */
+    /* DS1302: no node on purpose — the in-tree maxim,ds1302 driver needs
+     * bit-bang SPI this tree lacks. Proposed IOs: SCLK=17, IO=18, CE=6. */
 };
 
 &pinctrl {
@@ -70,10 +57,8 @@
 
     spim3_default: spim3_default {
         group1 {
-            /* Light bar: DIN on IO46, clock borrowed from the unused panel
-             * TE pin IO38 — DEVKIT ONLY wiring (h04 will settle final
-             * pins; the GPIO-bit-bang ws2812 driver is nRF-only in this
-             * Zephyr, hence SPI, mirroring cobanpad16a). */
+            /* DEVKIT ONLY: clock borrows the unused panel TE pin IO38.
+             * SPI (not bit-bang): this Zephyr's GPIO ws2812 driver is nRF-only. */
             pinmux = <SPIM3_MOSI_GPIO46>,
                      <SPIM3_SCLK_GPIO38>;
         };
@@ -87,10 +72,8 @@
     pinctrl-0 = <&spim3_default>;
     pinctrl-names = "default";
 
-    /* WS2812 light bar on IO46 = SPI3 MOSI (S3 split: gpio1 covers IO32-48,
-     * so IO46 is &gpio1 14 in GPIO context). IO46 is a strapping pin (ROM
-     * message output) — idling low at reset changes ROM log behaviour only;
-     * see hardware map trap 5. */
+    /* IO46 = &gpio1 14 (gpio1 covers IO32-48); a strapping pin (ROM message
+     * output) — idling low at reset only changes ROM log behaviour. */
     indicator_strip: ws2812@0 {
         compatible = "worldsemi,ws2812-spi";
         reg = <0>;
@@ -105,8 +88,7 @@
 };
 
 &i2s0 {
-    /* GDMA 2/3 by default — free (spi2 holds 0/1; spi3 DMA comes from the
-     * shared pool). */
+    /* GDMA 2/3 by default — free (spi2 holds 0/1). */
     status = "okay";
     pinctrl-0 = <&i2s0_default>;
     pinctrl-names = "default";

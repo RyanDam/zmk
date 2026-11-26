@@ -4,12 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-/*
- * Raised when the screen manager's visible page changes (swipe, dots,
- * Studio RPC navigation, boot home restore). Subscribers: the Studio
- * `screen` notification mapper (a14), debug overlays (d05). Name is a
- * copy of the registered screen id (zmk/display/screens.h).
- */
+/* Raised when the visible page changes; `name` is the registered screen id. */
 
 #pragma once
 

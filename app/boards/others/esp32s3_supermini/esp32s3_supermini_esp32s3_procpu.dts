@@ -11,28 +11,14 @@
 #include <espressif/partitions_0x0_default_4M.dtsi>
 
 /*
- * ESP32-S3 SuperMini (PROCPU only).
- *
- * Qualified against the common contemporary sample marked
- * ESP32-S3FH4R2: 4 MB embedded flash + 2 MB quad-SPI PSRAM, USB-C wired to
- * the internal PHY in USB-Serial/JTAG mode (no external PHY). No
- * compatibility is claimed for other SuperMini clones until their chip
- * marking and wiring are tested.
- *
- * - Console/flash/recovery: USB Serial/JTAG (fixed-function GPIO19/20).
- * - Recovery console: UART0 on GPIO43/44, kept out of the matrix fixture.
- * - PSRAM: the wroom_n4r2 include describes the 2 MB QSPI PSRAM node; it is
- *   left unused (no CONFIG_ESP_SPIRAM) until dedicated memory/boot
- *   validation on the exact FH4R2 board.
+ * ESP32-S3 SuperMini (PROCPU only), qualified only against a board marked
+ * ESP32-S3FH4R2: 4 MB flash + 2 MB QSPI PSRAM, USB-C on the internal PHY in
+ * Serial/JTAG mode (GPIO19/20) for console, flash and recovery, UART0
+ * (GPIO43/44) as backup. Other SuperMini clones are untested. PSRAM is
+ * declared but unused (no CONFIG_ESP_SPIRAM) until validated on this part.
  */
 
-/*
- * Flash and PSRAM geometry for the ESP32-S3 SuperMini (N4R2: 4 MB flash, 2 MB
- * QSPI PSRAM). Zephyr 4.5 removed the per-module dtsi files under
- * dts/xtensa/espressif/<soc>/ (esp32s3_wroom_n4r2.dtsi among them), so each
- * board now states its own geometry; this is what that include used to do.
- * The PSRAM size is declared but not used - no CONFIG_ESP_SPIRAM here.
- */
+/* Geometry the removed esp32s3_wroom_n4r2.dtsi used to provide (4 MB / 2 MB). */
 &flash0 {
     reg = <0x0 DT_SIZE_M(4)>;
 };

@@ -5,12 +5,9 @@
  */
 
 /*
- * Studio `pomo` subsystem (backlog a14): config get/set, session
- * control and state events over the a10 engine. Port of pad10a's 0x59
- * set_pomo_config — and of CB_POMO_START/CB_POMO_CANCEL on the key
- * side. Everything goes through zmk_pomo_*; the state notification
- * rides the engine's zmk_pomo_state_changed event, raised on every
- * transition including the timer rollovers.
+ * Studio `pomo` subsystem: config get/set, session control and state
+ * events over the pomodoro engine. Everything goes through zmk_pomo_*;
+ * the state notification rides the engine's zmk_pomo_state_changed event.
  */
 
 #include <zephyr/logging/log.h>
@@ -57,8 +54,7 @@ zmk_studio_Response pomo_set_config(const zmk_studio_Request *req) {
         .noti_mode = (uint8_t)in->noti_mode,
     };
 
-    /* clamps + persists + applies live to the running session */
-    zmk_pomo_config_set(&next);
+    zmk_pomo_config_set(&next); /* clamps + persists + applies live */
 
     return POMO_RESPONSE(set_config, true);
 }

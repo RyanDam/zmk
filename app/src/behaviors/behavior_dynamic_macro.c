@@ -32,8 +32,7 @@ static int dirty_name_indices[DM_COUNT];
 #define DL_BINDING_SETTINGS_KEY "dynamic_macros/lm/%d"    // macro lenght
 #define DN_BINDING_SETTINGS_KEY "dynamic_macros/dn/%d"    // macro display name
 
-/* Change listeners (the keymap screen relabels its tiles on macro-name
- * edits; vkeymap's model listener pattern, kept tiny). */
+/* Macro-name change listeners (UI re-labeling). */
 #define DM_LISTENER_MAX 4
 static zmk_dynamic_macro_changed_cb dm_listeners[DM_LISTENER_MAX];
 
@@ -128,7 +127,6 @@ int zmk_dynamic_macro_set_step(uint32_t macro_idx, uint32_t step_idx,
 
     dynamic_macros[macro_idx][step_idx] = step;
     unsaved_changes = true;
-    // Mark macro as dirty for efficient save
     dirty_macro_indices[macro_idx] = 1;
     return 0;
 }
@@ -139,9 +137,8 @@ static void queue_macro(struct zmk_behavior_binding_event *event, uint32_t macro
         struct zmk_dynamic_macro_step *step = &dynamic_macros[macro_idx][i];
 
         if (!step->binding.behavior_dev) {
-            if (!step->behavior_local_id) // Check for empty binding
+            if (!step->behavior_local_id)
                 break;
-            // Handle local ID case
             const char *behavior_dev =
                 zmk_behavior_find_behavior_name_from_local_id(step->behavior_local_id);
             if (!behavior_dev) {
@@ -220,7 +217,6 @@ BEHAVIOR_DT_INST_DEFINE(0, behavior_dynamic_macro_init, NULL, NULL, NULL, POST_K
 static int dynamic_macros_handle_set(const char *name, size_t len, settings_read_cb read_cb,
                                      void *cb_arg) {
     const char *next;
-    // LOG_DBG("Loading setting: %s", name);
     if (settings_name_steq(name, "dm", &next) && next) {
         char *endptr;
         unsigned long macro_idx = strtoul(next, &endptr, 10);
@@ -233,23 +229,10 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
             return -EINVAL;
         }
 
-        // LOG_DBG("Loading step %ld for macro %ld", step_idx, macro_idx);
-
         struct zmk_dynamic_macro_step_setting step_setting;
         if (read_cb(cb_arg, &step_setting, sizeof(step_setting)) != sizeof(step_setting)) {
             return -EINVAL;
         }
-
-        // LOG_DBG("Loaded step %ld for macro %ld: behavior: %d, param1: %d, param2: %d, wait_ms:
-        // %d, mode: %d",
-        //          step_idx,
-        //          macro_idx,
-        //          step_setting.behavior_local_id,
-        //          step_setting.param1,
-        //          step_setting.param2,
-        //          step_setting.wait_ms,
-        //          step_setting.mode
-        // );
 
         const char *behavior_dev =
             zmk_behavior_find_behavior_name_from_local_id(step_setting.behavior_local_id);
@@ -264,14 +247,7 @@ static int dynamic_macros_handle_set(const char *name, size_t len, settings_read
             .wait_ms = step_setting.wait_ms,
             .mode = step_setting.mode,
         };
-        // Mark this macro as dirty since it was loaded from settings
         dirty_macro_indices[macro_idx] = 1;
-
-        // if (behavior_dev) {
-        //     LOG_DBG("Done loading step %ld for macro %ld", step_idx, macro_idx);
-        // } else {
-        //     LOG_WRN("Invalid behavior local ID: %d", step_setting.behavior_local_id);
-        // }
         return 0;
     } else if (settings_name_steq(name, "lm", &next) && next) {
         char *endptr;
@@ -323,21 +299,6 @@ static int dynamic_macros_handle_commit(void) {
 SETTINGS_STATIC_HANDLER_DEFINE(dynamic_macros, "dynamic_macros", NULL, dynamic_macros_handle_set,
                                dynamic_macros_handle_commit, NULL);
 
-// static int dynamic_macros_settings_init(void) {
-//     LOG_DBG("Registering dynamic macros settings");
-//     // settings_register(&dynamic_macros_conf);
-
-//     // // First restore from stock/default state
-//     // reload_from_stock_dynamic_macros();
-
-//     // Then load user settings on top
-//     settings_load_subtree("dynamic_macros");
-
-//     return 0;
-// }
-
-// SYS_INIT(dynamic_macros_settings_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
-
 int zmk_dynamic_macro_save_changes(void) {
     // Persist changed display names first (empty names are deleted, not stored)
     for (int i = 0; i < DM_COUNT; i++) {
@@ -361,18 +322,15 @@ int zmk_dynamic_macro_save_changes(void) {
         }
     }
 
-    // Only save macros that have been modified
     for (int i = 0; i < DM_COUNT; i++) {
         if (dirty_macro_indices[i] == 0) {
-            continue; // Skip macros that haven't been modified
+            continue;
         }
 
-        // Reset dirty flag for this macro
         dirty_macro_indices[i] = 0;
 
         uint8_t macro_length = zmk_dynamic_macro_get_step_length(i);
 
-        // Save the macro length
         static char length_setting_name[32];
         snprintf(length_setting_name, sizeof(length_setting_name), DL_BINDING_SETTINGS_KEY, i);
         int len_ret = settings_save_one(length_setting_name, &macro_length, sizeof(macro_length));
@@ -382,16 +340,13 @@ int zmk_dynamic_macro_save_changes(void) {
             return -EINVAL;
         }
 
-        // Save steps up to the macro length
         for (int j = 0; j < macro_length; j++) {
             struct zmk_dynamic_macro_step *step = &dynamic_macros[i][j];
 
-            // Use static buffer for setting name to avoid repeated allocation
             static char setting_name[32];
             snprintf(setting_name, sizeof(setting_name), DM_BINDING_SETTINGS_KEY, i, j);
 
             if (!step->behavior_local_id) {
-                // Delete this setting if it exists
                 if (settings_delete(setting_name) == 0) {
                     LOG_DBG("Deleted setting %s", setting_name);
                 }
@@ -412,15 +367,6 @@ int zmk_dynamic_macro_save_changes(void) {
                 return ret;
             }
         }
-
-        // // Delete settings for steps beyond the macro length
-        // for (int j = macro_length; j < DM_MAX_STEPS; j++) {
-        //     static char setting_name[32];
-        //     snprintf(setting_name, sizeof(setting_name), DM_BINDING_SETTINGS_KEY, i, j);
-        //     if (settings_delete(setting_name) == 0) {
-        //         LOG_DBG("Deleted setting %s", setting_name);
-        //     }
-        // }
     }
     unsaved_changes = false;
     return 0;
@@ -428,8 +374,6 @@ int zmk_dynamic_macro_save_changes(void) {
 
 int zmk_dynamic_macro_discard_changes(void) {
     LOG_DBG("Discarding changes, reloading from settings");
-    // Clear RAM first? Or just overwrite?
-    // Safer to clear to 0 then load.
     memset(dynamic_macros, 0, sizeof(dynamic_macros));
     memset(zmk_dynamic_macro_step_length, 0, sizeof(zmk_dynamic_macro_step_length));
     memset(dirty_macro_indices, 0, sizeof(dirty_macro_indices));

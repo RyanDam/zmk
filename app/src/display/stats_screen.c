@@ -3,30 +3,20 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Hardware stats screen for the Coban Tab 1a (backlog a11).
+ * Hardware stats screen: 4 slots fed through the zmk/stats.h seam and nothing
+ * else, so the mock feed and the Studio RPC are interchangeable, and metric and
+ * unit ids come from the seam's enums so UI and host payload cannot drift.
  *
- * Renders 4 slots fed through the zmk/stats.h seam — today by the mock
- * feed, from a14 by the Studio RPC, with no UI change either way (the
- * screen touches the seam API and nothing else; that is the acceptance
- * grep). Metric ids/unit ids come from the seam so the enum tables and
- * the host payload cannot drift apart.
+ *   2x1  two tall cells side by side (slots 0-1)
+ *   2x2  2x2 grid (slots 0-3)
+ *   HYBR one big cell + three rows (slots 0-3)
+ *   2x4  four wide rows, big bars (slots 0-3)
  *
- * pad10a layouts (2x1: two gauges, 2x2: four bars, hybrid: 1 big + 2)
- * are re-thought for the portrait panel and a 2x4 variant is added:
- *   2x1  two tall cells side by side   (slots 0-1)
- *   2x2  2x2 grid                      (slots 0-3)
- *   HYBR one big cell + three rows     (slots 0-3)
- *   2x4  four wide rows, big bars      (slots 0-3)
- *
- * Touch: tap a cell to cycle its metric id through all 16 metrics
- * (reaches the whole enum table on the glass); tap anywhere else in the
- * content area to cycle layouts. Layout + metric ids persist in
- * settings ("display/stats/config", pad10a eeprom cb_eeprom.h:51-53
- * field set). Stale readings (seam reports stale) grey out their bar.
- *
- * The 1 Hz tick is page-gated and every label/bar mutation is
- * skip-if-unchanged: on this full-refresh panel an unchanged tick costs
- * zero invalidations, and an invalidation is a ~61 ms flush.
+ * Tapping a cell cycles its metric through all 16 metrics; tapping elsewhere in
+ * the content area cycles the layout. Config persists at settings
+ * "display/stats/config"; stale readings grey out their bar. The tick is
+ * page-gated and every write is skip-if-unchanged: an invalidation here is a
+ * ~61 ms full flush.
  */
 
 #include <string.h>
@@ -53,8 +43,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAGE_NAME "stats"
 
-/* Layout ids + the slot config live in zmk/stats.h (a14 seam): taps,
- * the Studio RPC and settings all write through zmk_stats_config_set. */
+/* Layout ids and the slot config live in zmk/stats.h; taps, RPC and settings
+ * all write through zmk_stats_config_set. */
 
 struct cell {
     lv_obj_t *box;
@@ -62,8 +52,7 @@ struct cell {
     lv_obj_t *value;
     lv_obj_t *fill;
     lv_obj_t *max_label;
-    /* last-drawn text per label + last bar percent/stale state, so a
-     * tick that changes nothing invalidates nothing */
+    /* Last-drawn text and bar state, so an unchanged tick invalidates nothing */
     char label_cache[16];
     char value_cache[24];
     char max_cache[24];
@@ -75,9 +64,7 @@ static struct cell cells[ZMK_STATS_SLOT_COUNT];
 static lv_obj_t *screen_root;
 static lv_obj_t *mock_label;
 
-/* ------------------------------------------------------------------ */
-/* Cells + layouts                                                     */
-/* ------------------------------------------------------------------ */
+/* Cells + layouts */
 
 static lv_obj_t *mk_cell(lv_obj_t *parent, int slot, int w, int h, bool big) {
     lv_obj_t *box = lv_obj_create(parent);
@@ -158,8 +145,7 @@ static void layout_build(void) {
         break;
     }
     case ZMK_STATS_LAYOUT_2X4:
-        /* Four across: at 320 px tall a column of four cannot give any cell
-         * its text stack, but 104-px columns can. */
+        /* At 320 px tall only 104-px columns give a cell its text stack. */
         for (int i = 0; i < 4; i++) {
             lv_obj_t *cell = mk_cell(screen_root, i, 104, 160, false);
 
@@ -196,9 +182,7 @@ static void layout_build(void) {
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* 1 Hz refresh (page-gated, skip-if-unchanged)                        */
-/* ------------------------------------------------------------------ */
+/* 1 Hz refresh (page-gated, skip-if-unchanged) */
 
 static void stats_update(void) {
     const struct zmk_stats_config *cfg = zmk_stats_config_get();
@@ -239,8 +223,7 @@ static void stats_update(void) {
             c->pct_cache = pct;
         }
 
-        /* stale grey-out: fill off the accent onto the inactive slot,
-         * restyled only when the freshness flips */
+        /* Stale grey-out: restyle only when the freshness flag flips. */
         if (r.stale != c->stale_cache) {
             zmk_ui_style_toggle(c->fill, zmk_display_style(ZMK_STYLE_ACCENT), !r.stale);
             zmk_ui_style_toggle(c->fill, zmk_display_style(ZMK_STYLE_INACTIVE), r.stale);
@@ -253,7 +236,7 @@ static void stats_tick(void) {
     static uint32_t samples, cycle_sum;
     uint32_t start = k_cycle_get_32();
 
-    /* a11 acceptance: 1 Hz redraw cost vs the ~61 ms full frame (R5) */
+    /* 1 Hz redraw cost against the ~61 ms full frame */
     stats_update();
     cycle_sum += k_cycle_get_32() - start;
     if (++samples >= 600) {
@@ -278,8 +261,7 @@ struct k_work stats_tap_work;
 ZMK_UI_TAP_STATE(stats_tap) = { .page_name = PAGE_NAME, .work = &stats_tap_work };
 
 ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
-    /* The tap detector stores RAW panel coordinates; the cell rects are
-     * logical. Convert before the hit test (ui_helpers.h). */
+    /* Tap state holds RAW panel coords; cell rects are logical: convert first. */
     int32_t x = stats_tap.x, y = stats_tap.y;
 
     ARG_UNUSED(work);
@@ -299,8 +281,7 @@ ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
             cfg.metric_ids[i] = (cfg.metric_ids[i] % (ZMK_STATS_ID_COUNT - 1)) + 1; /* 1..16 */
             LOG_INF("stats slot %u -> metric %u (%s)", i, cfg.metric_ids[i],
                     zmk_stats_label(cfg.metric_ids[i]));
-            /* Persist + raise zmk_stats_config_changed; stats_cfg_work
-             * below does the redraw (same path as an RPC/host change). */
+            /* Persist + raise zmk_stats_config_changed; stats_cfg_work redraws. */
             zmk_stats_config_set(&cfg);
             return;
         }
@@ -311,9 +292,8 @@ ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
     zmk_stats_config_set(&cfg);
 }
 
-/* Config changed from anywhere (this screen's taps, the Studio RPC, a
- * settings load): rebuild when the layout moved, relabel otherwise.
- * Event cb only latches + posts; the work runs on the display queue. */
+/* Config from this screen's taps, the Studio RPC or a settings load: rebuild if
+ * the layout moved, relabel otherwise. The event cb only latches and posts. */
 static void stats_cfg_rebuild(void);
 static bool stats_cfg_layout_dirty;
 
@@ -358,9 +338,7 @@ static void stats_touch_cb(struct input_event *evt, void *user_data) {
 }
 INPUT_CALLBACK_DEFINE(NULL, stats_touch_cb, NULL);
 
-/* ------------------------------------------------------------------ */
-/* Page registration                                                   */
-/* ------------------------------------------------------------------ */
+/* Page registration */
 
 static lv_obj_t *stats_page_create(lv_obj_t *parent) {
     screen_root = lv_obj_create(parent);
@@ -368,8 +346,7 @@ static lv_obj_t *stats_page_create(lv_obj_t *parent) {
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
-    /* a12 owner pass: animated background on every page, not just the
-     * clock — under the widgets, same setting, lifecycle in anim.c. */
+    /* Animated background under the widgets; lifecycle lives in anim.c. */
     zmk_anim_bg_attach(screen_root, PAGE_NAME);
 #endif
 

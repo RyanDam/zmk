@@ -273,12 +273,8 @@ static void refresh_selected_transport(void) {
     struct zmk_rpc_transport *next = NULL;
 
 #if IS_ENABLED(CONFIG_ZMK_STUDIO_RPC_TRANSPORT_UART_PREFERRED)
-    /* Endpoint-less (display-first) devices like the Coban Tab 1a have no
-     * USB HID endpoint to key the transport off, so the UART transport
-     * would never be selected. Pin it by name while the option is on;
-     * endpoint-keyed selection resumes when it is dropped (b06 gives the
-     * OTG CDC-ACM path a real USB endpoint). Matches the id passed to
-     * ZMK_RPC_TRANSPORT(uart, ...) in uart_rpc_transport.c. */
+    /* Endpoint-less devices (Coban Tab 1a) have no USB endpoint to key transport
+     * selection off; pin the UART transport by name while the Kconfig option is on. */
     STRUCT_SECTION_FOREACH(zmk_rpc_transport, t) {
         if (t->name != NULL && strcmp(t->name, "uart") == 0) {
             next = t;

@@ -11,29 +11,16 @@
 #include <espressif/partitions_0x0_default_16M.dtsi>
 
 /*
- * Coban Tab 1a (PROCPU only).
- *
- * Custom ESP32-S3 display module, same silicon and display wiring as the
- * Guition JC3248W535 reference board:
- *
- * - ESP32-S3-WROOM-1 N16R8: 16 MB flash + 8 MB octal PSRAM.
- * - 3.5" 320x480 AXS15231B QSPI touch display + I2C in-cell touch +
- *   PWM backlight (wiring described by the cobantab1a shield in the ZMK
- *   config repo, not by this board definition).
- * - USB-C wired to the internal PHY in USB-Serial/JTAG mode (no external
- *   PHY): console, flashing and recovery.
- * - Recovery console: UART0 on GPIO43/44.
- * - PSRAM: 8 MB octal, sized by &psram0 below; the ZMK variant enables it
- *   (CONFIG_ESP_SPIRAM) — the display framebuffer and the LVGL heap live
- *   in PSRAM.
+ * Coban Tab 1a (PROCPU only): ESP32-S3-WROOM-1 N16R8, 16 MB flash + 8 MB octal
+ * PSRAM. USB-C is on the internal PHY in Serial/JTAG mode (no external PHY) for
+ * console, flashing and recovery, with UART0 (GPIO43/44) as the backup console.
+ * The AXS15231B QSPI display, its I2C touch and the PWM backlight are described
+ * by the cobantab1a shield in the config repo, not here.
  */
 
 /*
- * Flash and PSRAM geometry for the ESP32-S3-WROOM-1 N16R8 module.
- *
- * Zephyr 4.5 removed the per-module dtsi files under
- * dts/xtensa/espressif/<soc>/ (esp32s3_wroom_n16r8.dtsi among them), so each
- * board now states its own geometry. This is what that include used to do.
+ * Geometry the removed Zephyr 4.5 per-module dtsi (esp32s3_wroom_n16r8.dtsi)
+ * used to provide; boards must now state it themselves.
  */
 &flash0 {
     reg = <0x0 DT_SIZE_M(16)>;

@@ -3,22 +3,11 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Coban Tab 1a storage/flash debug dump (workspace backlog c02).
- *
- * The `flash_esp32: Flash write error: 261` / `settings_subsys_init failed`
- * failure could not previously be reproduced without Bluetooth enabled,
- * because CONFIG_SETTINGS is only implied by ZMK_BLE. Kconfig
- * CONFIG_ZMK_TAB1A_DEBUG selects SETTINGS itself, so this module gives the
- * c02 bench run a storage-only repro (no BLE, no blobs needed):
- *
- *   1. dump the compile-time flash geometry + the `storage` flash area
- *      (offset/size — compare against partitions_0x0_default_16M.dtsi),
- *   2. open the storage area and exercise it with a settings
- *      save/load round-trip, logging every return code,
- *   3. print the result verdict next to the known failure signature.
- *
- * Enable with zmk/esp-port/bringup/c02-ble-repro.conf (BLE variant) or a
- * BLE-off conf with CONFIG_ZMK_TAB1A_DEBUG=y. Not for product builds.
+ * Coban Tab 1a storage/flash debug dump: bench-only (not for product
+ * builds). CONFIG_ZMK_TAB1A_DEBUG selects SETTINGS itself, giving a
+ * storage-only repro (no BLE) of the `Flash write error: 261` /
+ * `settings_subsys_init failed` failure: dump the flash geometry, then
+ * exercise the storage area with a settings save/load round-trip.
  */
 
 #include <zephyr/kernel.h>
@@ -33,8 +22,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static bool roundtrip_read_ok;
 static int32_t roundtrip_value = -1;
 
-/* h_set receives every "tab1a_dbg/*" key during settings load; the
- * settings cache is not used here, so this also serves the read-back. */
+/* h_set also serves the read-back: the settings cache is not used. */
 static int dbg_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
                                    void *cb_arg, void *param) {
     int err = read_cb(cb_arg, &roundtrip_value, sizeof(roundtrip_value));
@@ -53,11 +41,8 @@ static struct settings_handler dbg_handler = {
 };
 
 static void dump_flash_geometry(void) {
-    /* NOTE: the ESP port's partition dtsi uses "zephyr,mapped-partition",
-     * so FLASH_AREA_ID()/flash_area_open() are NOT generated here — dump
-     * the compile-time geometry straight from DT (offset/size must match
-     * what the runtime partition lookup resolves; compare against
-     * partitions_0x0_default_16M.dtsi). */
+    /* "zephyr,mapped-partition" dtsi: FLASH_AREA_ID() is not generated,
+     * so read the geometry straight from DT. */
     if (DT_NODE_EXISTS(DT_NODELABEL(storage_partition))) {
         LOG_INF("c02dbg: storage_partition offset=0x%zx size=%zu",
                 (size_t)DT_REG_ADDR(DT_NODELABEL(storage_partition)),

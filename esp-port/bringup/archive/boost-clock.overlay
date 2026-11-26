@@ -1,3 +1,6 @@
+# ARCHIVED 2026-11-26 - exonerated experiment. The panel paints identically at
+# 1 MHz and 40 MHz (axs15231b-bringup-findings.md S16); the real defects were
+# frame splitting and the mode-3 waveform. Left for the day clocks are suspected.
 /* Bring-up experiment: run the MSPI panel link at the frequency the vendor
  * demo PROVES this panel accepts (40 MHz, SPI mode 3). Our tree pinned
  * mspi-max-frequency to 1 MHz - the one setting our failing path never

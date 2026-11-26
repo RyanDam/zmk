@@ -35,7 +35,6 @@ static bool encode_macro_info(pb_ostream_t *stream, const pb_field_t *field, voi
         zmk_macros_MacroInfo info = zmk_macros_MacroInfo_init_zero;
         info.index = i;
         info.max_steps = max_steps;
-        // info.length = zmk_dynamic_macro_get_step_length(i);
         snprintk(info.name, sizeof(info.name), "%s", zmk_dynamic_macro_get_name(i));
 
         if (!pb_encode_tag_for_field(stream, field)) {
@@ -84,7 +83,6 @@ static bool encode_macro_steps(pb_ostream_t *stream, const pb_field_t *field, vo
         msg.wait_ms = step->wait_ms;
 
         msg.has_binding = true;
-        // msg.binding.behavior_id = zmk_behavior_get_local_id(step->binding.behavior_dev);
         msg.binding.behavior_id = step->behavior_local_id;
         msg.binding.param1 = step->binding.param1;
         msg.binding.param2 = step->binding.param2;
@@ -130,10 +128,8 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
     int count = set_req->steps_count;
     int max_steps = zmk_dynamic_macro_get_max_steps();
 
-    // Set the macro length
     zmk_dynamic_macro_set_step_length(set_req->index, count);
 
-    // Reuse a single step structure to avoid repeated allocations
     struct zmk_dynamic_macro_step step;
 
     for (int i = 0; i < count; i++) {
@@ -145,14 +141,12 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
             continue;
         }
 
-        // Direct assignment instead of struct initialization
         step.binding.behavior_dev = behavior_name;
         step.binding.param1 = bb->param1;
         step.binding.param2 = bb->param2;
         step.behavior_local_id = bb->behavior_id;
         step.wait_ms = msg->wait_ms;
 
-        // Map enum using if-else for better performance than switch
         if (msg->mode == zmk_macros_MacroMode_MACRO_MODE_TAP) {
             step.mode = MACRO_MODE_TAP;
         } else if (msg->mode == zmk_macros_MacroMode_MACRO_MODE_PRESS) {
@@ -167,7 +161,6 @@ zmk_studio_Response set_macro_details(const zmk_studio_Request *req) {
                 step.binding.param2);
     }
 
-    // Clear remaining steps
     struct zmk_dynamic_macro_step empty = {0};
     for (int i = count; i < max_steps; i++) {
         zmk_dynamic_macro_set_step(set_req->index, i, empty);

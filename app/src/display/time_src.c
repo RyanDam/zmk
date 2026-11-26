@@ -3,11 +3,9 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Time-source seam implementation (backlog a09). The simulation backend is
- * the successor of the old CLOCK_BASE_EPOCH_S hack in clock_screen.c: a
- * Kconfig reference epoch advanced by uptime, flagged unsynced so the UI
- * can show that the time is not real yet (h02's DS1302 arrival flips the
- * flag through zmk_time_source_set()/zmk_time_sync()).
+ * Time-source seam implementation. The simulation backend is a Kconfig
+ * reference epoch advanced by uptime, flagged unsynced until a hardware
+ * source or zmk_time_sync() says otherwise.
  */
 
 #include <zephyr/kernel.h>
@@ -20,17 +18,12 @@ LOG_MODULE_REGISTER(zmk_time_src, CONFIG_ZMK_LOG_LEVEL);
 
 static zmk_time_source_fn external_source;
 
-/* Simulation state: displayed epoch = sim_base + uptime. zmk_time_sync()
- * rebases instead of storing a second timestamp, so the advance keeps the
- * same monotonic clock the unsynced sim used. */
+/* Displayed epoch = sim_base + uptime. zmk_time_sync() rebases instead of
+ * storing a second timestamp, so the advance keeps the same monotonic clock. */
 static int64_t sim_base = CONFIG_ZMK_DISPLAY_CLOCK_EPOCH_S;
 static bool sim_synced;
 
-/*
- * Convert days since 1970-01-01 to a civil date.
- * (Howard Hinnant's days_from_civil inverse — same algorithm the pre-a09
- * clock screen used, moved here so every screen shares it.)
- */
+/* Days since 1970-01-01 -> civil date (inverse of Hinnant's days_from_civil). */
 static void civil_from_days(int32_t z, uint16_t *year, uint8_t *month, uint8_t *day) {
     z += 719468;
     int32_t era = (z >= 0 ? z : z - 146096) / 146097;

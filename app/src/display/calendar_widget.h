@@ -3,27 +3,15 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Calendar widget module for the Coban Tab 1a screens (wave-1 clock
- * audit).
+ * Calendar widget module: optional header row (year left, month name right),
+ * weekday row, and only the 4..6 weeks the month occupies. `cell` is square by
+ * default; a wider `cell_w` widens the boxes without changing day height.
+ * Adjacent-month days use the 50 % text style, today gets a slightly larger
+ * whisper-white pip.
  *
- * One module owns the month view: an optional header row (year left,
- * month name right) plus the weekday header and exactly as many week
- * rows as the month occupies (4..6 — never an all-grey extra week). Day
- * cells are SQUARE by default (`cell` px); a container that must fill
- * the page width can pass a wider `cell_w` (boxes wider than tall, day
- * height unchanged). The grid reads as an even lattice either way.
- * Adjacent-month days render with the 50 % text style, and today sits
- * on a whisper-white pip that is slightly LARGER than the cell.
- *
- * The style enum is the seam the a14 Studio RPC drives — ids are stable,
- * a future view (week agenda, list) adds an id and no screen code
- * changes.
- *
- * The whole block (header + grid) rebuilds when the civil date changes
- * (roughly once a day) or the style is swapped — cheap, and it keeps
- * header and grid in lockstep with no half-updated states.
- *
- * Call set_style/update from the display work queue only;
+ * The style enum is the Studio RPC seam: ids are stable, a new view adds an id.
+ * The block rebuilds when the civil date changes or the style is swapped.
+ * set_style/update run on the display work queue only;
  * zmk_display_clock_config_set() is the any-thread entry point.
  */
 

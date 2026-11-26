@@ -3,35 +3,15 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Key matrix screen for the Coban Tab 1a (backlog a13, redesigned after the
- * owner audit 2026-11-23).
+ * Key matrix screen. The tab's keys are real keymap positions (zmk-config
+ * cobantab1a.keymap, 4x4): row 0 (0..3) are the physical keys and are never
+ * drawn; this page renders the 12 virtual positions (4..15).
  *
- * The tab's keys are REAL keymap positions (zmk-config cobantab1a.keymap,
- * 4 rows x 4 cols): row 0 (positions 0..3) is the four PHYSICAL keys
- * (h04) — never drawn — and this page renders the other 12, the virtual
- * grid (positions 4..15), like pad10a's layer screen
- * (graphics/screens/screen_layers.c) draws its dynamic keymap. Touching
- * a tile feeds the position through the exact position-state path a
- * scannable matrix uses — raise_zmk_position_state_changed() on
- * press and on release, timestamps taken at the touch edges — so press,
- * hold, tap-hold, layermasks and macros behave exactly like a physical
- * key. Studio edits these same positions with its physical-key RPC; the
- * tile flash follows the real key events (pad10a layers_cb pattern), never
- * raw touch, so h04 hardware keys and Studio edits light the grid too.
- *
- * Frame parity with pad10a: layer indicator squares (style_indice), tiles
- * that read as quiet 20 % fills and light to 100 % while the KEY is down
- * (style_key / layers_cb:139-160). ALL drawn cells are plain keys — unlike
- * pad10a, there are no encoder seats and no special-cased cells (owner
- * pass 5): every tile fires its binding. Layer switching is the
- * indicator's job: the pips at the bottom are buttons (tap pip n ->
- * layer n), and the physical row's keys carry per-layer `&to` prev/next
- * bindings, so the screen only ever shows the layer the device is
- * actually on. Only MACROS carry user-visible names; layers are plain
- * numbered pips (owner pass 3).
- *
- * The old parallel "vkeymap" model (its own layers/cells/settings blob)
- * is deleted: one matrix, one source of truth.
+ * A tile touch raises zmk_position_state_changed() at the touch edges, so
+ * press, hold, tap-hold, layermasks and macros behave exactly like a physical
+ * key; tile flash follows the resulting key events, so hardware keys and Studio
+ * edits light the grid too. Layer switching is the bottom pip row (tap pip n ->
+ * layer n). One matrix, one source of truth: no parallel vkeymap model.
  */
 
 #include <string.h>
@@ -64,9 +44,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAGE_NAME "keymap"
 
-/* Keep in step with the zmk-config cobantab1a matrix geometry: keymap row
- * 0 (positions 0..3) is the four PHYSICAL keys (h04) — not drawn here —
- * and the drawn 3x4 grid is positions 4..15. */
+/* Keep in step with the zmk-config matrix: 0..3 physical (not drawn), the
+ * 3x4 grid is 4..15. */
 #define ZMK_PHYS_ROW 4
 #define ZMK_VKEY_ROWS 3
 #define ZMK_VKEY_COLS 4
@@ -99,14 +78,11 @@ static lv_obj_t *dots_num[ZMK_KEYMAP_LAYERS_LEN];
 static bool dot_active_cache[ZMK_KEYMAP_LAYERS_LEN];
 static unsigned int dot_count;
 
-/* ------------------------------------------------------------------ */
-/* Firing: touch edges -> real key positions                            */
-/* ------------------------------------------------------------------ */
+/* Firing: touch edges -> real key positions */
 
-/* Ring so two fast taps can't rebind a pending edge; the timestamp is
- * captured at the touch edge (LVGL thread), executed on the display work
- * queue like every other page action — same work-queue context a kscan
- * driver raises from. */
+/* Ring so two fast taps cannot rebind a pending edge. The timestamp is taken at
+ * the touch edge (LVGL thread) and executed on the display work queue, the same
+ * context a kscan driver raises from. */
 struct key_edge {
     uint32_t position;
     bool pressed;
@@ -117,11 +93,10 @@ struct key_edge {
 static struct key_edge edges[EDGE_RING];
 static uint8_t edges_in, edges_out;
 
-/* Per-position held state: post_edge mirrors the kscan contract (edges
- * only on real transitions). Without it LVGL's PRESS_LOST + RELEASED
- * pair for one drag-tap fires TWO releases, and ghost capacitive hits
- * can fire presses that never belonged — unpaired edges corrupt the
- * keymap's per-position layer state and the HID reports (stuck keys). */
+/* Per-position held state: post_edge mirrors the kscan contract (edges only on
+ * real transitions). Without it LVGL's PRESS_LOST + RELEASED pair fires two
+ * releases, and unpaired edges corrupt per-position layer state and leave keys
+ * stuck in HID reports. */
 static bool edge_held[ZMK_PHYS_ROW + ZMK_VKEY_CELLS];
 
 ZMK_UI_WORK_DEFINE(edge_work, edge_work_cb) {
@@ -163,9 +138,7 @@ static void post_edge(uint32_t position, bool pressed) {
     zmk_ui_post(&edge_work);
 }
 
-/* ------------------------------------------------------------------ */
-/* Layer switching (the indicator pips fire this)                       */
-/* ------------------------------------------------------------------ */
+/* Layer switching (the indicator pips fire this) */
 
 #define NAV_IDLE 0
 #define NAV_GOTO 1 /* jump straight to nav_goto's layer index (pip tap) */
@@ -174,9 +147,7 @@ static volatile uint8_t nav_goto;
 
 static unsigned int layer_count(void);
 
-/* Layer switching is the indicator pips' job (tap pip n -> layer n): the
- * grid's 12 tiles are all plain keys (owner pass 5 — pad10a's encoder
- * seats are NOT special here). */
+/* All 12 tiles are plain keys; switching layers is the pips' job. */
 
 ZMK_UI_WORK_DEFINE(nav_work, nav_work_cb) {
     ARG_UNUSED(work);
@@ -197,9 +168,7 @@ ZMK_UI_WORK_DEFINE(nav_work, nav_work_cb) {
     zmk_keymap_layer_to(id, false);
 }
 
-/* ------------------------------------------------------------------ */
-/* Tile labels from the keymap                                          */
-/* ------------------------------------------------------------------ */
+/* Tile labels from the keymap */
 
 #define ICON_VOL_DOWN "\xEF\x80\xA7" /* f027 volume-down       */
 #define ICON_VOL_UP   "\xEF\x80\xA8" /* f028 volume-up         */
@@ -216,12 +185,10 @@ ZMK_UI_WORK_DEFINE(nav_work, nav_work_cb) {
 #define ICON_CARET_DOWN "\xEF\x83\x97" /* f0d7 caret-down: transparent key
                                         * (pad10a: {CB_ICON_CARET_DOWN, KC_TRNS}) */
 
-/* Compact labels for the behaviors a tab1a cell commonly carries. The
- * device-name strings are the behavior nodes' devicetree node names
- * (behaviors.dtsi) — what zmk_behavior_get_binding() matches; bindings
- * with richer meaning (&mt/&lt/&sk, bt, outputs, macros) are
- * special-cased in binding_label(). Unknown behaviors fall back to the
- * device name, truncated: never a wrong lie, occasionally verbose. */
+/* Device-name strings are the behavior nodes' devicetree names, i.e. what
+ * zmk_behavior_get_binding() matches; composites, bt, outputs and macros are
+ * special-cased in binding_label(). Unknown behaviors show a truncated device
+ * name: verbose rather than wrong. */
 static struct {
     const char *dev;
     const char *fmt; /* %lu = param1 */
@@ -249,15 +216,11 @@ static struct {
     {"gresc", "GESC"},
 };
 
-/* The screen's answer to pad10a's utils/keycode_lookup.c: every binding
- * a tab cell can carry gets a short on-glass label. Text is ASCII (the
- * barlow ramps), icons are FontAwesome5 codepoints (LVGL docs
- * main-modules/fonts/overview#symbols) that render through barlow_24's
- * `fallback` = lv_font_tab1a_icons_24 — the same trick pad10a's barlow.c
- * does with fonts/icons.c. Glyph ids mirror pad10a's CB_ICON_* defines
- * (keycode_lookup.c:23-35) so both screens speak one icon language.
- * Unmapped usages render as "?U4C"-style hex — a visible TODO, not a
- * silent "?". Raw usage IDs follow the HID Usage Tables. */
+/* Short on-glass labels for every binding a cell can carry. ASCII renders in
+ * barlow; icons are FontAwesome5 codepoints through barlow_24's `fallback` =
+ * lv_font_tab1a_icons_24, with glyph ids mirroring pad10a's CB_ICON_* so both
+ * screens speak one icon language. Unmapped usages render as "?U4C" hex — a
+ * visible TODO, not a silent "?". Usage IDs follow the HID Usage Tables. */
 static const struct {
     uint16_t usage;
     const char *label;
@@ -291,9 +254,8 @@ static const char *kb_sparse_label(uint16_t usage) {
     return NULL;
 }
 
-/* "CSAG"-style prefix from the &kp param2 / mod-tap modifier flags
- * (the zmk/keys.h mod bits; L/R collapsed — the tile shows intent, not
- * which thumb hits it). Empty string when nothing is held. */
+/* "CSAG"-style prefix from the &kp param2 / mod-tap modifier flags (zmk/keys.h
+ * mod bits, L/R collapsed: the tile shows intent, not which thumb). */
 static void mods_prefix(char *p, size_t n, uint32_t mods) {
     size_t len = 0;
 
@@ -404,8 +366,7 @@ static void keycode_base(char *base, size_t n, uint32_t keycode) {
     }
 }
 
-/* &kp binding (param1 = full keycode, param2 = mod flags) and any plain
- * keycode caller: "S/ENT", "CG/K", "PLAY" ... */
+/* &kp and any plain keycode caller: "S/ENT", "CG/K", "PLAY" ... */
 static void key_press_label(char *out, size_t n, uint32_t keycode, uint32_t mods) {
     char base[8];
     char pre[5];
@@ -490,9 +451,7 @@ static void binding_label(uint32_t position, zmk_keymap_layer_id_t layer, char *
     snprintk(out, n, "%.*s", (int)(n - 1), b->behavior_dev);
 }
 
-/* ------------------------------------------------------------------ */
-/* Refresh (display work queue)                                         */
-/* ------------------------------------------------------------------ */
+/* Refresh (display work queue) */
 
 static void dots_rebuild(unsigned int count);
 static void pip_event_cb(lv_event_t *e);
@@ -522,19 +481,14 @@ static void dots_rebuild(unsigned int count) {
         lv_obj_remove_style_all(dot);
         lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE); /* see zmk_ui_flex */
         lv_obj_add_style(dot, zmk_display_style(ZMK_STYLE_LAYER_DOT), 0);
-        /* Each pip is a key-sized button: tap pip n -> layer n (owner
-         * pass 5; this LVGL makes lv_obj clickable by default, but be
-         * explicit since we rely on it). */
+        /* Each pip is a key-sized button: tap pip n -> layer n. */
         lv_obj_add_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-        /* Invisible touch padding (owner pass 5: 48x32 is a small target):
-         * +24 px on every side makes the hit box ~96x68 — adjacent pips'
-         * zones butt up exactly (gap is 48), and vertically it spans from
-         * the grid's bottom edge to the screen edge. Pixels unchanged. */
+        /* Invisible +24 px padding makes the hit box ~96x68: adjacent zones
+         * butt up exactly and it spans grid bottom to screen edge. */
         lv_obj_set_ext_click_area(dot, TILE_GAP * 3);
         lv_obj_add_event_cb(dot, pip_event_cb, LV_EVENT_ALL, (void *)(uintptr_t)i);
 
-        /* Layer number in the pip's centre (1-based for humans; ZMK still
-         * calls these layers 0..n-1 in MO/TO bindings and Studio). */
+        /* 1-based for humans; ZMK and Studio still call them 0..n-1. */
         lv_obj_t *num = zmk_ui_label(dot, ZMK_STYLE_TEXT_LAYER_NUM);
 
         lv_obj_center(num);
@@ -548,8 +502,7 @@ static void dots_rebuild(unsigned int count) {
 }
 
 static void refresh(void) {
-    /* Boot race: settings load raises keymap/layer events long before the
-     * screen manager has built this page (stats_screen.c pattern). */
+    /* Boot race: events can be raised before the page is built. */
     if (screen_root == NULL) {
         return;
     }
@@ -610,12 +563,9 @@ ZMK_UI_WORK_DEFINE(lit_work, lit_work_cb) {
     lit_apply();
 }
 
-/* ------------------------------------------------------------------ */
-/* Event plumbing                                                       */
-/* ------------------------------------------------------------------ */
+/* Event plumbing */
 
-/* The grid mirrors the REAL layer (pad10a layer_state_set_user): every
- * layer change - hardware keys (h04), Studio, nav buttons - relabels. */
+/* The grid mirrors the real layer, whatever changed it (keys, Studio, pips). */
 static int layer_changed_event_cb(const zmk_event_t *eh) {
     ARG_UNUSED(eh);
     zmk_ui_post(&refresh_work);
@@ -635,8 +585,7 @@ static int keymap_changed_event_cb(const zmk_event_t *eh) {
 ZMK_LISTENER(keymap_screen_tbl, keymap_changed_event_cb);
 ZMK_SUBSCRIPTION(keymap_screen_tbl, zmk_keymap_changed);
 
-/* Tile flash from the key events themselves (pad10a layers_cb): press-
- * mode macros hold the tile lit, hardware keys light it too. */
+/* Tile flash follows key events, so press-mode macros light a tile too. */
 static int position_changed_event_cb(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
 
@@ -657,16 +606,13 @@ static void macro_changed_cb(uint32_t macro_idx) {
     zmk_ui_post(&refresh_work);
 }
 
-/* ------------------------------------------------------------------ */
-/* Tile input                                                           */
-/* ------------------------------------------------------------------ */
+/* Tile input */
 
 static void tile_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     unsigned int pos = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
 
-    /* All 12 cells are plain keys: touch edges fire the position, the
-     * flash follows the real key event in position_changed_event_cb. */
+    /* Touch edges fire the position; the flash follows the key event. */
     switch (code) {
     case LV_EVENT_PRESSED:
         post_edge(pos, true);
@@ -680,9 +626,8 @@ static void tile_event_cb(lv_event_t *e) {
     }
 }
 
-/* Each layer pip behaves like a normal key (owner pass 5): its own fill
- * lights up under the finger (key-tile press style) and falls back on
- * release/press-lost; releasing on the pip jumps straight to that layer. */
+/* Each pip behaves like a key: its fill lights under the finger, and releasing
+ * on it jumps to that layer. */
 static void pip_event_cb(lv_event_t *e) {
     lv_obj_t *pip = lv_event_get_target(e);
     unsigned int idx = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
@@ -705,9 +650,7 @@ static void pip_event_cb(lv_event_t *e) {
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Build                                                                */
-/* ------------------------------------------------------------------ */
+/* Build */
 
 static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     screen_root = lv_obj_create(parent);
@@ -716,8 +659,7 @@ static lv_obj_t *keymap_page_create(lv_obj_t *parent) {
     lv_obj_set_size(screen_root, lv_pct(100), lv_pct(100));
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
-    /* a12 owner pass: animated background under the tiles (the bench
-     * checks touch still feels clean with the decoder running). */
+    /* Animated background under the tiles. */
     zmk_anim_bg_attach(screen_root, PAGE_NAME);
 #endif
 

@@ -3,19 +3,11 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Coban Tab 1a dev harness probes (workspace backlog h01).
- *
- * Bench bring-up for the peripherals of the final board before their real
- * drivers exist (h02-h04, p01). Every probe is additionally gated on its
- * devicetree node, so this file is inert without the devkit overlay:
- *
- *   - WS2812 chase on `indicator_strip`            (h04)
- *   - key/switch event logging via input subsystem (h04)
- *   - I2S test tone on `&i2s0`                     (h03)
- *   - VBAT ADC raw read on `tab1a_vbat`            (p01)
- *
- * Pin authority: zmk/esp-port/tab1a-hardware-map.md; wiring + expectations:
- * zmk/esp-port/tab1a-bench-runbook.md.
+ * Coban Tab 1a dev harness probes: bench-only bring-up for the final
+ * board's peripherals (WS2812 chase, key event logging, I2S test tone,
+ * VBAT ADC raw read) before their real drivers exist. Each probe is also
+ * gated on its devicetree node, so this file is inert without the devkit
+ * overlay. Pin authority: zmk/esp-port/tab1a-hardware-map.md.
  */
 
 #include <zephyr/kernel.h>
@@ -39,9 +31,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define HARNESS_TONE_DELAY_MS 5000
 
-/* ------------------------------------------------------------------ */
-/* WS2812 light bar chase                                             */
-/* ------------------------------------------------------------------ */
+/* WS2812 light bar chase */
 
 #if STRIP
 
@@ -65,7 +55,7 @@ static void strip_chase_fn(struct k_work *work) {
     int err = led_strip_update_rgb(strip_dev, strip_pixels, STRIP_LEN);
     if (err) {
         LOG_ERR("harness: led strip update failed (%d)", err);
-        return; /* stop the chase; device problem */
+        return; /* stop the chase: device problem */
     }
 
     chase_pos = (chase_pos + 1) % STRIP_LEN;
@@ -74,9 +64,7 @@ static void strip_chase_fn(struct k_work *work) {
 
 #endif /* STRIP */
 
-/* ------------------------------------------------------------------ */
-/* Key matrix events                                                   */
-/* ------------------------------------------------------------------ */
+/* Key matrix events */
 
 static int harness_position_cb(const zmk_event_t *eh) {
     struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
@@ -89,9 +77,7 @@ static int harness_position_cb(const zmk_event_t *eh) {
 ZMK_LISTENER(tab1a_harness, harness_position_cb);
 ZMK_SUBSCRIPTION(tab1a_harness, zmk_position_state_changed);
 
-/* ------------------------------------------------------------------ */
-/* I2S test tone (16 kHz stereo, ~166 Hz sine, ~0.5 s)                 */
-/* ------------------------------------------------------------------ */
+/* I2S test tone (16 kHz stereo, ~166 Hz sine, ~0.5 s) */
 
 #if I2S0
 
@@ -122,10 +108,8 @@ static void i2s_tone_play(void) {
         .timeout = 200,
     };
 
-    /* i2s_esp32 starts its DMA from the driver's block queue, which only
-     * i2s_write() fills — START before the first write fails with
-     * -ENOMEM (-12) surfaced as -EIO (h01 bench 2026-11-21). Prime the
-     * queue with the first two blocks, then start, then keep feeding. */
+    /* i2s_esp32 trap: START before the first i2s_write() fails -EIO;
+     * prime the block queue with two writes first. */
     int err = i2s_configure(i2s_dev, I2S_DIR_TX, &config);
     if (err) {
         LOG_ERR("harness: i2s configure failed (%d)", err);
@@ -173,16 +157,12 @@ static void i2s_tone_play(void) {
 
 #endif /* I2S0 */
 
-/* ------------------------------------------------------------------ */
-/* VBAT ADC raw read                                                   */
-/* ------------------------------------------------------------------ */
+/* VBAT ADC raw read */
 
 #if VBAT
 
-/* Plain adc_read on &adc1, channel 4 = GPIO5 (ADC1_GPIO5_CHANNEL). Kept
- * deliberately low-tech (no ADC_DT_SPEC — the zephyr,user binding does not
- * resolve io-channels phandles on this tree); the overlay node's
- * io-channels property documents the intent for p01. */
+/* Plain adc_read on &adc1 ch 4 (GPIO5); ADC_DT_SPEC unusable: the
+ * zephyr,user binding does not resolve io-channels phandles here. */
 static const struct device *adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc1));
 #define VBAT_ADC_CHANNEL 4
 #define VBAT_ADC_RESOLUTION 12
@@ -207,8 +187,7 @@ static void vbat_read(void) {
         return;
     }
 
-    /* Divider ratio is measured at the bench and recorded in the hardware
-     * map; the harness only proves the conversion chain works. */
+    /* Raw only: the divider ratio is a bench measurement (hardware map). */
     LOG_INF("harness: VBAT raw %u (ch %u, res %u) — convert per hardware map", raw,
             VBAT_ADC_CHANNEL, VBAT_ADC_RESOLUTION);
 }

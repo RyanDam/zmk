@@ -1,41 +1,32 @@
 #!/bin/bash
-# Build the ESP32-C3 / ESP32-S3 Zephyr bring-up samples (Phase 0).
+# Build the ESP32-C3 / ESP32-S3 Zephyr bring-up samples (no ZMK).
 #
 # Usage (works from anywhere in the repo; sh or bash):
 #   sh esp-port/build_esp32.sh                                   # build C3 + S3 (hello_world)
 #   sh esp-port/build_esp32.sh --board c3                        # build C3 only
 #   sh esp-port/build_esp32.sh --board s3 --flash                # build S3, then west flash it
 #   sh esp-port/build_esp32.sh --board c3 --sample philosophers --flash
-#   sh esp-port/build_esp32.sh --log                            # verbose logging
+#   sh esp-port/build_esp32.sh --log                            # accepted, rejected (see -l)
 #
 # Options:
 #   -b, --board <c3|s3|all>            Board to build (default: all)
 #   -s, --sample <hello|philosophers>  Sample to build (default: hello = hello_world)
 #   -f, --flash                        Run west flash after building
-#   -l, --log                          Not supported here: it means the
-#                                      zmk-usb-logging snippet, which lives
-#                                      in the ZMK app — these plain Zephyr
-#                                      samples have no ZMK to apply it to.
-#                                      Use --log on build_zmk_c3/s3.sh.
+#   -l, --log                          Rejected: zmk-usb-logging is a ZMK app
+#                                      snippet; these are plain Zephyr samples
+#                                      (use --log on build_zmk_c3/s3.sh)
 #   -h, --help                         Show help
 #
-# The ESP32 toolchain (Espressif riscv32-esp-elf + xtensa-esp32s3-elf) is NOT
-# in the ZMK ARM dev image. Install it first — see esp-port/toolchain-esp32.md.
-# This script sets the toolchain env vars for you (scoped to this process only,
-# so it never affects the ARM ZMK builds), and uses -p always so a stale CMake
-# cache can't pin the wrong toolchain variant.
+# The Espressif toolchains (riscv32-esp-elf + xtensa-esp32s3-elf) are NOT in
+# the ZMK ARM dev image — install them first, see esp-port/toolchain-esp32.md.
+# Env vars below are process-scoped (they never affect the ARM builds), and
+# -p always keeps a stale CMake cache from pinning the wrong variant.
 #
-# The build always applies esp-port/fixtures/usb-console.overlay, which routes
-# the Zephyr console to the built-in USB Serial/JTAG port. The board default
-# is UART0, which the SuperMini does not bridge to USB, so without the overlay
-# the monitor shows nothing.
-
-# POSIX sh compatible (works under sh/dash and bash). No pipelines are used,
-# so "set -o pipefail" is not needed.
+# Always applies esp-port/fixtures/usb-console.overlay: the board default
+# console is UART0, which the SuperMini does not bridge to USB — without the
+# overlay the monitor shows nothing.
 set -eu
 
-# Run from the workspace root (parent of esp-port/) so the sample path and the
-# build/ dir resolve correctly, regardless of where the script is invoked.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -79,7 +70,6 @@ while [ $# -gt 0 ]; do
       DO_FLASH=yes
       ;;
     -l|--log)
-      # The snippet lives in the ZMK app; these are plain Zephyr samples.
       echo "ERROR: --log (zmk-usb-logging) is a ZMK app snippet — not available for samples. Use build_zmk_c3.sh / build_zmk_s3.sh --log." >&2
       exit 2
       ;;
@@ -97,14 +87,13 @@ while [ $# -gt 0 ]; do
 done
 
 # --- ESP32 toolchain (see esp-port/toolchain-esp32.md) ---
-# Zephyr 4.4 removed the legacy "espressif" toolchain variant, so the
-# Espressif cross compilers are used through the generic cross-compile
-# variant instead. Per-board CROSS_COMPILE prefixes:
+# Zephyr 4.4 removed the "espressif" variant, so the Espressif cross compilers
+# go through the generic cross-compile variant.
 #   C3 (RISC-V)  -> riscv32-esp-elf-
 #   S3 (Xtensa)  -> xtensa-esp32s3-elf-
 export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
 export ESPRESSIF_TOOLCHAIN_PATH="${ESPRESSIF_TOOLCHAIN_PATH:-/opt/espressif/tools}"
-# ~/.local/bin for a pip --user esptool (required by the ESP32 SOC cmake)
+# ~/.local/bin: pip --user esptool, required for ESP32 image generation
 export PATH="$HOME/.local/bin:$PATH"
 
 if [ ! -d "$ESPRESSIF_TOOLCHAIN_PATH" ]; then
@@ -130,8 +119,6 @@ case "$SAMPLE_NAME" in
     ;;
 esac
 
-# Build dirs are per-sample so hello and philosophers images don't overwrite
-# each other: build/c3-hello, build/c3-philosophers, build/s3-hello, ...
 C3_BOARD=esp32c3_devkitc/esp32c3
 C3_DIR="build/c3-$SAMPLE_NAME"
 S3_BOARD=esp32s3_devkitc/esp32s3/procpu
@@ -139,9 +126,7 @@ S3_DIR="build/s3-$SAMPLE_NAME"
 USB_CONSOLE_OVERLAY="$ROOT/esp-port/fixtures/usb-console.overlay"
 
 build() { # $1=board  $2=build dir  $3=cross-compile prefix  $4=toolchain bin dir
-  # -p always = full clean rebuild, so a stale CMake cache can never pin the
-  # wrong toolchain variant. Change to "-p auto" for incremental rebuilds once
-  # the build dir is known-good.
+  # -p always: never let a stale CMake cache pin the wrong toolchain variant.
   echo "=== building $1 ($SAMPLE_NAME) -> $2 (pristine) ==="
   # CROSS_COMPILE via environment (the CMake cache var is typed PATH and would
   # mangle the prefix); TOOLCHAIN_HOME has no env fallback, so pass it as -D.

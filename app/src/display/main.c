@@ -45,20 +45,8 @@ static lv_obj_t *screen;
 
 __attribute__((weak)) lv_obj_t *zmk_display_status_screen() { return NULL; }
 
-/*
- * Product orientation from the panel node's `rotation` — the same property
- * the display driver transposes frames by and ui_helpers.h remaps touch
- * through. Set before any screen exists so every page lays out directly in
- * logical landscape (LVGL swaps the logical resolution; the physical frame
- * buffer stays the panel's shape, and the driver re-transposes at flush).
- *
- * The pointer path rotates with it for free: lv_indev's pointer processing
- * runs the raw coordinates through lv_display_rotate_point (9.5,
- * lv_indev.c indev_pointer_proc) — so zmk_ui_indev keeps feeding raw panel
- * coordinates. The hardware rotation route (AXS15231B_ROTATION_HW) must NOT
- * call this: there the driver reports swapped caps + orientation, LVGL
- * renders landscape natively, and double-rotating would cancel out.
- */
+/* Apply the panel node's `rotation` to LVGL before any screen exists; LVGL rotates
+ * pointer coordinates too. Never with AXS15231B_ROTATION_HW: that route renders landscape natively. */
 #if DT_HAS_CHOSEN(zephyr_display) && !IS_ENABLED(CONFIG_AXS15231B_ROTATION_HW)
 static void display_setup_rotation(void) {
     lv_display_t *disp = lv_display_get_default();
@@ -133,12 +121,7 @@ void blank_display_cb(struct k_work *work) {
 K_WORK_DEFINE(blank_display_work, blank_display_cb);
 K_WORK_DEFINE(unblank_display_work, unblank_display_cb);
 
-/*
- * Start/stop LVGL ticking and panel blanking. Public (zmk/display/screens.h)
- * because the screen manager's idle backlight policy (a08) drives the same
- * pair the BLANK_ON_IDLE activity listener uses; features should prefer
- * zmk_display_blank_lock() over calling these.
- */
+/* Public API: prefer zmk_display_blank_lock() over calling these directly. */
 void zmk_display_updates_start(void) {
     if (display == NULL) {
         return;
@@ -187,8 +170,7 @@ void initialize_display(struct k_work *work) {
     initialize_theme();
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_DESIGN_SYSTEM)
-    /* Build the style registry from the theme before any screen is created;
-     * screens must reference styles only (src/display/grid.md). */
+    /* Must run before any screen is created. */
     zmk_display_theme_init();
 #endif
 

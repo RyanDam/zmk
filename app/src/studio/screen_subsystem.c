@@ -5,12 +5,9 @@
  */
 
 /*
- * Studio `screen` subsystem (backlog a14): list/navigate the tab's
- * screen manager (a08) and sync the wall clock (a09 seam). Port of
- * pad10a's raw-HID 0x51 set_screen / 0x52 set_time.
- *
- * Seam purity is the a14 rule: this file talks only to
- * zmk_display_screen_* and zmk_time_*, never to a screen's widgets.
+ * Studio `screen` subsystem: list/navigate the tab's screen manager and
+ * sync the wall clock. Talks only to zmk_display_screen_* and zmk_time_*,
+ * never to a screen's widgets.
  */
 
 #include <zephyr/logging/log.h>
@@ -75,8 +72,7 @@ zmk_studio_Response screen_get_screens(const zmk_studio_Request *req) {
     return SCREEN_RESPONSE(get_screens, resp);
 }
 
-/* Transient UI navigation (pad10a parity: 0x51 needed no unlock), which
- * is also what makes the harness selftest runnable before core.lock. */
+/* Transient UI navigation: UNSECURED by design. */
 zmk_studio_Response screen_set_screen(const zmk_studio_Request *req) {
     const char *name = req->subsystem.screen.request_type.set_screen.name;
     int idx = zmk_display_screen_find(name);
@@ -91,8 +87,7 @@ zmk_studio_Response screen_set_screen(const zmk_studio_Request *req) {
     return SCREEN_RESPONSE(set_screen, err == 0);
 }
 
-/* a09 seam: zmk_time_sync confirms the wall clock (sim until h02 gives
- * the DS1302 a driver; the RPC works either way). */
+/* zmk_time_sync sets the wall clock (sim source until the DS1302 driver). */
 zmk_studio_Response screen_set_time(const zmk_studio_Request *req) {
     uint32_t epoch_s = req->subsystem.screen.request_type.set_time.epoch_s;
 

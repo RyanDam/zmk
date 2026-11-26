@@ -1,26 +1,13 @@
 #!/bin/bash
 # Build the Coban keyboards (cobanpad12b + cobanpad16a) for nice_nano@1.
-#
-# Usage (works from anywhere in the repo; sh or bash):
 #   bash app/build_coban.sh            # release-shaped build
-#   bash app/build_coban.sh --log      # same + verbose logging (USB CDC)
-#   ZMK_BUILD_LOG=1 bash app/build_coban.sh
-#
-# --log / -l (or env ZMK_BUILD_LOG=1): adds the zmk-usb-logging snippet —
-# the pads' canonical debug path: a dedicated "ZMK Logging" USB CDC next to
-# the Studio RPC one, with the console + shell redirected to it.
-#
-# The cobanpad shields live in the external ZMK config repo (sibling of this
-# repo by default): $ZMK_CONFIG/boards/shields/. Override the location with
-# the ZMK_CONFIG environment variable. In the dev container the sibling is
-# /workspaces/zmk-config, so the default works there too.
-
-# POSIX sh compatible (works under sh/dash and bash). No pipelines are used,
-# so "set -o pipefail" is not needed.
+#   bash app/build_coban.sh --log      # + a "ZMK Logging" USB CDC, console+shell
+# Shields live in $ZMK_CONFIG/boards/shields/ (default: the sibling folder).
+# POSIX sh compatible: no bashisms, no pipelines.
 set -eu
 
-# Run from the workspace root (parent of app/) so the build/ dir resolves
-# correctly, regardless of where the script is invoked.
+
+# cd to the workspace root so build/ resolves the same from anywhere.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 

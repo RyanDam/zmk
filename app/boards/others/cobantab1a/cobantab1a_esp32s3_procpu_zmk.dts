@@ -7,30 +7,20 @@
 #include "cobantab1a_esp32s3_procpu.dts"
 
 /*
- * ZMK variant of the Coban Tab 1a:
- * - BLE HID when unplugged; the shield overlay (zmk-config) enables the
- *   SoC's DWC2 OTG controller for a wired HID + Studio-RPC-CDC composite
- *   (runtime PHY hand-off on GPIO19/20, no eFuse — b06 merged into the
- *   default build 2026-11-26)
- * - flash/recovery stay on the USB Serial/JTAG ROM loader (GPIO19/20,
- *   which the app hands to OTG at runtime); the running console + shell
- *   are UART0 (GPIO43/44, P1 header) on these builds
- * - settings live in the storage partition (192 KiB @ 0xfb0000) of the
- *   16 MB partition layout; the NVS settings backend selects it by label
- * - PSRAM (8 MB octal on the N16R8 module) is enabled: the AXS15231B
- *   display streams through it and the LVGL heap is placed there
- * - Wi-Fi is disabled: this is a BLE keyboard, not a Wi-Fi device
- * - assets (a12): image-1 (the MCUboot OTA slot, unused on the bench
- *   prototype) is shrunk by 2 MB to make room for a raw `assets`
- *   partition at 0xda8000 — manifest + blobs, packed by
- *   app/scripts/display-assets/pack_assets.py. Reconcile this carve
- *   with the real OTA layout when a05 lands.
- * - a15 carve FIX (a12 shipped the arithmetic wrong — dead space hid it):
- *   slot1 now ends exactly at the assets start (0x7e0000 + 5920K =
- *   0xda8000; was 5936K, overlapping the first 16 KiB of assets), and
- *   assets ends at 0xfa0000 (= 2016 KiB) instead of spilling across
- *   slot0_lpcore (0xfa0000..0xfa8000). Nothing wrote there while the
- *   store was read-only; a15 uploads make the guard load-bearing.
+ * ZMK variant of the Coban Tab 1a.
+ *
+ * - BLE HID unplugged; the shield overlay (zmk-config) turns on DWC2 OTG for a
+ *   wired HID + Studio-RPC-CDC composite, handing GPIO19/20 from Serial/JTAG to
+ *   OTG at run time (no eFuse), so flashing stays on the ROM loader while the
+ *   console and shell move to UART0 (GPIO43/44, P1 header).
+ * - Settings live in the labelled 192 KiB `storage` partition; Wi-Fi is off.
+ * - PSRAM (8 MB octal) is enabled: the display stream and the LVGL heap live
+ *   there.
+ * - `assets` (2016 KiB @ 0xda8000, manifest + blobs from
+ *   app/scripts/display-assets/pack_assets.py) is carved out of the unused
+ *   MCUboot OTA slot. The arithmetic is load-bearing: slot1 must end exactly at
+ *   0xda8000 (0x7e0000 + 5920K) and assets at 0xfa0000, or uploads would overlap
+ *   slot1's tail or slot0_lpcore.
  */
 
 &wifi {

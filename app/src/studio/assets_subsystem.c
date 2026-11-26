@@ -5,12 +5,9 @@
  */
 
 /*
- * Studio `assets` subsystem (backlog a14 list/activate, a15 upload +
- * delete): manifest list, activate, chunked upload and manifest
- * delete over the a12/a15 asset store and the anim layer's
- * active-asset seam. This file maps proto <-> the plain-C seams
- * (zmk_anim_*, asset_upload.h) and encodes — it never touches flash
- * or store internals directly (the a14 seam rule).
+ * Studio `assets` subsystem: manifest list/activate, chunked upload and
+ * delete. Maps proto <-> the plain-C seams (zmk_anim_*, asset_upload.h)
+ * and encodes — never touches flash or store internals directly.
  */
 
 #include <zephyr/logging/log.h>
@@ -71,7 +68,7 @@ zmk_studio_Response assets_list_assets(const zmk_studio_Request *req) {
 
     resp.assets.funcs.encode = encode_asset_list;
     resp.ready = zmk_asset_ready();
-    resp.generation = zmk_assets_generation(); /* a15: 0 = factory image */
+    resp.generation = zmk_assets_generation(); /* 0 = factory image */
     (void)zmk_assets_free_bytes(&resp.free_bytes);
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_ANIM)
     snprintk(resp.active, sizeof(resp.active), "%s", zmk_anim_active_get());
@@ -107,10 +104,7 @@ zmk_studio_Response assets_delete_asset(const zmk_studio_Request *req) {
         return ZMK_RPC_SIMPLE_ERR(GENERIC);
     }
     if (!deleted) {
-        /* Not in the manifest: a built-in (firmware art, not
-         * deletable) or an unknown name. The commit-last design means
-         * a built-in name that was once overridden is simply gone with
-         * its entry, so "was builtin-only" == "nothing to delete". */
+        /* Not in the manifest: built-in or unknown name. */
         LOG_INF("assets RPC: delete \"%s\" - no manifest entry", name);
         return ZMK_RPC_SIMPLE_ERR(GENERIC);
     }
@@ -121,9 +115,8 @@ zmk_studio_Response assets_delete_asset(const zmk_studio_Request *req) {
 #endif
 }
 
-/* ---- a15: chunked upload ------------------------------------------- *
- * Thin maps onto asset_upload.h (SECURED writes; one session at a
- * time; the handler never blocks on flash — see asset_upload.c).       */
+/* Chunked upload: thin maps onto asset_upload.h (SECURED writes; one
+ * session at a time; the handler never blocks on flash). */
 
 #if IS_ENABLED(CONFIG_ZMK_STUDIO_ASSET_UPLOAD)
 

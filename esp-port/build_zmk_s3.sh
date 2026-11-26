@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build the ZMK firmware for the ESP32-S3 SuperMini (Phase 6): BLE HID only,
-# 4x4 matrix fixture on the GPIO header, PROCPU (single-core) execution.
+# Build ZMK for the ESP32-S3 SuperMini: BLE HID only, 4x4 matrix fixture on
+# the GPIO header, PROCPU (single-core).
 #
 # Usage (works from anywhere in the repo; sh or bash):
 #   sh esp-port/build_zmk_s3.sh                 # full build (needs hal_espressif blobs)
@@ -9,30 +9,22 @@
 #   sh esp-port/build_zmk_s3.sh --log           # build with verbose logging
 #
 # Options:
-#   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
-#                proprietary blobs are not needed. Fetch them for a real image:
-#                west blobs fetch hal_espressif)
-#   -l, --log    Add the zmk-usb-logging snippet: a dedicated "ZMK Logging"
-#                CDC-ACM on the board's USB port, console + shell moved to
-#                it. Also settable via env ZMK_BUILD_LOG=1.
+#   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; for a real
+#                image fetch the blobs first: west blobs fetch hal_espressif)
+#   -l, --log    zmk-usb-logging snippet: a dedicated "ZMK Logging" CDC;
+#                console + shell move to it. Also ZMK_BUILD_LOG=1.
 #   -f, --flash  Run west flash after building
 #   -h, --help   Show help
 #
-# The 4x4 test keymap lives in the external ZMK config repo (sibling of this
-# repo by default): $ZMK_CONFIG/esp32s3_matrix_fixture.keymap. Override the
-# location with the ZMK_CONFIG environment variable.
+# The 4x4 test keymap lives in the external config repo:
+# $ZMK_CONFIG/esp32s3_matrix_fixture.keymap (default: sibling "zmk-config").
 #
-# The ESP32 toolchain (Espressif xtensa-esp32s3-elf) is NOT in the ZMK ARM dev
-# image. Install it first — see esp-port/toolchain-esp32.md. This script sets
-# the toolchain env vars for you (scoped to this process only), and uses
-# -p always so a stale CMake cache can't pin the wrong toolchain variant.
-
-# POSIX sh compatible (works under sh/dash and bash). No pipelines are used,
-# so "set -o pipefail" is not needed.
+# The Espressif toolchain (xtensa-esp32s3-elf) is NOT in the ZMK ARM dev image
+# — install it first, see esp-port/toolchain-esp32.md. Env vars below are
+# process-scoped, and -p always keeps a stale CMake cache from pinning the
+# wrong toolchain variant.
 set -eu
 
-# Run from the workspace root (parent of esp-port/) so the paths resolve
-# correctly, regardless of where the script is invoked.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -88,18 +80,14 @@ while [ $# -gt 0 ]; do
 done
 
 # --- ESP32 toolchain (see esp-port/toolchain-esp32.md) ---
-# Zephyr 4.4 removed the legacy "espressif" toolchain variant (upstream
-# commit "cmake: remove deprecated espressif toolchain variant"). Espressif
-# targets now build with the Zephyr SDK (which bundles the Xtensa/RISC-V
-# toolchains) or with a generic cross-compile toolchain. The Zephyr SDK
-# installed here lacks the Xtensa toolchain the S3 needs, so this script
-# uses the Espressif GCC toolchain via the cross-compile variant.
+# Zephyr 4.4 removed the "espressif" toolchain variant and the local SDK lacks
+# the Xtensa toolchain the S3 needs, so use the Espressif GCC via the
+# cross-compile variant.
 export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
 export ESPRESSIF_TOOLCHAIN_PATH="${ESPRESSIF_TOOLCHAIN_PATH:-/opt/espressif/tools}"
 export CROSS_COMPILE="${CROSS_COMPILE:-xtensa-esp32s3-elf-}"
 export TOOLCHAIN_HOME="$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin"
-# ~/.local/bin for a pip --user esptool (required by the ESP32 SOC cmake for
-# image generation: pip3 install --user --break-system-packages 'esptool>=5.0.2')
+# ~/.local/bin: pip --user esptool (>=5.0.2), required for ESP32 image generation
 export PATH="$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin:$HOME/.local/bin:$PATH"
 
 if [ ! -x "$ESPRESSIF_TOOLCHAIN_PATH/xtensa-esp32s3-elf/bin/${CROSS_COMPILE}gcc" ]; then
@@ -125,20 +113,16 @@ if [ "$NO_BLOBS" = yes ]; then
 fi
 SNIPPETS=""
 if [ "$DO_LOG" = yes ]; then
-  # Canonical ZMK debug path. The esp32s3-usb-otg snippet provides the
-  # zephyr_udc0 label (usb_otg ships disabled and unlabelled in the board
-  # dts) and MUST lead: DTS resolves label references in stream order.
+  # The esp32s3-usb-otg snippet provides the zephyr_udc0 label and MUST lead:
+  # DTS resolves label references in stream order.
   SNIPPETS="-S esp32s3-usb-otg -S zmk-usb-logging"
 fi
 
 echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
-# Note: in this west version -S means --snippet; the shield is passed as
-# -DSHIELD (same as esp-port/build_zmk_c3.sh).
+# -S means --snippet in this west version; the shield is passed as -DSHIELD.
 # shellcheck disable=SC2086
-# CROSS_COMPILE is passed via the environment (the CMake cache variable is
-# typed PATH and mangles a relative prefix); TOOLCHAIN_HOME has no env
-# fallback, so it goes on the command line.
-# shellcheck disable=SC2086
+# CROSS_COMPILE goes via the environment (the CMake cache var is typed PATH and
+# mangles a relative prefix); TOOLCHAIN_HOME has no env fallback, so -D here.
 west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always $SNIPPETS \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
      -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS

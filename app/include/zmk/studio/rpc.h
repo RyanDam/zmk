@@ -204,8 +204,7 @@ typedef void *(*zmk_rpc_tx_user_data_func)(void);
 
 struct zmk_rpc_transport {
     enum zmk_transport transport;
-    /** Transport id from ZMK_RPC_TRANSPORT (e.g. "uart", "gatt"), used
-     *  by CONFIG_ZMK_STUDIO_RPC_TRANSPORT_UART_PREFERRED selection. */
+    /** Transport id string from ZMK_RPC_TRANSPORT (e.g. "uart"), used by transport selection. */
     const char *name;
 
     zmk_rpc_tx_user_data_func tx_user_data;

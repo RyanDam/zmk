@@ -102,8 +102,7 @@ ZMK_RPC_TRANSPORT(uart, ZMK_TRANSPORT_USB, start_rx, stop_rx, NULL, tx_notify);
  * data to the message queue.
  */
 static void serial_cb(const struct device *dev, void *user_data) {
-    /* uart_irq_update() returns void as of Zephyr 4.5: it refreshes the cached
-     * IRQ state and cannot report failure, so there is nothing to check. */
+    /* uart_irq_update() returns void as of Zephyr 4.5: nothing to check. */
     uart_irq_update(uart_dev);
 
     if (uart_irq_rx_ready(uart_dev)) {
@@ -185,20 +184,8 @@ SYS_INIT(uart_rpc_interface_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAU
 
 #if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN) && IS_ENABLED(CONFIG_ZMK_USB_DEVICE)
 
-/*
- * The device_next CDC ACM class does not re-enqueue its bulk-OUT RX buffer
- * after a suspend/resume cycle: usbd_cdc_acm_resumed() only clears the
- * SUSPENDED flag, and re-arming RX on resume is an unimplemented TODO in the
- * driver. The RX buffer is only enqueued by the rx_fifo work, which bails out
- * while the class is suspended. So if rx_start() runs while the device is
- * suspended (common during the enumeration churn), the buffer is never
- * enqueued and the transport silently stops receiving after the device
- * resumes.
- *
- * Re-arm RX from here whenever USB reports ready. uart_irq_rx_enable() is
- * idempotent, so this is safe to run on every ready transition (configure and
- * resume).
- */
+/* CDC ACM never re-enqueues its bulk-OUT RX buffer after suspend/resume, silently
+ * stopping RX. Re-arm RX on every USB-ready event; uart_irq_rx_enable() is idempotent. */
 static int uart_rpc_listener(const zmk_event_t *eh) {
     struct zmk_usb_conn_state_changed *usb_changed = as_zmk_usb_conn_state_changed(eh);
     if (usb_changed && usb_changed->conn_state == ZMK_USB_CONN_HID) {

@@ -4,11 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-/*
- * Raised when the stats slot config (layout + 4 metric ids) changes —
- * screen taps, the Studio RPC (a14), or a settings load. The stats
- * screen rebuilds from it; the RPC mapper republishes it to the host.
- */
+/* Raised when the stats slot config (layout + 4 metric ids) changes. */
 
 #pragma once
 

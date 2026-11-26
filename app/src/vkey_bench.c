@@ -1,18 +1,10 @@
 /*
- * a13 forensics bench (CONFIG_ZMK_VKEY_BENCH): firmware-resident
- * position-edge hammer with NO console at all.
+ * Forensics bench (CONFIG_ZMK_VKEY_BENCH): firmware-resident
+ * position-edge hammer with NO console at all — if the wedge persists
+ * without the USB-Serial-JTAG console in the loop, it is pure BLE TX.
  *
- * Every scripted repro so far fired taps through the shell over the
- * ESP32-S3's own USB-Serial-JTAG console — so "died at tap ~5-10 with a
- * live BLE link" always co-packed BLE notification TX with USJ console
- * traffic on the same chip. This build compiles SHELL and LOG out and
- * hammers the keymap itself: if the wedge persists, it is pure BLE TX;
- * if it survives, the wedge needs the console in the loop (and the
- * product fix — production has no console anyway — sidesteps it).
- *
- * Liveness = watch the Mac: keystrokes keep arriving / device stays
- * "Connected" in Bluetooth settings. Position 9, 80 ms hold, every 500 ms
- * (same shape as /tmp/tab1a-repro-v2.py). Bench only; never product.
+ * Liveness = watch the Mac. Position 9, 80 ms hold, every 500 ms.
+ * Bench only; never product.
  */
 
 #include <zephyr/kernel.h>

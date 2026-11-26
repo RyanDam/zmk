@@ -5,13 +5,10 @@
  */
 
 /*
- * Studio `stats` subsystem (backlog a14): host-pushed machine vitals
- * onto the a11 feed seam. Port of pad10a's 0x53 set_stats_config /
- * 0x54 set_stats_data. Data frames write through zmk_stats_update()
- * only (transient, no persist, no log spam); config through
- * zmk_stats_config_set(), which persists and raises the event this
- * subsystem maps back to a notification (so on-screen tap edits are
- * visible to the host as well).
+ * Studio `stats` subsystem: host-pushed machine vitals onto the stats feed
+ * seam. Data frames: zmk_stats_update() only (transient, no persist);
+ * config: zmk_stats_config_set() (persists + raises the mapped event, so
+ * on-screen tap edits reach the host too).
  */
 
 #include <zephyr/logging/log.h>
@@ -61,16 +58,13 @@ zmk_studio_Response stats_set_stats_config(const zmk_studio_Request *req) {
             (uint8_t)(i < (int)in->metric_ids_count ? in->metric_ids[i] : ZMK_STATS_NONE);
     }
 
-    /* clamp + persist + event (the screen rebuilds from the event, same
-     * path as a tap). */
-    int err = zmk_stats_config_set(&next);
+    int err = zmk_stats_config_set(&next); /* clamp + persist + event */
 
     return STATS_RESPONSE(set_stats_config, err == 0);
 }
 
-/* Live display frames (pad10a 0x54 had no get-handler either): cheap,
- * frequent, nothing persisted — hence UNSECURED, and the reply is a
- * bare ack so the host can pace itself. */
+/* Live data frames: cheap, nothing persisted — hence UNSECURED; the
+ * bare-ack reply lets the host pace itself. */
 zmk_studio_Response stats_push_stats_data(const zmk_studio_Request *req) {
     const zmk_stats_PushStatsDataRequest *push =
         &req->subsystem.stats.request_type.push_stats_data;

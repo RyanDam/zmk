@@ -3,9 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Screen-building helpers implementation. The tap math is the a09
- * clock-screen detector moved here so pomodoro and stats reuse it
- * verbatim.
+ * Screen-building helpers implementation.
  */
 
 #include <string.h>
@@ -23,9 +21,7 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-/* ------------------------------------------------------------------ */
-/* LVGL pointer indev (feeds clickable widgets)                        */
-/* ------------------------------------------------------------------ */
+/* LVGL pointer indev (feeds clickable widgets) */
 
 static atomic_t pt_x;
 static atomic_t pt_y;
@@ -51,9 +47,8 @@ static void ui_input_cb(struct input_event *evt, void *user_data) {
     /*
      * Hardware-rotation route: LVGL's display rotation stays 0 (the driver
      * reports swapped caps instead), so its indev correction is a no-op and
-     * this feed must supply logical coordinates itself. On the default
-     * software route we must NOT do this - lv_indev rotates raw points
-     * against lv_display_get_rotation() already.
+     * this feed must supply logical coordinates itself — unlike the software
+     * route, where lv_indev rotates against lv_display_get_rotation() already.
      */
     int32_t x, y;
 
@@ -123,11 +118,10 @@ lv_obj_t *zmk_ui_flex(lv_obj_t *parent, lv_flex_flow_t flow, int gap) {
     lv_obj_t *box = lv_obj_create(parent);
 
     lv_obj_remove_style_all(box);
-    /* Plain lv_obj is SCROLLABLE by default in this LVGL: a scrollable
-     * ancestor claims the finger after ~10 px (indev scroll_limit),
-     * rubber-bands, and cancels the pressed child (PRESS_LOST) — taps
-     * "die" on wobble. Screen paging is manual gesture code (screen_mgr),
-     * nothing here ever wants to scroll. */
+    /* Plain lv_obj is SCROLLABLE by default in this LVGL: a scrollable ancestor
+     * claims the finger after ~10 px (indev scroll_limit), rubber-bands and
+     * cancels the pressed child (PRESS_LOST). Screen paging is manual gesture
+     * code (screen_mgr), so nothing here ever wants to scroll. */
     lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(box, flow);
@@ -171,10 +165,8 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt) {
             return;
         }
         if (evt->value) {
-            /* Same press-edge rule as the manager's swipe detector: the
-             * driver re-asserts BTN_TOUCH=1 every poll, so latch the start
-             * point only on the edge (otherwise a swipe back to its origin
-             * still measures dx≈0 and fires as a "tap"). */
+            /* The driver re-asserts BTN_TOUCH=1 every poll, so the start point
+             * may only be latched on the press edge. */
             if (!tap->pressed) {
                 tap->pressed = true;
                 tap->start_x = tap->x;
@@ -213,12 +205,10 @@ void zmk_ui_tap_input(struct zmk_ui_tap *tap, struct input_event *evt) {
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Page-bound tickers + display-queue plumbing                         */
-/* ------------------------------------------------------------------ */
+/* Page-bound tickers + display-queue plumbing */
 
-/* clock/pomodoro/stats 1 Hz ticks + the pomodoro 100 ms breath/fill tick;
- * headroom so a12/a13 landers do not silently starve (warn below). */
+/* clock/pomodoro/stats 1 Hz ticks + the pomodoro 100 ms breath/fill tick,
+ * with headroom so page landers do not silently starve (warn below). */
 #define PAGE_TIMERS_MAX 6
 
 struct page_timer {

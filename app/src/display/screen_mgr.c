@@ -3,21 +3,13 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * Screen manager + touch shell implementation (backlog a08).
+ * Screen manager + touch shell; its activity signal is touch, not keypress.
  *
- * Pad 10a had these behaviors split across housekeeping_task_user and
- * graphics/ui.h (screen id enum + change_screen, deferred home restore,
- * idle backlight-off with pomodoro suppression — pad10a.c:81-150,
- * graphics/ui.h:33-46). Here they become one ZMK/LVGL module whose activity
- * signal is touch, not keypress, because this board has no keys yet (h04).
- *
- * Navigation is gesture-based but NOT LVGL-gesture-based: LVGL 9.5 only
- * emits LV_EVENT_GESTURE when CONFIG_LV_USE_GESTURE_RECOGNITION (and
- * LV_USE_FLOAT) is on, and the panel's full-refresh ~16fps ceiling (risk
- * R5) makes a flick-following scroll container repaint worse than a single
- * discrete move animation. So the swipe is recognized from the raw Zephyr
- * input events of the touch device (which also reset the idle timer — the
- * same events feed LVGL's pointer via LV_Z_POINTER_FROM_CHOSEN_TOUCH).
+ * Swipes are recognised from the raw Zephyr input events of the touch device,
+ * not LVGL gestures: LVGL 9.5 needs CONFIG_LV_USE_GESTURE_RECOGNITION (and
+ * LV_USE_FLOAT) for LV_EVENT_GESTURE, and on a ~16 fps full-refresh panel a
+ * flick-following scroll container repaints worse than one discrete move
+ * animation. Those events also reset the idle timer and feed LVGL's pointer.
  */
 
 #include <string.h>
@@ -47,7 +39,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <zmk/settings_blob.h>
 
-#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_TOUCH_DEBUG)
+#if IS_ENABLED(CONFIG_AXS15231B_TOUCH) && IS_ENABLED(CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY_TOUCH)
 /* Only the debug overlay reads the controller's watchdog counters. */
 #include <zmk/axs15231b_recovery.h>
 #endif
@@ -57,9 +49,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* A swipe must travel this far horizontally and be mostly horizontal. */
 #define SWIPE_MIN_DX (ZMK_GRID_UNIT * 8) /* 64 px */
 
-/* ------------------------------------------------------------------ */
-/* Screen registry (sorted view of the linker section)                 */
-/* ------------------------------------------------------------------ */
+/* Screen registry (sorted view of the linker section) */
 
 static const struct zmk_display_screen *registry[MAX_SCREENS];
 static int registry_count;
@@ -86,8 +76,7 @@ static void registry_collect(void) {
         registry[registry_count++] = item;
     }
 
-    /* Stable insertion sort by `order` so page order is deterministic
-     * regardless of link order. */
+    /* Insertion sort by `order`: page order independent of link order. */
     for (insertion = 1; insertion < registry_count; insertion++) {
         s = registry[insertion];
         for (shift = insertion; shift > 0 && registry[shift - 1]->order > s->order; shift--) {
@@ -112,9 +101,7 @@ const struct zmk_display_screen *zmk_display_screen_get(int index) {
 
 int zmk_display_screen_find(const char *name) { return screen_find_locked(name); }
 
-/* ------------------------------------------------------------------ */
-/* Pages, page dots, and navigation (display work queue only)          */
-/* ------------------------------------------------------------------ */
+/* Pages, page dots, and navigation (display work queue only) */
 
 struct page {
     lv_obj_t *obj;               /* NULL until the page is first shown */
@@ -126,8 +113,7 @@ static lv_obj_t *splash_page;
 
 static atomic_t current_idx = ATOMIC_INIT(0);
 static atomic_t pending_nav = ATOMIC_INIT(-1);
-/* Statically defined (K_WORK_DEFINE): any submit before manager init must
- * still find a valid handler — a bare zeroed k_work would jump to 0. */
+/* Static K_WORK_DEFINE: a submit before init must find a valid handler. */
 static void nav_work_cb(struct k_work *work);
 K_WORK_DEFINE(display_nav_work, nav_work_cb);
 
@@ -142,15 +128,12 @@ static void build_dots(struct page *page, int index) {
     for (int i = 0; i < n; i++) {
         lv_obj_t *pip = lv_obj_create(page->obj);
         lv_obj_remove_style_all(pip);
-        /* Readout only: plain lv_obj is CLICKABLE by default in this LVGL,
-         * and these hint pips must never eat a page's touch (they hover
-         * right over the key screen's bottom band). */
+        /* Hint pips must never eat a page's touch (plain lv_obj is clickable). */
         lv_obj_remove_flag(pip, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_size(pip, dot, dot);
         lv_obj_set_style_radius(pip, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(pip, LV_OPA_COVER, 0);
-        /* Align each pip's centre relative to BOTTOM_MID: the flex-free math
-         * keeps them pixel-exact on the full-refresh panel. */
+        /* Pip centres align to BOTTOM_MID: exact pixels without flex math. */
         lv_obj_align(pip, LV_ALIGN_BOTTOM_MID, x + i * (dot + gap) + dot / 2 - hor_res / 2,
                      -ZMK_GRID_MARGIN / 2);
         lv_obj_add_style(pip,
@@ -181,10 +164,9 @@ static void restyle_dots(int index) {
     }
 }
 
-/* Page dots are a hint, not furniture (owner pass 2026-11-23): shown
- * when a navigation lands, auto-hidden after a beat. Hiding covers ALL
- * cached pages — during the slide animation the previous page's row is
- * on screen too, and every row must go quiet together. */
+/* Dots are a hint: shown when a navigation lands, auto-hidden after a beat.
+ * Hiding covers every cached page, because mid-slide the outgoing page's row is
+ * still on screen and both rows must go quiet together. */
 #define DOTS_HINT_MS 2000
 
 static void dots_set_visible(bool vis) {
@@ -223,15 +205,13 @@ static void dots_show_and_hint(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* TEMP debug overlay: on-glass touch readout (bench harness A06)      */
-/*                                                                     */
-/* Behind CONFIG_ZMK_DISPLAY_TOUCH_DEBUG (off in product builds): it   */
-/* paints over every page and registers a page in the swipe order. The */
-/* stubs at the end of the block keep the call sites in page_get(),    */
-/* nav_apply() and mgr_touch_cb() readable either way.                 */
+/* Bench overlay: on-glass touch readout                               */
 /* ------------------------------------------------------------------ */
+/* Behind CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY_TOUCH: it paints over every page and
+ * adds a page to the swipe order. The stubs at the end of the block keep the
+ * call sites in page_get(), nav_apply() and mgr_touch_cb() readable either way. */
 
-#if IS_ENABLED(CONFIG_ZMK_DISPLAY_TOUCH_DEBUG)
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY_TOUCH)
 
 static atomic_t dbg_events;
 static atomic_t dbg_swipes;
@@ -313,8 +293,7 @@ static void dbg_refresh_fn(struct k_work *work) {
                  frozen ? "FRZ" : "ok", same, stale, rec, fr[0], fr[1], fr[2], fr[3], fr[4], fr[5],
                  fr[6], fr[7]);
         lv_label_set_text(dbg_big, buf);
-        /* dbg_x/dbg_y are RAW (the text above reports them); the dot lives
-         * on the logical page, so plot it where the finger really is. */
+        /* dbg_x/dbg_y are RAW panel coords; the dot plots the logical page. */
         int dx = x, dy = y;
 
         zmk_ui_touch_to_logical(&dx, &dy);
@@ -352,8 +331,8 @@ static void touch_dbg_refresh(void) {
     k_work_submit_to_queue(zmk_display_work_q(), &dbg_overlay_work);
 }
 
-/* Tap on the raw input stream: position, press state, and a refresh kept to
- * every 5th event so the readout never adds bus chatter of its own. */
+/* Raw-stream tap: position, press state, refresh every 5th event so the
+ * readout adds no bus chatter. */
 static void touch_dbg_event(struct input_event *evt) {
     atomic_inc(&dbg_events);
     if (evt->type == INPUT_EV_ABS) {
@@ -370,7 +349,7 @@ static void touch_dbg_event(struct input_event *evt) {
     }
 }
 
-#else /* !CONFIG_ZMK_DISPLAY_TOUCH_DEBUG */
+#else /* !CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY_TOUCH */
 
 /* The overlay is compiled out, and the verdict strings and counters with it. */
 #define DBG_VERDICT(...)                                                                           \
@@ -384,16 +363,15 @@ static inline void touch_dbg_overlay_create(lv_obj_t *parent) { ARG_UNUSED(paren
 static inline void touch_dbg_refresh(void) {}
 static inline void touch_dbg_event(struct input_event *evt) { ARG_UNUSED(evt); }
 
-#endif /* CONFIG_ZMK_DISPLAY_TOUCH_DEBUG */
+#endif /* CONFIG_ZMK_DISPLAY_DEBUG_OVERLAY_TOUCH */
 
 static lv_obj_t *page_get(int index) {
     struct page *page = &pages[index];
 
     if (page->obj == NULL) {
         page->obj = lv_obj_create(NULL);
-        /* Default-SCROLLABLE roots would hijack every press that drifts
-         * past the indev scroll_limit (see zmk_ui_flex): PRESS_LOST to
-         * the widget under the finger, tap lost. Paging is manual. */
+        /* Default-SCROLLABLE roots hijack any press that drifts past
+         * scroll_limit (PRESS_LOST, tap lost), so paging stays manual. */
         lv_obj_remove_flag(page->obj, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_style(page->obj, zmk_display_style(ZMK_STYLE_SCREEN), 0);
         registry[index]->create(page->obj);
@@ -440,20 +418,16 @@ static void nav_apply(void) {
         anim = LV_SCREEN_LOAD_ANIM_MOVE_RIGHT;
     }
 
-    /* Full-refresh panel: ~61 ms per frame, so the animation is short and
-     * no easing can pretend otherwise (R5). auto_del frees the splash but
-     * keeps the cached pages. */
+    /* ~61 ms per full frame, so the animation is short; auto_del frees the
+     * splash and keeps the cached pages. */
     lv_screen_load_anim(page, anim, 250, 0, from_splash);
     touch_dbg_refresh();
     atomic_set(&current_idx, target);
     restyle_dots(target);
     dots_show_and_hint();
 
-    /* The last-shown page becomes tomorrow's home (owner pass
-     * 2026-11-23): every real navigation re-persists the splash target,
-     * so a reboot lands back where the user left off. No-op when the
-     * splash already landed on the persisted page (no boot-time write),
-     * and no debounce — swipes are rare enough for NVS. */
+    /* The last-shown page becomes tomorrow's home; no write when the splash
+     * already landed there, and no debounce (swipes are rare for NVS). */
     if (target != persisted_home_idx) {
         persisted_home_idx = target;
         screens_settings_save(target);
@@ -461,9 +435,8 @@ static void nav_apply(void) {
 
     LOG_INF("screen -> %d (%s)", target, registry[target]->name);
 
-    /* a14: the Studio `screen` notification mapper follows the page from
-     * here — every path (swipe, dots, RPC, home restore) lands in
-     * nav_apply, so one raise covers all of them. */
+    /* The Studio `screen` mapper follows from here: every path lands in
+     * nav_apply. */
     struct zmk_display_screen_changed ev = {.index = target};
 
     strncpy(ev.name, registry[target]->name, sizeof(ev.name) - 1);
@@ -510,12 +483,10 @@ int zmk_display_screen_prev(void) {
 
 /* ------------------------------------------------------------------ */
 /* Home screen persistence                                             */
-/*                                                                     */
-/* "Home" follows the last navigation (nav_apply re-persists it), so    */
-/* the post-splash page is wherever the user left off across reboots.  */
-/* zmk_display_screen_set_home() (a14's seam) overrides until the next */
-/* swipe.                                                              */
 /* ------------------------------------------------------------------ */
+/* "Home" follows the last navigation (nav_apply re-persists it), so a reboot
+ * lands where the user left off; zmk_display_screen_set_home() overrides until
+ * the next swipe. */
 
 #if IS_ENABLED(CONFIG_SETTINGS)
 #define SCREENS_SETTINGS_SUBTREE "display/screens"
@@ -561,12 +532,10 @@ int zmk_display_screen_set_home(int index) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Idle backlight policy: full → dim → blank, wake on touch            */
-/*                                                                     */
-/* A blank timeout of 0 (CONFIG_ZMK_DISPLAY_BLANK_TIMEOUT_MS) drops    */
-/* the last rung: idle dims and stays dimmed until a touch brings the  */
-/* backlight back to full.                                             */
+/* Idle backlight policy: full -> dim -> blank, wake on touch          */
 /* ------------------------------------------------------------------ */
+/* A blank timeout of 0 (CONFIG_ZMK_DISPLAY_BLANK_TIMEOUT_MS) drops the last
+ * rung: idle dims and stays dimmed until a touch restores full. */
 
 enum idle_state { IDLE_ACTIVE, IDLE_DIMMED, IDLE_BLANKED };
 
@@ -583,11 +552,9 @@ static void idle_timer_cb(struct k_timer *timer) {
 K_TIMER_DEFINE(idle_timer, idle_timer_cb, NULL);
 
 /*
- * Backlight PWM, straight from the panel node's `pwms` property (the AXS
- * driver owns only on/off through display blanking; dimming needs a
- * mid-level duty, and this is the one property both agree on). A 100 % duty
- * never lit the backlight through the LEDC channel idle level, so full on
- * is period-1 — same as the driver (axs15231b.c:228-248).
+ * Backlight PWM straight from the panel node's `pwms` (the AXS driver owns
+ * only on/off; dimming needs a mid duty). 100 % duty never lit the backlight
+ * through the LEDC idle level, so full on is period-1, as in the driver.
  */
 #if DT_HAS_CHOSEN(zephyr_display) && DT_NODE_HAS_PROP(DT_CHOSEN(zephyr_display), pwms)
 static const struct pwm_dt_spec backlight_pwm = PWM_DT_SPEC_GET(DT_CHOSEN(zephyr_display));
@@ -678,9 +645,7 @@ void zmk_display_blank_unlock(void) {
     touch_activity();
 }
 
-/* ------------------------------------------------------------------ */
-/* Touch: swipe gestures + the activity signal                         */
-/* ------------------------------------------------------------------ */
+/* Touch: swipe gestures + the activity signal */
 
 static struct {
     bool pressed;
@@ -689,9 +654,8 @@ static struct {
     uint16_t raw_x, raw_y; /* last raw pair, for the axis remap */
 } touch;
 
-/* The touch driver reports raw panel coordinates; the swipe contract
- * ("finger moves right = next page") is about the LOGICAL screen, so
- * everything below runs on remapped coordinates (ui_helpers.h). */
+/* The driver reports raw panel coordinates; the swipe contract is about the
+ * logical screen, so remap first (ui_helpers.h). */
 static void touch_raw_updated(uint16_t value, bool is_x) {
     int32_t lx, ly;
 
@@ -710,7 +674,7 @@ static void touch_raw_updated(uint16_t value, bool is_x) {
 static void mgr_touch_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
 
-    /* TEMP debug overlay (A06): live counters + throttled refresh. */
+    /* Debug overlay: live counters, throttled refresh. */
     touch_dbg_event(evt);
 
     switch (evt->type) {
@@ -724,8 +688,7 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
         }
         touch_activity();
         if (!touch.pressed) {
-            /* Coordinates can arrive with/before the press; latch a start
-             * point so a report stream that starts mid-motion still works. */
+            /* Coords can arrive with/before the press: latch a start point. */
             touch.start_x = touch.x;
             touch.start_y = touch.y;
         }
@@ -737,9 +700,8 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
         }
         touch_activity();
         if (evt->value) {
-            /* BTN_TOUCH=1 arrives on EVERY pressed frame (the driver polls):
-             * latch the start point only on the press edge, or it chases
-             * the finger and dx/dy collapse to the last poll. */
+            /* BTN_TOUCH=1 arrives on every pressed frame (polled driver): latch
+             * only on the press edge, or the start chases the finger. */
             if (!touch.pressed) {
                 touch.pressed = true;
                 touch.start_x = touch.x;
@@ -754,7 +716,7 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
             int32_t ady = dy < 0 ? -dy : dy;
 
             touch.pressed = false;
-            /* TEMP debug overlay (A06): verdict = outcome + deciding math. */
+            /* Debug overlay: verdict plus the deciding math. */
             if (adx >= SWIPE_MIN_DX && adx >= 2 * ady) {
                 DBG_SWIPE();
                 DBG_VERDICT("SWIPE %s dx%ld dy%ld ok(%ld>=64,%ld>%ld)", dx < 0 ? "next>" : "<prev",
@@ -778,9 +740,7 @@ static void mgr_touch_cb(struct input_event *evt, void *user_data) {
 }
 INPUT_CALLBACK_DEFINE(NULL, mgr_touch_cb, NULL);
 
-/* ------------------------------------------------------------------ */
-/* Boot splash → home                                                  */
-/* ------------------------------------------------------------------ */
+/* Boot splash -> home */
 
 /* Implemented in boot_screen.c. */
 lv_obj_t *zmk_display_boot_screen_create(void);
@@ -803,18 +763,13 @@ static void splash_timer_cb(struct k_timer *timer) {
 }
 K_TIMER_DEFINE(splash_timer, splash_timer_cb, NULL);
 
-/* ------------------------------------------------------------------ */
-/* Init                                                                */
-/* ------------------------------------------------------------------ */
+/* Init */
 
 int zmk_display_screen_mgr_init(void) {
     int home_idx = 0;
 
-    /* Before any gif opens (the splash's own + the persisted-home page
-     * built shortly after): the store's SYS_INIT runs at APPLICATION
-     * priority, which is NOT guaranteed to precede this first page
-     * build — an unprobed store answers "no assets" and the first
-     * frames render black (bench 2026-11-24). */
+    /* Probe the store before any gif opens: its SYS_INIT runs at APPLICATION
+     * priority, which need not precede this first page build. */
     zmk_assets_probe_early();
 
     zmk_ui_indev_init(); /* clickable widgets need LVGL pointer events */
@@ -837,8 +792,7 @@ int zmk_display_screen_mgr_init(void) {
         touch_dbg_overlay_create(splash_page); /* TEMP debug overlay (A06) */
         zmk_display_debug_layout_watch(splash_page);
         splash_home_idx = home_idx;
-        /* nav_apply() loads the home page (and frees the splash) when the
-         * splash expires. */
+        /* nav_apply() loads home and frees the splash when it expires. */
         lv_screen_load(splash_page);
         k_timer_start(&splash_timer, K_MSEC(CONFIG_ZMK_DISPLAY_BOOT_SPLASH_MS), K_NO_WAIT);
     } else {
@@ -846,8 +800,8 @@ int zmk_display_screen_mgr_init(void) {
         k_work_submit_to_queue(zmk_display_work_q(), &display_nav_work);
     }
 
-    /* The idle policy may run during the splash too: its shortest timeout
-     * is minutes away, so it can only ever see IDLE_ACTIVE there. */
+    /* The idle policy may run during the splash; its shortest timeout is
+     * minutes away. */
     k_timer_start(&idle_timer, K_MSEC(IDLE_POLICY_PERIOD_MS), K_MSEC(IDLE_POLICY_PERIOD_MS));
 
     return 0;
