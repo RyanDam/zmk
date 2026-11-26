@@ -183,7 +183,7 @@ static int uart_rpc_interface_init(void) {
 
 SYS_INIT(uart_rpc_interface_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 
-#if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
+#if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN) && IS_ENABLED(CONFIG_ZMK_USB_DEVICE)
 
 /*
  * The device_next CDC ACM class does not re-enqueue its bulk-OUT RX buffer
@@ -211,4 +211,4 @@ static int uart_rpc_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(uart_rpc, uart_rpc_listener);
 ZMK_SUBSCRIPTION(uart_rpc, zmk_usb_conn_state_changed);
 
-#endif // IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
+#endif /* CONFIG_UART_INTERRUPT_DRIVEN && CONFIG_ZMK_USB_DEVICE */

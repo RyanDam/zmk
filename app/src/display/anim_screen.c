@@ -83,8 +83,9 @@ static void anim_rebuild(void) {
     lv_obj_clean(screen_root);
 
     if (cur_gif < 0 || cur_gif >= total) {
-        /* First build or store shrank under us: prefer "animbg". */
-        const struct zmk_asset_info *bg = zmk_asset_find("animbg");
+        /* First build or store shrank under us: prefer the active
+         * asset (a14 `activate_asset`; factory default "animbg"). */
+        const struct zmk_asset_info *bg = zmk_asset_find(zmk_anim_active_get());
         int pick = 0;
 
         for (int i = 0; i < total; i++) {

@@ -16,11 +16,15 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/settings/settings.h>
 #include <zephyr/spinlock.h>
 
+#include <zmk/events/stats_config_changed.h>
 #include <zmk/stats.h>
 
 LOG_MODULE_REGISTER(zmk_stats, CONFIG_ZMK_LOG_LEVEL);
+
+#include <zmk/settings_blob.h>
 
 struct sample {
     uint16_t value;
@@ -99,6 +103,77 @@ const char *zmk_stats_unit_suffix(uint8_t unit_id) {
     }
     return units[unit_id];
 }
+
+/* ------------------------------------------------------------------ */
+/* Display config (a14): layout + slot metrics, persisted              */
+/* ------------------------------------------------------------------ */
+
+static struct zmk_stats_config config = {
+    .layout = ZMK_STATS_LAYOUT_2X2,
+    .metric_ids = {ZMK_STATS_CPU_UTIL, ZMK_STATS_GPU_UTIL, ZMK_STATS_RAM, ZMK_STATS_CPU_TEMP},
+};
+
+static void config_clamp(struct zmk_stats_config *c) {
+    if (c->layout >= ZMK_STATS_LAYOUT_COUNT) {
+        c->layout = ZMK_STATS_LAYOUT_2X2;
+    }
+    for (int i = 0; i < ZMK_STATS_SLOT_COUNT; i++) {
+        if (c->metric_ids[i] >= ZMK_STATS_ID_COUNT) {
+            c->metric_ids[i] = ZMK_STATS_NONE;
+        }
+    }
+}
+
+const struct zmk_stats_config *zmk_stats_config_get(void) { return &config; }
+
+int zmk_stats_config_set(const struct zmk_stats_config *cfg) {
+    if (cfg == NULL) {
+        return -EINVAL;
+    }
+
+    struct zmk_stats_config next = *cfg;
+
+    config_clamp(&next);
+
+    bool layout_changed = next.layout != config.layout;
+
+    if (memcmp(&next, &config, sizeof(next)) == 0) {
+        return 0; /* idempotent: no write, no event */
+    }
+
+    config = next;
+
+#if IS_ENABLED(CONFIG_SETTINGS)
+    zmk_settings_blob_save("display/stats/config", &config, sizeof(config), "stats config");
+#endif
+    LOG_INF("stats config: layout %u, metrics %u/%u/%u/%u", config.layout, config.metric_ids[0],
+            config.metric_ids[1], config.metric_ids[2], config.metric_ids[3]);
+
+    raise_zmk_stats_config_changed((struct zmk_stats_config_changed){
+        .layout_changed = layout_changed});
+    return 0;
+}
+
+#if IS_ENABLED(CONFIG_SETTINGS)
+static int stats_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
+                                     void *cb_arg) {
+    struct zmk_stats_config loaded;
+    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "config", &loaded, sizeof(loaded),
+                                     "stats config");
+
+    if (err <= 0) {
+        return err;
+    }
+
+    config_clamp(&loaded);
+    config = loaded; /* load precedes any page build; first create uses it */
+    LOG_INF("stats config loaded from settings");
+    return 0;
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(display_stats, "display/stats", NULL, stats_settings_handle_set,
+                               NULL, NULL);
+#endif /* CONFIG_SETTINGS */
 
 /* ------------------------------------------------------------------ */
 /* Mock feed (demo/dev)                                                */

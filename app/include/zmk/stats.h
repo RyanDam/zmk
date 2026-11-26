@@ -79,3 +79,32 @@ const char *zmk_stats_label(uint8_t id);
 
 /** Unit suffix for a unit id ("" for none, "%", " C", " GB" …). */
 const char *zmk_stats_unit_suffix(uint8_t unit_id);
+
+/* ---------------------------------------------------------------- --
+ * Display config (a14): layout + which metric fills which slot.
+ * Persisted ("display/stats/config" blob, same shape the a11 screen
+ * always used); writers are the screen's taps, the Studio RPC and a
+ * settings load — all through zmk_stats_config_set(), which raises
+ * zmk_stats_config_changed so the screen rebuilds.
+ * ------------------------------------------------------------------ */
+
+/** Screen layouts, ids == the persisted blob's layout byte. */
+enum zmk_stats_layout {
+    ZMK_STATS_LAYOUT_2X1 = 0,
+    ZMK_STATS_LAYOUT_2X2,
+    ZMK_STATS_LAYOUT_HYBRID,
+    ZMK_STATS_LAYOUT_2X4,
+    ZMK_STATS_LAYOUT_COUNT
+};
+
+struct zmk_stats_config {
+    uint8_t layout; /* enum zmk_stats_layout                        */
+    uint8_t metric_ids[ZMK_STATS_SLOT_COUNT]; /* enum zmk_stats_id  */
+};
+
+/** Live config; pointer stays valid (copy to mutate). */
+const struct zmk_stats_config *zmk_stats_config_get(void);
+
+/** Clamp + persist + raise zmk_stats_config_changed. Safe from any
+ * thread; no-op (0, no event) when the config is unchanged. */
+int zmk_stats_config_set(const struct zmk_stats_config *cfg);

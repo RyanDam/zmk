@@ -14,6 +14,8 @@
 #include <zephyr/debug/thread_analyzer.h>
 #include <zephyr/logging/log.h>
 
+#include <string.h>
+
 LOG_MODULE_REGISTER(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 
 #include <zmk/endpoints.h>
@@ -268,10 +270,35 @@ K_THREAD_DEFINE(studio_rpc_thread, CONFIG_ZMK_STUDIO_RPC_THREAD_STACK_SIZE, rpc_
 
 static void refresh_selected_transport(void) {
     enum zmk_transport transport = zmk_endpoint_get_selected().transport;
+    struct zmk_rpc_transport *next = NULL;
+
+#if IS_ENABLED(CONFIG_ZMK_STUDIO_RPC_TRANSPORT_UART_PREFERRED)
+    /* Endpoint-less (display-first) devices like the Coban Tab 1a have no
+     * USB HID endpoint to key the transport off, so the UART transport
+     * would never be selected. Pin it by name while the option is on;
+     * endpoint-keyed selection resumes when it is dropped (b06 gives the
+     * OTG CDC-ACM path a real USB endpoint). Matches the id passed to
+     * ZMK_RPC_TRANSPORT(uart, ...) in uart_rpc_transport.c. */
+    STRUCT_SECTION_FOREACH(zmk_rpc_transport, t) {
+        if (t->name != NULL && strcmp(t->name, "uart") == 0) {
+            next = t;
+            break;
+        }
+    }
+#endif
+
+    if (next == NULL) {
+        STRUCT_SECTION_FOREACH(zmk_rpc_transport, t) {
+            if (t->transport == transport) {
+                next = t;
+                break;
+            }
+        }
+    }
 
     k_mutex_lock(&rpc_transport_mutex, K_FOREVER);
 
-    if (selected_transport && selected_transport->transport == transport) {
+    if (selected_transport && selected_transport == next) {
         goto exit_refresh;
     }
 
@@ -285,20 +312,15 @@ static void refresh_selected_transport(void) {
 #endif
     }
 
-    STRUCT_SECTION_FOREACH(zmk_rpc_transport, t) {
-        if (t->transport == transport) {
-            selected_transport = t;
-            if (selected_transport->rx_start) {
-                selected_transport->rx_start();
-            }
-            break;
+    selected_transport = next;
+    if (selected_transport) {
+        if (selected_transport->rx_start) {
+            selected_transport->rx_start();
         }
-    }
-
-    if (!selected_transport) {
-        LOG_WRN("Failed to select a transport! (endpoint transport=%d)", transport);
+        LOG_INF("RPC transport selected: %s (endpoint transport=%d)", selected_transport->name,
+                transport);
     } else {
-        LOG_INF("RPC transport selected for endpoint transport=%d", transport);
+        LOG_WRN("Failed to select a transport! (endpoint transport=%d)", transport);
     }
 
 exit_refresh:

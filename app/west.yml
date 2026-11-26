@@ -32,7 +32,7 @@ manifest:
       path: modules/lib/gui/lvgl
       remote: cobanfirmware
     - name: zmk-studio-messages
-      revision: f5747098d70a056bfe27535a029b150530f95d2a
+      revision: 5511228dc6c89bd3497e4485fe8605c1d005f0f8
       path: modules/msgs/zmk-studio-messages
       remote: cobanfirmware
       repo-path: zmk-studio-messages

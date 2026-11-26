@@ -204,6 +204,9 @@ typedef void *(*zmk_rpc_tx_user_data_func)(void);
 
 struct zmk_rpc_transport {
     enum zmk_transport transport;
+    /** Transport id from ZMK_RPC_TRANSPORT (e.g. "uart", "gatt"), used
+     *  by CONFIG_ZMK_STUDIO_RPC_TRANSPORT_UART_PREFERRED selection. */
+    const char *name;
 
     zmk_rpc_tx_user_data_func tx_user_data;
     zmk_rpc_tx_buffer_notify_func tx_notify;
@@ -219,9 +222,10 @@ struct ring_buf *zmk_rpc_get_tx_buf(void);
 struct ring_buf *zmk_rpc_get_rx_buf(void);
 void zmk_rpc_rx_notify(void);
 
-#define ZMK_RPC_TRANSPORT(name, _transport, _rx_start, _rx_stop, _tx_user_data, _tx_notify)        \
-    STRUCT_SECTION_ITERABLE(zmk_rpc_transport, name) = {                                           \
+#define ZMK_RPC_TRANSPORT(_name, _transport, _rx_start, _rx_stop, _tx_user_data, _tx_notify)       \
+    STRUCT_SECTION_ITERABLE(zmk_rpc_transport, _name) = {                                          \
         .transport = _transport,                                                                   \
+        .name = #_name,                                                                            \
         .rx_start = _rx_start,                                                                     \
         .rx_stop = _rx_stop,                                                                       \
         .tx_user_data = _tx_user_data,                                                             \

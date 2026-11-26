@@ -37,6 +37,7 @@
 #include <zmk/assets.h>
 #include <zmk/display.h>
 #include <zmk/display/screens.h>
+#include <zmk/events/screen_changed.h>
 
 #include "styles.h"
 #include "ui_helpers.h"
@@ -459,6 +460,14 @@ static void nav_apply(void) {
     }
 
     LOG_INF("screen -> %d (%s)", target, registry[target]->name);
+
+    /* a14: the Studio `screen` notification mapper follows the page from
+     * here — every path (swipe, dots, RPC, home restore) lands in
+     * nav_apply, so one raise covers all of them. */
+    struct zmk_display_screen_changed ev = {.index = target};
+
+    strncpy(ev.name, registry[target]->name, sizeof(ev.name) - 1);
+    raise_zmk_display_screen_changed(ev);
 }
 
 static void nav_work_cb(struct k_work *work) {

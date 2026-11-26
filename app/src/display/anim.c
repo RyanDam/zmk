@@ -29,6 +29,8 @@
 
 #include <zmk/assets.h>
 #include <zmk/display/screens.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/assets_changed.h>
 
 #include "anim.h"
 
@@ -45,6 +47,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 struct fs_file {
     const struct zmk_asset_info *asset;
     uint32_t pos;
+    uint32_t epoch; /* store epoch at open; stale handles read as EOF */
 };
 
 static struct fs_file fs_slots[FS_SLOTS];
@@ -70,6 +73,7 @@ static void *fs_open_cb(lv_fs_drv_t *drv, const char *path, lv_fs_mode_t mode) {
         if (fs_slots[i].asset == NULL) {
             fs_slots[i].asset = asset;
             fs_slots[i].pos = 0;
+            fs_slots[i].epoch = zmk_assets_epoch();
             return &fs_slots[i];
         }
     }
@@ -94,6 +98,17 @@ static lv_fs_res_t fs_read_cb(lv_fs_drv_t *drv, void *file_p, void *buf, uint32_
     *br = 0;
     if (f == NULL || f->asset == NULL) {
         return LV_FS_RES_INV_PARAM;
+    }
+
+    /* Generation guard (a15): the store rebuilds its table when an
+     * upload/delete commits. The tick closes players before any
+     * re-probe, so a handle that sees a new epoch is one the tick has
+     * not reaped yet — report EOF (zero bytes, the decoder's stop
+     * signal — instead of streaming bytes of a possibly-recycled
+     * entry. */
+    if (f->epoch != zmk_assets_epoch()) {
+        *br = 0;
+        return LV_FS_RES_OK;
     }
 
     uint32_t left = f->asset->len - f->pos;
@@ -162,11 +177,10 @@ static lv_fs_res_t fs_tell_cb(lv_fs_drv_t *drv, void *file_p, uint32_t *pos_p) {
 static void anim_fs_register(void) {
     static lv_fs_drv_t drv;
 
-    fs_registered = true; /* once: no retry spam on empty stores */
     if (zmk_asset_count() == 0) {
-        return;
+        return; /* empty store now; a15 uploads may register later */
     }
-
+    fs_registered = true;
     lv_fs_drv_init(&drv);
     drv.letter = 'A';
     drv.open_cb = fs_open_cb;
@@ -332,9 +346,20 @@ struct anim_bg_page {
 static struct anim_bg_page bg_pages[ANIM_BG_PAGES_MAX];
 static lv_obj_t *bg_shared; /* NULL = not built / died with its page */
 
+/* Active asset (a14): the Studio RPC's `activate_asset` seam. The 200 ms
+ * sync tick owns the LVGL swap; callers only change these. active_asset
+ * is what should play, bg_shown what bg_shared currently plays. */
+static char active_asset[ZMK_ASSET_NAME_MAX] = "animbg";
+static char bg_shown[ZMK_ASSET_NAME_MAX];
+
 struct anim_slot {
     lv_obj_t *gif; /* NULL = free (or the gif died with its page)   */
     const char *page_name;
+    /* a15: a re-probe reaps the player (stale) so the store table can
+     * rebuild; the tick rebuilds it on the still-live page root. */
+    lv_obj_t *parent;
+    char want[ZMK_ASSET_NAME_MAX];
+    bool stale;
 };
 
 static struct anim_slot anim_slots[ANIM_SLOTS_MAX];
@@ -354,6 +379,13 @@ static void anim_slot_died(lv_event_t *e) {
     struct anim_slot *slot = lv_event_get_user_data(e);
 
     slot->gif = NULL;
+    if (!slot->stale) {
+        /* The PAGE died (not our re-probe reap): release the slot —
+         * a later page rebuild re-attaches into a fresh one. */
+        slot->page_name = NULL;
+        slot->parent = NULL;
+        slot->want[0] = '\0';
+    }
 }
 
 static lv_obj_t *anim_gif_player(lv_obj_t *parent, const char *asset, lv_event_cb_t died,
@@ -471,9 +503,20 @@ static void anim_bg_sync(void) {
                  * on its last page (canvas retained, decoder idle) */
     }
 
+    const char *want = zmk_anim_active_get();
+
+    if (bg_shared != NULL && strcmp(bg_shown, want) != 0) {
+        /* a14 activate_asset: retire the old player; the next tick
+         * (this same function) builds the new art. Display thread
+         * only, like everything here. */
+        lv_obj_delete(bg_shared);
+    }
+
     if (bg_shared == NULL) {
-        bg_shared = anim_gif_player(target, "animbg", anim_shared_died, NULL);
+        bg_shared = anim_gif_player(target, want, anim_shared_died, NULL);
         if (bg_shared != NULL) {
+            strncpy(bg_shown, want, sizeof(bg_shown) - 1);
+            bg_shown[sizeof(bg_shown) - 1] = '\0';
             /* The page is fully built when the player materialises
              * (creation happens on the tick, not at attach), so the
              * gif arrives as the LAST child - on top of everything,
@@ -496,17 +539,97 @@ static void anim_bg_sync(void) {
     anim_tint_sync(target); /* readability scrim, index 1 (see above) */
 }
 
+/* ------------------------------------------------------------------ */
+/* a15: store-change / quiesce handshake (display-thread side)        */
+/* ------------------------------------------------------------------ */
+
+/* Set from the event listener (any thread); consumed here, on the LVGL
+ * timer thread — the only place allowed to touch the object tree.
+ * QUIESCE parks playback for GC's blob relocation (the store blocks its
+ * caller until the ack); a commit (CHANGED) reaps every player, then
+ * re-probes the table so no 'A:' handle ever spans a rebuild. */
+static volatile bool assets_dirty;
+static volatile bool assets_park;
+static volatile bool assets_parked;
+
+static int assets_changed_event_cb(const zmk_event_t *eh) {
+    const struct zmk_assets_changed *ev = as_zmk_assets_changed(eh);
+
+    if (ev != NULL) {
+        if (ev->reason == ZMK_ASSETS_QUIESCE) {
+            assets_park = true;
+        } else {
+            assets_dirty = true;
+        }
+    }
+    return 0;
+}
+
+ZMK_LISTENER(anim_assets, assets_changed_event_cb);
+ZMK_SUBSCRIPTION(anim_assets, zmk_assets_changed);
+
+static void anim_park_all_players(void) {
+    if (bg_shared != NULL) {
+        lv_obj_delete(bg_shared); /* the DELETE cb clears bg_shared */
+    }
+    if (bg_tint != NULL) {
+        lv_obj_delete(bg_tint);
+    }
+    for (int i = 0; i < ANIM_SLOTS_MAX; i++) {
+        if (anim_slots[i].gif != NULL) {
+            anim_slots[i].stale = true; /* died cb keeps identity */
+            lv_obj_delete(anim_slots[i].gif);
+        }
+    }
+    bg_shown[0] = '\0';
+}
+
 static void anim_tick_cb(lv_timer_t *timer) {
     int cur = zmk_display_screen_current();
 
     ARG_UNUSED(timer);
 
+    if (assets_park) {
+        assets_park = false;
+        anim_park_all_players();
+        if (zmk_assets_quiesce_ack()) {
+            assets_parked = true;
+            return; /* GC owns the blobs until release */
+        }
+        /* the requester timed out mid-handshake: carry on normally */
+        assets_dirty = true;
+    }
+    if (assets_parked) {
+        if (!zmk_assets_quiesced()) {
+            assets_parked = false; /* released: fall through to re-probe */
+            assets_dirty = true;
+        } else {
+            return;
+        }
+    }
+    if (assets_dirty) {
+        assets_dirty = false;
+        anim_park_all_players(); /* no open handle spans the re-probe */
+        zmk_assets_reprobe();
+    }
+
     anim_bg_sync();
 
     for (int i = 0; i < ANIM_SLOTS_MAX; i++) {
-        if (anim_slots[i].gif != NULL &&
-            zmk_display_screen_find(anim_slots[i].page_name) == cur) {
-            lv_gif_resume(anim_slots[i].gif);
+        struct anim_slot *slot = &anim_slots[i];
+
+        if (slot->gif != NULL) {
+            if (zmk_display_screen_find(slot->page_name) == cur) {
+                lv_gif_resume(slot->gif);
+            }
+            continue;
+        }
+        if (slot->stale && slot->page_name != NULL &&
+            zmk_display_screen_find(slot->page_name) == cur) {
+            /* rebuild once (e.g. fresh upload of the played asset);
+             * on failure the page's next rebuild re-attaches anyway */
+            slot->stale = false;
+            slot->gif = anim_gif_player(slot->parent, slot->want, anim_slot_died, slot);
         }
     }
 }
@@ -566,6 +689,9 @@ lv_obj_t *zmk_anim_page_attach(lv_obj_t *parent, const char *page_name, const ch
         return NULL;
     }
     slot->page_name = page_name;
+    slot->parent = parent;
+    slot->stale = false;
+    snprintf(slot->want, sizeof(slot->want), "%s", asset);
     slot->gif = anim_gif_player(parent, asset, anim_slot_died, slot);
     anim_tick_start();
 
@@ -588,6 +714,28 @@ void zmk_anim_bg_set(bool on) {
     zmk_settings_blob_save("display/anim/bg", &val, sizeof(val), "anim bg");
 #endif
     LOG_INF("anim bg %s", on ? "on" : "off");
+}
+
+const char *zmk_anim_active_get(void) { return active_asset; }
+
+int zmk_anim_active_set(const char *name) {
+    if (name == NULL || !zmk_anim_available(name)) {
+        return -EINVAL;
+    }
+
+    if (strcmp(active_asset, name) == 0) {
+        return 0;
+    }
+
+    strncpy(active_asset, name, sizeof(active_asset) - 1);
+    active_asset[sizeof(active_asset) - 1] = '\0';
+#if IS_ENABLED(CONFIG_SETTINGS)
+    zmk_settings_blob_save("display/anim/active", active_asset, sizeof(active_asset),
+                           "anim active asset");
+#endif
+    LOG_INF("anim active asset -> %s", active_asset);
+    /* shared background re-picks it on the next 200 ms sync tick */
+    return 0;
 }
 
 uint8_t zmk_anim_tint_get(void) { return anim_tint_opa; }
@@ -622,6 +770,14 @@ static int anim_settings_handle_set(const char *key, size_t len, settings_read_c
     if (err > 0) {
         anim_tint_opa = val;
         LOG_INF("anim tint setting loaded: opa %u", val);
+        return 0;
+    }
+
+    err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "active", active_asset,
+                                 sizeof(active_asset), "anim active asset");
+    if (err > 0) {
+        active_asset[sizeof(active_asset) - 1] = '\0';
+        LOG_INF("anim active asset loaded: %s", active_asset);
         return 0;
     }
     return err;
@@ -663,9 +819,16 @@ static int cmd_animbg(const struct shell *sh, size_t argc, char **argv) {
             zmk_anim_tint_set((uint8_t)v);
         }
         shell_print(sh, "anim tint opa: %u", zmk_anim_tint_get());
+    } else if (argc >= 2 && strcmp(argv[1], "use") == 0) {
+        if (argc == 3) {
+            if (zmk_anim_active_set(argv[2]) != 0) {
+                shell_error(sh, "no GIF asset '%s'", argv[2]);
+            }
+        }
+        shell_print(sh, "anim active asset: %s", zmk_anim_active_get());
     } else {
-        shell_print(sh, "anim bg: %s (usage: animbg on|off|list|tint [0-255])",
-                    zmk_anim_bg_enabled() ? "on" : "off");
+        shell_print(sh, "anim bg: %s, active: %s (usage: animbg on|off|list|tint [0-255]|use <name>)",
+                    zmk_anim_bg_enabled() ? "on" : "off", zmk_anim_active_get());
     }
     return 0;
 }

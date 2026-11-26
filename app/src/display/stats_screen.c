@@ -34,13 +34,13 @@
 #include <zephyr/kernel.h>
 #include <zephyr/input/input.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/settings/settings.h>
 #include <zephyr/sys/util.h>
 
 #include <lvgl.h>
 
 #include <zmk/display.h>
 #include <zmk/display/screens.h>
+#include <zmk/events/stats_config_changed.h>
 #include <zmk/stats.h>
 
 #include "styles.h"
@@ -51,27 +51,10 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#include <zmk/settings_blob.h>
-
 #define PAGE_NAME "stats"
 
-enum stats_layout {
-    STATS_LAYOUT_2X1 = 0,
-    STATS_LAYOUT_2X2,
-    STATS_LAYOUT_HYBRID,
-    STATS_LAYOUT_2X4,
-    STATS_LAYOUT_COUNT
-};
-
-struct stats_cfg {
-    uint8_t layout;
-    uint8_t metric[ZMK_STATS_SLOT_COUNT];
-};
-
-static struct stats_cfg cfg = {
-    .layout = STATS_LAYOUT_2X2,
-    .metric = {ZMK_STATS_CPU_UTIL, ZMK_STATS_GPU_UTIL, ZMK_STATS_RAM, ZMK_STATS_CPU_TEMP},
-};
+/* Layout ids + the slot config live in zmk/stats.h (a14 seam): taps,
+ * the Studio RPC and settings all write through zmk_stats_config_set. */
 
 struct cell {
     lv_obj_t *box;
@@ -91,16 +74,6 @@ struct cell {
 static struct cell cells[ZMK_STATS_SLOT_COUNT];
 static lv_obj_t *screen_root;
 static lv_obj_t *mock_label;
-
-/* ------------------------------------------------------------------ */
-/* Settings                                                            */
-/* ------------------------------------------------------------------ */
-
-#if IS_ENABLED(CONFIG_SETTINGS)
-static void cfg_save(void) {
-    zmk_settings_blob_save("display/stats/config", &cfg, sizeof(cfg), "stats config");
-}
-#endif
 
 /* ------------------------------------------------------------------ */
 /* Cells + layouts                                                     */
@@ -156,20 +129,22 @@ static void cells_clear(void) {
 static void layout_build(void) {
     cells_clear();
 
+    const struct zmk_stats_config *cfg = zmk_stats_config_get();
+
     lv_obj_t *title = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_TITLE);
 
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, ZMK_GRID_MARGIN + ZMK_GRID_UNIT);
     lv_label_set_text(title, "Stats");
 
-    switch (cfg.layout) {
-    case STATS_LAYOUT_2X1:
+    switch (cfg->layout) {
+    case ZMK_STATS_LAYOUT_2X1:
         for (int i = 0; i < 2; i++) {
             lv_obj_t *cell = mk_cell(screen_root, i, 216, 160, true);
 
             lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + i * 232, 88);
         }
         break;
-    case STATS_LAYOUT_HYBRID: {
+    case ZMK_STATS_LAYOUT_HYBRID: {
         lv_obj_t *big = mk_cell(screen_root, 0, 288, 160, true);
 
         lv_obj_align(big, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN, 88);
@@ -182,7 +157,7 @@ static void layout_build(void) {
         }
         break;
     }
-    case STATS_LAYOUT_2X4:
+    case ZMK_STATS_LAYOUT_2X4:
         /* Four across: at 320 px tall a column of four cannot give any cell
          * its text stack, but 104-px columns can. */
         for (int i = 0; i < 4; i++) {
@@ -191,7 +166,7 @@ static void layout_build(void) {
             lv_obj_align(cell, LV_ALIGN_TOP_LEFT, ZMK_GRID_MARGIN + i * 112, 88);
         }
         break;
-    case STATS_LAYOUT_2X2:
+    case ZMK_STATS_LAYOUT_2X2:
     default:
         for (int i = 0; i < 4; i++) {
             lv_obj_t *cell = mk_cell(screen_root, i, 216, 76, false);
@@ -207,7 +182,7 @@ static void layout_build(void) {
     char buf[48];
 
     snprintk(buf, sizeof(buf), "%s - tap cell: metric, tap bg: layout",
-             layout_names[MIN((unsigned int)cfg.layout, STATS_LAYOUT_COUNT - 1)]);
+             layout_names[MIN((unsigned int)cfg->layout, ZMK_STATS_LAYOUT_COUNT - 1)]);
     lv_obj_t *foot = zmk_ui_label(screen_root, ZMK_STYLE_TEXT_CAPTION);
 
     lv_obj_align(foot, LV_ALIGN_BOTTOM_MID, 0, -ZMK_GRID_MARGIN * 3);
@@ -226,6 +201,8 @@ static void layout_build(void) {
 /* ------------------------------------------------------------------ */
 
 static void stats_update(void) {
+    const struct zmk_stats_config *cfg = zmk_stats_config_get();
+
     for (int i = 0; i < ZMK_STATS_SLOT_COUNT; i++) {
         struct cell *c = &cells[i];
         struct zmk_stats_reading r;
@@ -234,9 +211,9 @@ static void stats_update(void) {
             continue;
         }
         zmk_ui_set_text(c->label_cache, sizeof(c->label_cache), c->label,
-                        zmk_stats_label(cfg.metric[i]));
+                        zmk_stats_label(cfg->metric_ids[i]));
 
-        if (!zmk_stats_get(cfg.metric[i], &r)) {
+        if (!zmk_stats_get(cfg->metric_ids[i], &r)) {
             zmk_ui_set_text(c->value_cache, sizeof(c->value_cache), c->value, "--");
             zmk_ui_set_text(c->max_cache, sizeof(c->max_cache), c->max_label, "");
             if (c->pct_cache != 0) {
@@ -309,6 +286,8 @@ ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
 
     zmk_ui_touch_to_logical(&x, &y);
 
+    struct zmk_stats_config cfg = *zmk_stats_config_get();
+
     for (int i = 0; i < ZMK_STATS_SLOT_COUNT; i++) {
         lv_area_t a;
 
@@ -317,22 +296,58 @@ ZMK_UI_WORK_DEFINE(stats_tap_work, stats_tap_work_cb) {
         }
         lv_obj_get_coords(cells[i].box, &a);
         if (x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2) {
-            cfg.metric[i] = (cfg.metric[i] % (ZMK_STATS_ID_COUNT - 1)) + 1; /* 1..16 */
-            LOG_INF("stats slot %u -> metric %u (%s)", i, cfg.metric[i],
-                    zmk_stats_label(cfg.metric[i]));
-#if IS_ENABLED(CONFIG_SETTINGS)
-            cfg_save();
-#endif
-            stats_update();
+            cfg.metric_ids[i] = (cfg.metric_ids[i] % (ZMK_STATS_ID_COUNT - 1)) + 1; /* 1..16 */
+            LOG_INF("stats slot %u -> metric %u (%s)", i, cfg.metric_ids[i],
+                    zmk_stats_label(cfg.metric_ids[i]));
+            /* Persist + raise zmk_stats_config_changed; stats_cfg_work
+             * below does the redraw (same path as an RPC/host change). */
+            zmk_stats_config_set(&cfg);
             return;
         }
     }
 
-    cfg.layout = (cfg.layout + 1) % STATS_LAYOUT_COUNT;
+    cfg.layout = (cfg.layout + 1) % ZMK_STATS_LAYOUT_COUNT;
     LOG_INF("stats layout -> %u", cfg.layout);
-#if IS_ENABLED(CONFIG_SETTINGS)
-    cfg_save();
-#endif
+    zmk_stats_config_set(&cfg);
+}
+
+/* Config changed from anywhere (this screen's taps, the Studio RPC, a
+ * settings load): rebuild when the layout moved, relabel otherwise.
+ * Event cb only latches + posts; the work runs on the display queue. */
+static void stats_cfg_rebuild(void);
+static bool stats_cfg_layout_dirty;
+
+ZMK_UI_WORK_DEFINE(stats_cfg_work, stats_cfg_work_cb) {
+    bool layout_changed = stats_cfg_layout_dirty;
+
+    ARG_UNUSED(work);
+    stats_cfg_layout_dirty = false;
+
+    if (screen_root == NULL || !lv_obj_is_valid(screen_root)) {
+        return; /* page not built (yet): first create picks the config up */
+    }
+
+    if (layout_changed) {
+        stats_cfg_rebuild();
+    } else {
+        stats_update();
+    }
+}
+
+static int stats_cfg_changed_event_cb(const zmk_event_t *eh) {
+    const struct zmk_stats_config_changed *ev = as_zmk_stats_config_changed(eh);
+
+    if (ev) {
+        stats_cfg_layout_dirty = ev->layout_changed;
+    }
+    zmk_ui_post(&stats_cfg_work);
+    return 0;
+}
+
+ZMK_LISTENER(stats_cfg, stats_cfg_changed_event_cb);
+ZMK_SUBSCRIPTION(stats_cfg, zmk_stats_config_changed);
+
+static void stats_cfg_rebuild(void) {
     layout_build();
     stats_update();
 }
@@ -365,36 +380,3 @@ static lv_obj_t *stats_page_create(lv_obj_t *parent) {
 }
 
 ZMK_DISPLAY_DEFINE_SCREEN(stats, PAGE_NAME, stats_page_create, 30);
-
-/* ------------------------------------------------------------------ */
-/* Settings load                                                       */
-/* ------------------------------------------------------------------ */
-
-#if IS_ENABLED(CONFIG_SETTINGS)
-static int stats_settings_handle_set(const char *key, size_t len, settings_read_cb read_cb,
-                                     void *cb_arg) {
-    struct stats_cfg loaded;
-    int err = zmk_settings_blob_read(key, len, read_cb, cb_arg, "config", &loaded, sizeof(loaded),
-                                     "stats config");
-
-    if (err <= 0) {
-        return err;
-    }
-    if (loaded.layout >= STATS_LAYOUT_COUNT) {
-        LOG_WRN("stats config layout out of range - ignored");
-        return -EINVAL;
-    }
-    for (int i = 0; i < ZMK_STATS_SLOT_COUNT; i++) {
-        if (loaded.metric[i] >= ZMK_STATS_ID_COUNT) {
-            loaded.metric[i] = ZMK_STATS_NONE;
-        }
-    }
-
-    cfg = loaded;
-    LOG_INF("stats config loaded from settings");
-    return 0; /* page may not exist yet; first create uses cfg */
-}
-
-SETTINGS_STATIC_HANDLER_DEFINE(display_stats, "display/stats", NULL, stats_settings_handle_set,
-                               NULL, NULL);
-#endif /* CONFIG_SETTINGS */

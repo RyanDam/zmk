@@ -37,6 +37,7 @@ target_sources_ifdef(CONFIG_ZMK_STATS app PRIVATE src/stats.c)
 target_sources_ifdef(CONFIG_ZMK_VKEY_SHELL app PRIVATE src/vkey_shell.c)
 target_sources_ifdef(CONFIG_ZMK_VKEY_BENCH app PRIVATE src/vkey_bench.c)
 target_sources_ifdef(CONFIG_ZMK_ASSETS app PRIVATE src/assets.c)
+target_sources_ifdef(CONFIG_ZMK_ASSETS app PRIVATE src/events/assets_changed.c)
 target_sources_ifdef(CONFIG_ZMK_DISPLAY_ANIM_BUILTIN app PRIVATE src/assets_builtin.c)
 if(CONFIG_ZMK_DISPLAY_ANIM_BUILTIN)
 # The built-in default GIF is embedded at build time via .incbin from
@@ -59,6 +60,10 @@ target_sources_ifdef(CONFIG_ZMK_GPIO_KEY_WAKEUP_TRIGGER app PRIVATE src/gpio_key
 target_sources(app PRIVATE src/events/activity_state_changed.c)
 target_sources(app PRIVATE src/events/position_state_changed.c)
 target_sources(app PRIVATE src/events/keymap_changed.c)
+target_sources_ifdef(CONFIG_ZMK_DISPLAY_SCREEN_MGR app PRIVATE src/events/screen_changed.c)
+target_sources_ifdef(CONFIG_ZMK_DISPLAY app PRIVATE src/events/theme_changed.c)
+target_sources_ifdef(CONFIG_ZMK_STATS app PRIVATE src/events/stats_config_changed.c)
+target_sources_ifdef(CONFIG_ZMK_POMODORO app PRIVATE src/events/pomo_state_changed.c)
 target_sources(app PRIVATE src/events/sensor_event.c)
 target_sources_ifdef(CONFIG_ZMK_WPM app PRIVATE src/events/wpm_state_changed.c)
 target_sources_ifdef(CONFIG_ZMK_USB_DEVICE app PRIVATE src/events/usb_conn_state_changed.c)
@@ -162,6 +167,11 @@ if (CONFIG_ZMK_STUDIO_RPC)
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/sensors.proto
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/touchpad.proto
                         ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/settings.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/screen.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/theme.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/stats.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/pomo.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/assets.proto
   )
 
   target_include_directories(app PUBLIC ${CMAKE_CURRENT_BINARY_DIR})

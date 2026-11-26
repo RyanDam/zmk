@@ -6,6 +6,7 @@
 
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/reboot.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include <pb_encode.h>
@@ -76,9 +77,35 @@ zmk_studio_Response reset_settings(const zmk_studio_Request *req) {
     return CORE_RESPONSE(reset_settings, true);
 }
 
+/* pad10a 0x98 reboot_board parity. Respond first, then reset: the RPC
+ * reply has to reach the host before the device goes away, so the
+ * reboot is deferred off the RPC thread. */
+static void reboot_work_cb(struct k_work *work) {
+    ARG_UNUSED(work);
+    LOG_INF("Studio RPC reboot");
+    sys_reboot(SYS_REBOOT_COLD);
+}
+K_WORK_DELAYABLE_DEFINE(reboot_work, reboot_work_cb);
+
+zmk_studio_Response core_reboot(const zmk_studio_Request *req) {
+    LOG_INF("Studio requested a reboot; resetting in 500 ms");
+    k_work_schedule(&reboot_work, K_MSEC(500));
+    return CORE_RESPONSE(reboot, true);
+}
+
 ZMK_RPC_SUBSYSTEM_HANDLER(core, get_device_info, ZMK_STUDIO_RPC_HANDLER_UNSECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(core, get_lock_state, ZMK_STUDIO_RPC_HANDLER_UNSECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(core, reset_settings, ZMK_STUDIO_RPC_HANDLER_SECURED);
+
+#define ZMK_RPC_SUBSYSTEM_HANDLER_EX(prefix, request, func_name, _security)                        \
+    STRUCT_SECTION_ITERABLE(zmk_rpc_subsystem_handler, prefix##_subsystem_handler_##request) = {   \
+        .func = func_name,                                                                         \
+        .subsystem_choice = zmk_studio_Request_##prefix##_tag,                                     \
+        .request_choice = zmk_##prefix##_Request_##request##_tag,                                  \
+        .security = _security,                                                                     \
+    };
+
+ZMK_RPC_SUBSYSTEM_HANDLER_EX(core, reboot, core_reboot, ZMK_STUDIO_RPC_HANDLER_SECURED);
 
 static int core_event_mapper(const zmk_event_t *eh, zmk_studio_Notification *n) {
     struct zmk_studio_core_lock_state_changed *lock_ev = as_zmk_studio_core_lock_state_changed(eh);

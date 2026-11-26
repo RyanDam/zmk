@@ -49,6 +49,17 @@ bool zmk_anim_bg_enabled(void);
 void zmk_anim_bg_set(bool on);
 
 /**
+ * Active asset (a14): which GIF the shared background shows and the
+ * anim page defaults to. Default "animbg"; zmk_anim_active_set()
+ * (Studio RPC `assets.activate_asset`) re-validates, persists at
+ * settings "display/anim" key "active", and swaps the shared
+ * background within one 200 ms sync tick; the anim page picks it up
+ * on its next build. @retval -EINVAL unknown/non-GIF asset, 0 ok.
+ */
+const char *zmk_anim_active_get(void);
+int zmk_anim_active_set(const char *name);
+
+/**
  * Register @p parent as the root of bg page @p page_name for the
  * shared background player (a12 owner pass 2026-11-24: backgrounds on
  * ALL pages, one SHARED player re-parented to the visible one — a

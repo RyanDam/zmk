@@ -23,6 +23,12 @@
  *   partition at 0xda8000 — manifest + blobs, packed by
  *   app/scripts/display-assets/pack_assets.py. Reconcile this carve
  *   with the real OTA layout when a05 lands.
+ * - a15 carve FIX (a12 shipped the arithmetic wrong — dead space hid it):
+ *   slot1 now ends exactly at the assets start (0x7e0000 + 5920K =
+ *   0xda8000; was 5936K, overlapping the first 16 KiB of assets), and
+ *   assets ends at 0xfa0000 (= 2016 KiB) instead of spilling across
+ *   slot0_lpcore (0xfa0000..0xfa8000). Nothing wrote there while the
+ *   store was read-only; a15 uploads make the guard load-bearing.
  */
 
 &wifi {
@@ -30,7 +36,7 @@
 };
 
 &slot1_partition {
-    reg = <0x7e0000 DT_SIZE_K(5936)>;
+    reg = <0x7e0000 DT_SIZE_K(5920)>; /* ends exactly at assets 0xda8000 */
 };
 
 &flash0 {
@@ -38,7 +44,7 @@
         assets_partition: partition@da8000 {
             compatible = "zephyr,mapped-partition";
             label = "assets";
-            reg = <0xda8000 DT_SIZE_K(2048)>;
+            reg = <0xda8000 DT_SIZE_K(2016)>; /* ends at slot0_lpcore */
         };
     };
 };

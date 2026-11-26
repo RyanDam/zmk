@@ -26,6 +26,7 @@
 
 #include <zmk/notify.h>
 #include <zmk/pomodoro.h>
+#include <zmk/events/pomo_state_changed.h>
 
 #if IS_ENABLED(CONFIG_ZMK_DISPLAY_SCREEN_MGR)
 #include <zmk/display/screens.h>
@@ -59,6 +60,22 @@ K_TIMER_DEFINE(engine_timer, engine_timer_cb, NULL);
 
 static uint16_t phase_len_s(uint8_t phase_state) {
     return phase_state == ZMK_POMO_STATE_WORK ? config.work_s : config.rest_s;
+}
+
+/* a14: machine-readable twin of the notify seam. Snapshot under the
+ * spinlock, allocate/raise outside it (event alloc must not run with
+ * interrupts locked). */
+static void raise_state_event(void) {
+    k_spinlock_key_t key = k_spin_lock(&state_lock);
+    struct zmk_pomo_state_changed ev = {
+        .state = state.state,
+        .paused = state.paused,
+        .set_idx = state.set_idx,
+    };
+
+    k_spin_unlock(&state_lock, key);
+
+    raise_zmk_pomo_state_changed(ev);
 }
 
 static void blank_lock_take(void) {
@@ -156,6 +173,7 @@ static void engine_tick(struct k_work *work) {
     }
     if (notify_kind < ZMK_NOTIFY_KIND_COUNT) {
         announce(notify_kind);
+        raise_state_event();
     }
 }
 
@@ -183,6 +201,7 @@ int zmk_pomo_start(void) {
 
     if (ret == 0) {
         blank_lock_take();
+        raise_state_event();
     }
     return ret;
 }
@@ -199,6 +218,9 @@ int zmk_pomo_pause(void) {
         LOG_INF("session paused in set %u", state.set_idx);
     }
     k_spin_unlock(&state_lock, key);
+    if (ret == 0) {
+        raise_state_event();
+    }
     return ret;
 }
 
@@ -220,6 +242,9 @@ int zmk_pomo_resume(void) {
         LOG_INF("session resumed in set %u (paused %lld ms)", state.set_idx, paused_for);
     }
     k_spin_unlock(&state_lock, key);
+    if (ret == 0) {
+        raise_state_event();
+    }
     return ret;
 }
 
@@ -235,6 +260,7 @@ int zmk_pomo_cancel(void) {
     if (was_running) {
         blank_lock_release();
         announce(ZMK_NOTIFY_POMO_CANCELLED);
+        raise_state_event();
         LOG_INF("session cancelled");
     }
     return 0;

@@ -71,6 +71,17 @@ config ZMK_STUDIO_TRANSPORT_UART_RX_PRIORITY
     depends on !UART_INTERRUPT_DRIVEN
     default 9
 
+config ZMK_STUDIO_RPC_TRANSPORT_UART_PREFERRED
+    bool "Always select the UART transport"
+    default n
+    help
+      Select the UART RPC transport regardless of the currently selected
+      ZMK endpoint transport. Upstream keys the transport off the active
+      endpoint (UART is the USB endpoint's transport), which display-first
+      devices like the Coban Tab 1a never reach because they run BLE-only
+      with ZMK USB off. Enable on such boards for the bench/Studio path;
+      drop it once a real USB endpoint exists (b06 CDC-ACM on OTG).
+
 endif
 
 config ZMK_STUDIO_TRANSPORT_BLE
@@ -119,6 +130,62 @@ config ZMK_STUDIO_SETTINGS
       Studio RPC support for reading and writing device settings, including
       Bluetooth profiles, sleep configuration, endpoint selection, and
       read-only diagnostics.
+
+# Coban tab1a subsystems (backlog a14): the pad10a companion-app command
+# set ported onto the Studio bus. Each maps onto an existing seam
+# (screen mgr a08, time a09, stats a11, pomodoro a10, theme a07, assets
+# a12) and follows the touchpad/settings gating pattern above.
+
+config ZMK_STUDIO_SCREEN
+    bool "Screen / time-sync Studio Support"
+    depends on ZMK_DISPLAY_SCREEN_MGR
+    default y
+    help
+      Studio RPC support for listing/navigating the tab's screens and
+      host time sync (pad10a 0x51/0x52 parity).
+
+config ZMK_STUDIO_THEME
+    bool "Theme Studio Support"
+    depends on ZMK_DISPLAY
+    default y
+    help
+      Studio RPC support for reading and live-editing the display theme
+      (pad10a 0x64 parity).
+
+config ZMK_STUDIO_STATS
+    bool "Stats Studio Support"
+    depends on ZMK_STATS
+    default y
+    help
+      Studio RPC support for the stats config and host stats data push
+      (pad10a 0x53/0x54 parity).
+
+config ZMK_STUDIO_POMO
+    bool "Pomodoro Studio Support"
+    depends on ZMK_POMODORO
+    default y
+    help
+      Studio RPC support for pomodoro config, session control and state
+      events (pad10a 0x59 parity).
+
+config ZMK_STUDIO_ASSETS
+    bool "Assets Studio Support"
+    depends on ZMK_ASSETS
+    default y
+    help
+      Studio RPC support for the asset manifest (list/activate; upload
+      is a15, delete answered as unsupported until then).
+
+config ZMK_STUDIO_ASSET_UPLOAD
+    bool "Asset bulk upload (chunked + CRC)"
+    depends on ZMK_STUDIO_ASSETS
+    default y
+    help
+      a15: chunked host upload of asset blobs over the Studio RPC
+      assets subsystem (begin/data/end/abort/status + GC), staging on a
+      dedicated workqueue, CRC-verified manifest generations, and a
+      real delete_asset. Only meaningful with a writable assets
+      partition (Coban Tab 1a).
 
 endif
 

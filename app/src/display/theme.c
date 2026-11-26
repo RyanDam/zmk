@@ -24,6 +24,7 @@
 #include <lvgl.h>
 
 #include <zmk/display.h>
+#include <zmk/events/theme_changed.h>
 
 #include "theme.h"
 #include "styles.h"
@@ -64,6 +65,17 @@ static void apply_fn(struct k_work *work) {
     /* Shared styles were mutated in place — invalidate every object that
      * references any style so the full-refresh panel repaints. */
     lv_obj_report_style_change(NULL);
+
+    /* a14: every theme change (RPC set, preset cycle, settings load)
+     * funnels through this work item, so this is the one place to raise
+     * the event the Studio `theme` notification mapper subscribes to. */
+    raise_zmk_display_theme_changed((struct zmk_display_theme_changed){
+        .background = lv_color_to_u32(current_theme.background),
+        .text_primary = lv_color_to_u32(current_theme.text_primary),
+        .text_secondary = lv_color_to_u32(current_theme.text_secondary),
+        .accent = lv_color_to_u32(current_theme.accent),
+        .inactive = lv_color_to_u32(current_theme.inactive),
+    });
 }
 
 static void theme_schedule_apply(void) {
