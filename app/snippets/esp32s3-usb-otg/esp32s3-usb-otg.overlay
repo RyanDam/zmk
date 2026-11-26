@@ -1,0 +1,25 @@
+/*
+ * Companion snippet for `zmk-usb-logging` (and any CDC child) on ESP32-S3
+ * boards whose dts keeps the USB device controller off — cobantab1a's
+ * BLE-only product build, the s3 supermini fixture, ...
+ *
+ * zmk-usb-logging hooks its "ZMK Logging" CDC onto &zephyr_udc0, but that
+ * label only exists once something labels the DWC2 controller
+ * (esp32s3_common.dtsi's usb_otg@60080000 ships disabled and unlabelled).
+ * As a snippet this parses BEFORE zmk-usb-logging's overlay (EXTRA_* files
+ * come too late — DTS resolves label references in stream order), so pass
+ * it first: -S esp32s3-usb-otg -S zmk-usb-logging.
+ *
+ * It is the same one-liner the cobantab1a-usb fragment in zmk-config does,
+ * and app/src/usb.c then registers every zephyr,cdc-acm-uart child even
+ * with CONFIG_ZMK_USB=n.
+ *
+ * Runtime PHY hand-off: at reset GPIO19/20 stay on USB-Serial/JTAG (ROM
+ * loader + flashing unaffected); the UDC driver takes them when the device
+ * stack starts. Early logs before the CDC enumerates land nowhere — for
+ * those keep the P1 wire.
+ */
+
+zephyr_udc0: &usb_otg {
+    status = "okay";
+};

@@ -6,11 +6,17 @@
 #   sh esp-port/build_esp32.sh --board c3                        # build C3 only
 #   sh esp-port/build_esp32.sh --board s3 --flash                # build S3, then west flash it
 #   sh esp-port/build_esp32.sh --board c3 --sample philosophers --flash
+#   sh esp-port/build_esp32.sh --log                            # verbose logging
 #
 # Options:
 #   -b, --board <c3|s3|all>            Board to build (default: all)
 #   -s, --sample <hello|philosophers>  Sample to build (default: hello = hello_world)
 #   -f, --flash                        Run west flash after building
+#   -l, --log                          Not supported here: it means the
+#                                      zmk-usb-logging snippet, which lives
+#                                      in the ZMK app — these plain Zephyr
+#                                      samples have no ZMK to apply it to.
+#                                      Use --log on build_zmk_c3/s3.sh.
 #   -h, --help                         Show help
 #
 # The ESP32 toolchain (Espressif riscv32-esp-elf + xtensa-esp32s3-elf) is NOT
@@ -41,6 +47,9 @@ Options:
   -b, --board <c3|s3|all>            Board to build (default: all)
   -s, --sample <hello|philosophers>  Sample to build (default: hello = hello_world)
   -f, --flash                        Run west flash after building
+  -l, --log                          Not supported for samples (the
+                                     zmk-usb-logging snippet needs the ZMK
+                                     app; see build_zmk_c3.sh / _s3.sh)
   -h, --help                         Show this help
 
 Examples:
@@ -68,6 +77,11 @@ while [ $# -gt 0 ]; do
       ;;
     -f|--flash)
       DO_FLASH=yes
+      ;;
+    -l|--log)
+      # The snippet lives in the ZMK app; these are plain Zephyr samples.
+      echo "ERROR: --log (zmk-usb-logging) is a ZMK app snippet — not available for samples. Use build_zmk_c3.sh / build_zmk_s3.sh --log." >&2
+      exit 2
       ;;
     -h|--help)
       usage

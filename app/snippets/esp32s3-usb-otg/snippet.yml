@@ -1,0 +1,3 @@
+name: esp32s3-usb-otg
+append:
+  EXTRA_DTC_OVERLAY_FILE: esp32s3-usb-otg.overlay

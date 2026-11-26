@@ -7,11 +7,18 @@
 #   sh esp-port/build_cobantab1a.sh                 # full build (needs hal_espressif blobs)
 #   sh esp-port/build_cobantab1a.sh --no-blobs      # compile-only, no Espressif blobs
 #   sh esp-port/build_cobantab1a.sh --flash         # build, then west flash
+#   sh esp-port/build_cobantab1a.sh --log           # build with verbose logging
 #
 # Options:
 #   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
 #                proprietary blobs are not needed. Fetch them for a real image:
 #                west blobs fetch hal_espressif)
+#   -l, --log    Add the zmk-usb-logging snippet: a dedicated "ZMK Logging"
+#                CDC-ACM on the OTG port, with the console + shell redirected
+#                to it (away from USJ on the product build). Caveat on the
+#                tab1a-usb variant: HID + RPC CDC + logging CDC exceeds the
+#                S3 OTG's 4 IN TxFIFOs, so the composite won't enumerate.
+#                Also settable via env ZMK_BUILD_LOG=1.
 #   -f, --flash  Run west flash after building
 #   -C, --conf <file>
 #                Extra Kconfig fragment (relative to the repo root, or
@@ -84,6 +91,10 @@ Usage: $(basename "$0") [options]
 
 Options:
   --no-blobs   Compile-only build (CONFIG_BUILD_ONLY_NO_BLOBS=y)
+  -l, --log    Add the zmk-usb-logging snippet ("ZMK Logging" CDC on the
+               OTG port; console + shell move to it). Not useful on the
+               tab1a-usb variant (TxFIFO limit, see header). Env fallback:
+               ZMK_BUILD_LOG=1
   -f, --flash  Run west flash after building
   -C, --conf <file>
                Extra Kconfig fragment for a bring-up build, relative to the
@@ -110,11 +121,17 @@ NO_BLOBS=no
 CONF_FILE=""
 OVERLAY_FILE=""
 CMAKE_ARGS=""
+# --log flag or ZMK_BUILD_LOG=1 (exported by the workspace build.sh --log).
+DO_LOG="${ZMK_BUILD_LOG:-no}"
+case "$DO_LOG" in 1|yes|y|true) DO_LOG=yes ;; *) DO_LOG=no ;; esac
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-blobs)
       NO_BLOBS=yes
+      ;;
+    -l|--log)
+      DO_LOG=yes
       ;;
     -f|--flash)
       DO_FLASH=yes
@@ -197,6 +214,15 @@ EXTRA_ARGS=""
 if [ "$NO_BLOBS" = yes ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DCONFIG_BUILD_ONLY_NO_BLOBS=y"
 fi
+SNIPPETS=""
+if [ "$DO_LOG" = yes ]; then
+  # The canonical ZMK debug path: ZMK_USB_LOGGING (LOG+console on a CDC)
+  # plus the snippet's overlay hooking the CDC onto &zephyr_udc0. The
+  # esp32s3-usb-otg snippet (app/snippets/) provides that label on this
+  # BLE-only board dts and MUST be loaded first (DTS resolves label
+  # references in stream order; EXTRA overlays would come too late).
+  SNIPPETS="-S esp32s3-usb-otg -S zmk-usb-logging"
+fi
 
 if [ -n "$CONF_FILE" ]; then
   if ! CONF_FILE="$(resolve_file "$CONF_FILE")"; then
@@ -226,7 +252,8 @@ echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
 # CROSS_COMPILE is passed via the environment (the CMake cache variable is
 # typed PATH and mangles a relative prefix); TOOLCHAIN_HOME has no env
 # fallback, so it goes on the command line.
-west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always \
+# shellcheck disable=SC2086
+west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always $SNIPPETS \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
      -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS $CMAKE_ARGS
 

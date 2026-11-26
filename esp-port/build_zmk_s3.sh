@@ -6,11 +6,15 @@
 #   sh esp-port/build_zmk_s3.sh                 # full build (needs hal_espressif blobs)
 #   sh esp-port/build_zmk_s3.sh --no-blobs      # compile-only, no Espressif blobs
 #   sh esp-port/build_zmk_s3.sh --flash         # build, then west flash
+#   sh esp-port/build_zmk_s3.sh --log           # build with verbose logging
 #
 # Options:
 #   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
 #                proprietary blobs are not needed. Fetch them for a real image:
 #                west blobs fetch hal_espressif)
+#   -l, --log    Add the zmk-usb-logging snippet: a dedicated "ZMK Logging"
+#                CDC-ACM on the board's USB port, console + shell moved to
+#                it. Also settable via env ZMK_BUILD_LOG=1.
 #   -f, --flash  Run west flash after building
 #   -h, --help   Show help
 #
@@ -38,6 +42,8 @@ Usage: $(basename "$0") [options]
 
 Options:
   --no-blobs   Compile-only build (CONFIG_BUILD_ONLY_NO_BLOBS=y)
+  -l, --log    Add the zmk-usb-logging snippet ("ZMK Logging" CDC; console
+               + shell move to it). Env fallback: ZMK_BUILD_LOG=1
   -f, --flash  Run west flash after building
   -h, --help   Show help
 
@@ -53,11 +59,17 @@ EOF
 
 DO_FLASH=no
 NO_BLOBS=no
+# --log flag or ZMK_BUILD_LOG=1 (exported by the workspace build.sh --log).
+DO_LOG="${ZMK_BUILD_LOG:-no}"
+case "$DO_LOG" in 1|yes|y|true) DO_LOG=yes ;; *) DO_LOG=no ;; esac
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-blobs)
       NO_BLOBS=yes
+      ;;
+    -l|--log)
+      DO_LOG=yes
       ;;
     -f|--flash)
       DO_FLASH=yes
@@ -111,6 +123,13 @@ EXTRA_ARGS=""
 if [ "$NO_BLOBS" = yes ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DCONFIG_BUILD_ONLY_NO_BLOBS=y"
 fi
+SNIPPETS=""
+if [ "$DO_LOG" = yes ]; then
+  # Canonical ZMK debug path. The esp32s3-usb-otg snippet provides the
+  # zephyr_udc0 label (usb_otg ships disabled and unlabelled in the board
+  # dts) and MUST lead: DTS resolves label references in stream order.
+  SNIPPETS="-S esp32s3-usb-otg -S zmk-usb-logging"
+fi
 
 echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
 # Note: in this west version -S means --snippet; the shield is passed as
@@ -119,7 +138,8 @@ echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
 # CROSS_COMPILE is passed via the environment (the CMake cache variable is
 # typed PATH and mangles a relative prefix); TOOLCHAIN_HOME has no env
 # fallback, so it goes on the command line.
-west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always \
+# shellcheck disable=SC2086
+west build -b "$BOARD" -d "$BUILD_DIR" -s app -p always $SNIPPETS \
   -- -DZMK_CONFIG="$ZMK_CONFIG" -DSHIELD="$SHIELD" \
      -DTOOLCHAIN_HOME="$TOOLCHAIN_HOME" $EXTRA_ARGS
 

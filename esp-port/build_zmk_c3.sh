@@ -6,11 +6,16 @@
 #   sh esp-port/build_zmk_c3.sh                 # full build (needs hal_espressif blobs)
 #   sh esp-port/build_zmk_c3.sh --no-blobs      # compile-only, no Espressif blobs
 #   sh esp-port/build_zmk_c3.sh --flash         # build, then west flash
+#   sh esp-port/build_zmk_c3.sh --log           # build with verbose logging
 #
 # Options:
 #   --no-blobs   Add CONFIG_BUILD_ONLY_NO_BLOBS=y (compile-only; the Espressif
 #                proprietary blobs are not needed. Fetch them for a real image:
 #                west blobs fetch hal_espressif)
+#   -l, --log    Not supported here: zmk-usb-logging needs a USB device
+#                controller, and this Zephyr port has none for the C3
+#                (only USB-Serial/JTAG, already the console). See the
+#                board dts header: "the C3 has no USB OTG".
 #   -f, --flash  Run west flash after building
 #   -h, --help   Show help
 #
@@ -38,6 +43,8 @@ Usage: $(basename "$0") [options]
 
 Options:
   --no-blobs   Compile-only build (CONFIG_BUILD_ONLY_NO_BLOBS=y)
+  -l, --log    Not supported (no USB device controller on the C3 in
+               this Zephyr port — logs stay on USB-Serial/JTAG)
   -f, --flash  Run west flash after building
   -h, --help   Show this help
 
@@ -53,11 +60,19 @@ EOF
 
 DO_FLASH=no
 NO_BLOBS=no
+# --log is accepted for uniformity but ignored: the C3 has no USB device
+# controller in this Zephyr port, so zmk-usb-logging has nothing to hook
+# onto (logs stay on USB-Serial/JTAG). ZMK_BUILD_LOG=1 likewise ignored.
+DO_LOG="${ZMK_BUILD_LOG:-no}"
+case "$DO_LOG" in 1|yes|y|true) DO_LOG=yes ;; *) DO_LOG=no ;; esac
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-blobs)
       NO_BLOBS=yes
+      ;;
+    -l|--log)
+      DO_LOG=yes
       ;;
     -f|--flash)
       DO_FLASH=yes
@@ -121,6 +136,10 @@ if [ -n "${CONF_FILE:-}" ]; then
 fi
 if [ "$NO_BLOBS" = yes ]; then
   EXTRA_ARGS="$EXTRA_ARGS -DCONFIG_BUILD_ONLY_NO_BLOBS=y"
+fi
+if [ "$DO_LOG" = yes ]; then
+  echo "NOTE: --log ignored on the C3 fixture — no USB device controller" >&2
+  echo "      in this Zephyr port; console/shell stay on USB-Serial/JTAG." >&2
 fi
 
 echo "=== building ZMK for $BOARD + $SHIELD -> $BUILD_DIR (pristine) ==="
