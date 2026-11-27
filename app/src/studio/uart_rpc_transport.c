@@ -132,23 +132,47 @@ static void serial_cb(const struct device *dev, void *user_data) {
 
     if (uart_irq_tx_ready(uart_dev)) {
         struct ring_buf *tx_buf = zmk_rpc_get_tx_buf();
-        uint32_t len;
         uint32_t total_sent = 0;
-        while ((len = ring_buf_size_get(tx_buf)) > 0) {
+        bool stalled = false;
+
+        while (ring_buf_size_get(tx_buf) > 0) {
+            /* A refused fill is transport back-pressure, not an error. This callback is a work
+             * item on the cooperative system workqueue, and cdc_acm_tx_fifo_work — the only thing
+             * that enqueues further CDC-ACM transfers — is queued behind it, so looping here
+             * wedges every preemptible thread instead of waiting for room. Exit and let the
+             * driver's next TX-ready edge (an in-flight transfer completing, or the next
+             * tx_notify) re-enter us with whatever is still queued. */
+            if (!uart_irq_tx_ready(uart_dev)) {
+                stalled = true;
+                break;
+            }
+
             uint8_t *buf;
             uint32_t avail = ring_buf_get_ptr(tx_buf, &buf, 0);
-
             if (avail == 0) {
-                continue;
+                stalled = true;
+                break;
             }
 
             int sent = uart_fifo_fill(uart_dev, buf, avail);
-            total_sent += MAX(sent, 0);
+            if (sent <= 0) {
+                stalled = true;
+                break;
+            }
 
-            ring_buf_consume(tx_buf, MAX(sent, 0));
+            ring_buf_consume(tx_buf, sent);
+            total_sent += sent;
         }
 
-        LOG_DBG("UART RPC transport: TX %u byte(s) on %s", total_sent, uart_dev->name);
+        if (stalled) {
+            /* Idempotent, and for CDC-ACM it only re-triggers this callback once the class FIFO
+             * has room again, so re-arming a stalled queue cannot re-enter in a loop. */
+            uart_irq_tx_enable(uart_dev);
+            LOG_DBG("UART RPC transport: TX %u byte(s) then stalled, %u byte(s) queued", total_sent,
+                    ring_buf_size_get(tx_buf));
+        } else {
+            LOG_DBG("UART RPC transport: TX %u byte(s) on %s", total_sent, uart_dev->name);
+        }
     }
 }
 
