@@ -1,0 +1,34 @@
+# ARCHIVED 2026-11-27 - negative result (see the .conf beside it): the composite
+# enumerates but no CDC interface is bound, so there is no console node to read.
+#
+/*
+ * Bring-up overlay (bench): put the console on the RPC's CDC-ACM device.
+ *
+ * The Tab's console pins (P1: GPIO43 TX / GPIO44 RX) are unreadable on this
+ * bench — see esp-console.py for the whole investigation — but the RPC serial
+ * port is always there, so printk / LOG / the panic backtrace / the stack
+ * sentinel's oops message can simply share it.
+ *
+ * Why this cannot interfere with ZMK Studio:
+ *   - Output side: console_out() only calls uart_poll_out() on the device,
+ *     which is cdc_acm_poll_out() — it appends to the same TX fifo the RPC
+ *     transport already uses. Interleaved log bytes are fine here because the
+ *     forensic run reads the port raw, not as frames.
+ *   - Input side: the console only claims RX through uart_register_input(),
+ *     which is called exclusively by the shell's backend (drivers/console/
+ *     uart_console.c:549 console_input_init()). With CONFIG_SHELL=n nothing
+ *     calls it, so the RPC transport keeps uart_irq_callback_user_data_set()
+ *     and RX to itself. Hence the matching .conf fragment turns the shell off.
+ *   - Before the USB device is configured, cdc_acm_tx_put_locked() finds
+ *     tx_fifo.current == NULL and drops bytes instead of dereferencing an
+ *     uninitialised buffer, so the very early boot messages are lost but
+ *     nothing faults. Expect the first readable line after enumeration.
+ *
+ * Bench use only: a shipped image must not log over the port Studio talks on.
+ */
+
+/ {
+	chosen {
+		zephyr,console = &studio_cdc_uart;
+	};
+};
