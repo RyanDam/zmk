@@ -46,7 +46,7 @@ Sources: `ref/JC3248W535EN/README.md:64-88` (pin tables),
 | 39/40 | QSPI D2/D3 | **used** | `overlay:64-67` |
 | 41 | I2S0 DATA out (`I2S0_O_SD_GPIO41`) → NS4168 DIN | reserved (h03) | speaker pads P5/±VAT→-SP downstream |
 | 42 | I2S0 BCLK (`I2S0_O_BCK_GPIO42`) | reserved (h03) | |
-| 43/44 | Console UART0 TX/RX | **used** | don't key-scan |
+| 43/44 | Console UART0 TX/RX | **used** | don't key-scan. **tab-01 bench note (2026-11-28):** `RXD2` verified end-to-end (shell commands via P1 reboot the tab); TXD-side bytes never reached the bench, but a meter confirms GPIO43→P1-TXD is continuous and the pinctrl driver provably drives the pad (same apply pass as the working RX cell) — the prime suspect is the bench jumper itself (back-pushed pin after a swap), not the board. `bringup/tab1a-console-ioport.overlay` (TX→IO17) stands as fallback if the wire check clears |
 | 45 | QSPI CS (via `&gpio1 13`) | **used** | also VDD_SPI strapping — keep as-is |
 | 46 | WS2812 light-bar DIN (h04/devkit) | reserved (h04) | **strapping pin** (ROM message output): a WS2812 DIN idles the line low at reset → ROM log behaviour changes but boot is unaffected; document on the final board |
 | 47 | QSPI CLK | **used** | `overlay:43` |
@@ -98,8 +98,11 @@ GPIO numbering note: the S3 port splits controllers — `&gpio0` = IO0–31,
 3. **IO9** BOOT strapping — only the hold-at-reset bootloader combo (R8).
 4. **P3 third signal** (DS1302 CE): P3/P4 expose IO17/IO18 only; IO6/IO7 are
    shared with P2 — **open (R1)**, board designer asked 2026-11-21.
-5. **IO46** is a strapping pin; acceptable as WS2812 DIN (log-level effect
-   only) — record on final board.
+5. **IO46** is a strapping pin; acceptable as WS2812 DIN — but concretely:
+   the DIN idles low at reset, and GPIO46-low **disables ROM message output
+   entirely** on the S3, so **no ROM boot banner ever appears on this board**
+   (bench-confirmed 2026-11-28 — it made every P1 silence look like a wiring
+   fault). No effect on boot itself; record on final board.
 6. IO48 is both QSPI D1 and JTAG-select — JTAG debugging trades the panel.
 7. No back-powering through header pins (matrix-fixture rule,
    `fixtures/matrix-fixture.md:100-108`).

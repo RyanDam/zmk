@@ -1,0 +1,46 @@
+/*
+ * Bench-only fragment: console TX moved to the IO port (TX -> GPIO17).
+ *
+ * The console-probe build (bringup/tab1a-console-probe.overlay) drove
+ * UART0 TX onto GPIO43 and GPIO44 at once, with RX proven alive on GPIO44
+ * over P1 (kernel-shell commands sent from the bench reboot the tab) — yet
+ * nothing ever reaches P1's TXD pad. So on this unit the pad-to-43 trace is
+ * broken, not the firmware: P1's TXD2 net is a factory-test stub, like its
+ * unpopulated-looking 100 ohm series parts in the vendor drawing. RXD2 works,
+ * TXD2 does not, which is exactly a partially-fitted test header.
+ *
+ * GPIO17 is U1TXD on the IO port (P3: GND / 3V3 / IO17 / IO18, definitely
+ * routed to the SoC), free in the product pinmap (only the h02 DS1302
+ * proposal touches it, unbuilt). Keep fan-out on 43 so the day a final-board
+ * revision fits the series part, the same build works on P1 again. RX stays
+ * on GPIO44 = P1's working RXD pad, so the bench delta is one wire:
+ * P1 TXD pin -> IO-port IO17 pin; RX and GND do not move.
+ *
+ * BUILD_DIR_OVERRIDE=build/cobantab1a-ioport sh esp-port/build_cobantab1a.sh \
+ *   -O esp-port/bringup/tab1a-console-ioport.overlay
+ *
+ * Bench-only: never ships; the product build keeps the board's own
+ * uart0_default (TX GPIO43, RX GPIO44).
+ */
+
+#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-gpio-sigmap.h>
+
+&pinctrl {
+	uart0_ioport_default: uart0_ioport_default {
+		group1 {
+			pinmux = <UART0_TX_GPIO17>, <UART0_TX_GPIO43>;
+			output-high;
+		};
+
+		group2 {
+			pinmux = <UART0_RX_GPIO44>;
+			bias-pull-up;
+		};
+	};
+};
+
+&uart0 {
+	pinctrl-0 = <&uart0_ioport_default>;
+};

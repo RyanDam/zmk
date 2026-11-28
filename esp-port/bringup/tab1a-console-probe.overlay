@@ -1,0 +1,45 @@
+/*
+ * Bench-only fragment: which P1 pad actually carries the console?
+ *
+ * The vendor teardown says P1 TXD/RXD reach GPIO43/44 through 100 Ω series
+ * parts (nets named TXD2/RXD2), yet no boot bytes appear on either pad in
+ * either crossing, while the header-to-dongle ring echoes byte-exact — the
+ * pads are reachable, the chip is not. Drive UART0 TX onto GPIO43 AND GPIO44
+ * at once (the GPIO matrix fans one peripheral output to several pads) so a
+ * single build covers both pads under either silkscreen convention, forced
+ * through the matrix rather than the 43/44 iomux. RX stays on GPIO44: if the
+ * banner answers, the pad that showed it names the header's convention and
+ * the RX guess follows from it.
+ *
+ * If neither pad emits anything on reset, P1's nets do not reach the S3 on
+ * this lot (unpopulated series parts or test-only routing) and the console
+ * moves to the IO port (UART0 TX->GPIO17, RX->GPIO18) instead.
+ *
+ * BUILD_DIR_OVERRIDE=build/cobantab1a-probe sh esp-port/build_cobantab1a.sh \
+ *   -O esp-port/bringup/tab1a-console-probe.overlay
+ *
+ * Bench-only: never ships; the product build keeps the board's own
+ * uart0_default (TX GPIO43, RX GPIO44).
+ */
+
+#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-gpio-sigmap.h>
+
+&pinctrl {
+	uart0_probe_default: uart0_probe_default {
+		group1 {
+			pinmux = <UART0_TX_GPIO43>, <UART0_TX_GPIO44>;
+			output-high;
+		};
+
+		group2 {
+			pinmux = <UART0_RX_GPIO44>;
+			bias-pull-up;
+		};
+	};
+};
+
+&uart0 {
+	pinctrl-0 = <&uart0_probe_default>;
+};
